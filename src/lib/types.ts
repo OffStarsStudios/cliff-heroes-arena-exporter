@@ -1,0 +1,137 @@
+/** Shared domain types for the spreadsheet -> JSON pipeline. */
+
+/** A worksheet reduced to a rectangular grid of raw cell values. */
+export interface RawSheet {
+  name: string;
+  /** Row-major grid. `null` means the cell was empty. */
+  rows: RawCell[][];
+}
+
+export type RawCell = string | number | boolean | null;
+
+export interface RawWorkbook {
+  /** Where the workbook came from, used for the default download filename. */
+  sourceName: string;
+  sheets: RawSheet[];
+}
+
+/** Logical roles a progression column can play. */
+export type ColumnRole = 'trophies' | 'arena';
+
+/**
+ * One reward slot on the progression sheet: a reward-name column optionally
+ * paired with the amount column that belongs to it.
+ */
+export interface RewardSlot {
+  /** Zero-based column index of the reward name. */
+  nameIndex: number;
+  /** Zero-based column index of the amount, or `null` when the sheet has none. */
+  amountIndex: number | null;
+  /** Header text as it appears in the sheet, for the mapping UI. */
+  label: string;
+}
+
+/** Resolved mapping from sheet columns to logical progression fields. */
+export interface ColumnMapping {
+  trophiesIndex: number | null;
+  arenaIndex: number | null;
+  rewardSlots: RewardSlot[];
+}
+
+/** How confident automatic detection was, per field. */
+export interface DetectionReport {
+  mapping: ColumnMapping;
+  headers: string[];
+  headerRowIndex: number;
+  /** Fields the detector could not resolve with confidence. */
+  uncertain: ColumnRole[];
+}
+
+/** A lookup table (Arenas or Rewards) reduced to name -> id. */
+export interface LookupTable {
+  /** Lowercased+trimmed name -> exact id from the sheet. */
+  byNormalizedName: Map<string, string>;
+  /** Normalized names that appear more than once with conflicting ids. */
+  ambiguous: Map<string, string[]>;
+  /** Original display names, in sheet order. */
+  entries: LookupEntry[];
+  nameHeader: string;
+  idHeader: string;
+}
+
+export interface LookupEntry {
+  name: string;
+  id: string;
+}
+
+/** Intermediate, human-inspectable view of one parsed sheet row. */
+export interface ParsedRow {
+  /** 1-based row number in the original sheet, for error messages. */
+  sheetRow: number;
+  trophiesRaw: RawCell;
+  arenaRaw: RawCell;
+  /** Arena after forward-filling blank cells from the row above. */
+  arenaName: string | null;
+  rewards: ParsedReward[];
+  /** True when this row introduces its arena (first row of the arena block). */
+  isArenaMilestone: boolean;
+}
+
+export interface ParsedReward {
+  slotLabel: string;
+  name: string;
+  amountRaw: RawCell;
+}
+
+/** The two milestone shapes the exporter emits. */
+export interface RewardMilestone {
+  Trophies: number;
+  RewardID: string;
+  Amount: number;
+}
+
+export interface ArenaMilestone {
+  Trophies: number;
+  ArenaID: string;
+  Unlocks?: { RewardID: string }[];
+}
+
+export type Milestone = RewardMilestone | ArenaMilestone;
+
+export interface ArenaProgressConfig {
+  Milestones: Milestone[];
+}
+
+export type IssueSeverity = 'error' | 'warning';
+
+export interface Issue {
+  severity: IssueSeverity;
+  /** Stable code so the UI can group/filter. */
+  code: string;
+  message: string;
+  /** 1-based sheet row the issue came from, when applicable. */
+  sheetRow?: number;
+}
+
+/** A row of the pre-export preview table. */
+export interface PreviewRow {
+  trophies: number | null;
+  type: 'Arena' | 'Arena Unlock' | 'Reward';
+  label: string;
+  amount: number | null;
+  sheetRow: number;
+}
+
+export interface TransformResult {
+  config: ArenaProgressConfig;
+  preview: PreviewRow[];
+  issues: Issue[];
+  stats: {
+    milestones: number;
+    arenas: number;
+    arenaUnlockMilestones: number;
+    rewardMilestones: number;
+    errors: number;
+    warnings: number;
+  };
+}
