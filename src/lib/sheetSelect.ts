@@ -91,3 +91,83 @@ export function autoSelectSheets(workbook: RawWorkbook): SheetSelection {
 
   return { progression, arenas, rewards };
 }
+
+/* ---------------------------------------------------------------- Heroes -- */
+
+export interface HeroSheetSelection {
+  heroes: string | null;
+  baseStats: string | null;
+  levelFactors: string | null;
+  powerSettings: string | null;
+}
+
+/** Scores a sheet against a keyword set, rewarding the tab's actual shape. */
+function scoreHeroTab(sheet: RawSheet, required: string[], bonus: string[], negative: string[]): number {
+  const words = tokens(sheet.name);
+  let score = 0;
+  if (required.every((keyword) => words.includes(keyword))) score += 50;
+  else if (required.some((keyword) => words.includes(keyword))) score += 15;
+  for (const keyword of bonus) if (words.includes(keyword)) score += 12;
+  for (const keyword of negative) if (words.includes(keyword)) score -= 40;
+
+  const header = sheet.rows[0] ?? [];
+  const headerWords = header.flatMap((cell) => tokens(String(cell ?? '')));
+  for (const keyword of [...required, ...bonus]) {
+    if (headerWords.includes(keyword)) score += 6;
+  }
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+/**
+ * Picks default tabs for a hero workbook. Names such as `Base Stats`,
+ * `Stats Level Factors` and `Power Settings` win, but as with the arena
+ * selector nothing is hardcoded to this particular workbook: the column
+ * headers contribute to the score too.
+ */
+export function autoSelectHeroSheets(workbook: RawWorkbook): HeroSheetSelection {
+  const sheets = workbook.sheets;
+
+  const levelFactors = bestSheet(
+    sheets,
+    (sheet) => scoreHeroTab(sheet, ['factors'], ['level', 'multiplier', 'stats'], []),
+    20,
+  );
+  const powerSettings = bestSheet(
+    sheets,
+    (sheet) => scoreHeroTab(sheet, ['power'], ['settings', 'powerup', 'special'], ['factors']),
+    20,
+  );
+  const baseStats = bestSheet(
+    sheets,
+    (sheet) => scoreHeroTab(sheet, ['base'], ['stats', 'rarity'], ['factors', 'power']),
+    20,
+  );
+  const heroes = bestSheet(
+    sheets,
+    (sheet) => scoreHeroTab(sheet, ['heroes'], ['hero', 'id'], ['base', 'factors', 'power', 'stats']),
+    20,
+  );
+
+  return { heroes, baseStats, levelFactors, powerSettings };
+}
+
+/** Which exporter a freshly loaded workbook looks like it is for. */
+export type Dataset = 'arena' | 'heroes';
+
+/**
+ * Guesses the dataset so the right exporter opens by default. A hero workbook
+ * is one where the hero tabs all resolve and the arena lookups do not.
+ */
+export function detectDataset(workbook: RawWorkbook): Dataset {
+  const hero = autoSelectHeroSheets(workbook);
+  const heroTabs = [hero.heroes, hero.baseStats, hero.levelFactors, hero.powerSettings].filter(
+    (name) => name !== null,
+  ).length;
+
+  const arena = autoSelectSheets(workbook);
+  const arenaTabs = [arena.arenas, arena.rewards].filter((name) => name !== null).length;
+
+  if (heroTabs === 4) return 'heroes';
+  return heroTabs > arenaTabs + 1 ? 'heroes' : 'arena';
+}

@@ -1,7 +1,7 @@
 import { headerTokens, isBlank, normalizeName } from './normalize';
 import type { Issue, LookupEntry, LookupTable, RawCell, RawSheet } from './types';
 
-export type LookupKind = 'arena' | 'reward';
+export type LookupKind = 'arena' | 'reward' | 'hero';
 
 const ID_LABELS = ['id', 'ids', 'key', 'code'];
 const NAME_LABELS = ['name', 'names', 'label', 'title', 'display'];
@@ -75,7 +75,7 @@ function pickNameColumn(headers: string[], idIndex: number | null): number | nul
   return best.score > 0 ? best.index : null;
 }
 
-const KIND_LABEL: Record<LookupKind, string> = { arena: 'Arenas', reward: 'Rewards' };
+const KIND_LABEL: Record<LookupKind, string> = { arena: 'Arenas', reward: 'Rewards', hero: 'Heroes' };
 
 /**
  * Builds a name -> id lookup from a two-column lookup sheet.

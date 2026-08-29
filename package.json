@@ -1,9 +1,9 @@
 {
-  "name": "arena-progress-json-exporter",
+  "name": "cliff-heroes-json-exporter",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Convert Cliff Heroes arena progression spreadsheets into game-ready JSON.",
+  "description": "Convert Cliff Heroes arena progression and hero stat spreadsheets into game-ready JSON.",
   "engines": {
     "node": ">=18"
   },

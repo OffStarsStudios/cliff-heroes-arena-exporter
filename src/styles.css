@@ -639,3 +639,62 @@ tbody tr:hover td {
     transform: rotate(360deg);
   }
 }
+
+/* Exporter switch ------------------------------------------------------- */
+
+.dataset-tabs {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 18px;
+}
+
+.dataset-tab {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: inherit;
+  padding: 12px 14px;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.dataset-tab:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.dataset-tab--active {
+  background: var(--surface-3);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.dataset-tab__label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dataset-tab__blurb {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.dataset-tab--active .dataset-tab__blurb {
+  color: var(--text-dim);
+}
+
+.error-text {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 13px;
+  margin: 0;
+  padding: 10px 12px;
+}

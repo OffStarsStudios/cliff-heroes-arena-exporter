@@ -1,9 +1,16 @@
-# Arena Progress JSON Exporter
+# Cliff Heroes JSON Exporter
 
-Convert Cliff Heroes progression sheets into game-ready JSON.
+Convert Cliff Heroes design sheets into game-ready JSON.
 
-A browser tool that reads an arena progression spreadsheet, joins arena and reward
-names against the workbook's own lookup tabs, and exports `arena-progress.json`.
+A browser tool with two exporters that share one workbook loader:
+
+- **Arena progress** - reads an arena progression sheet, joins arena and reward names
+  against the workbook's own lookup tabs, and exports `arena-progress.json`.
+- **Hero stats** - reads base stats, level factors and power settings, rolls the level
+  curves out, and exports `heroes.json`.
+
+The right exporter opens automatically based on the tabs the workbook contains; the
+switch at the top of the page overrides that.
 
 ## Requirements
 
@@ -39,14 +46,16 @@ npm run build && npm start
 ## Using it
 
 1. Upload an `.xlsx` workbook, or paste a Google Sheets link.
-2. Confirm the three tabs: **Progression**, **Arenas lookup**, **Rewards lookup**.
-   Sensible defaults are picked automatically.
-3. Confirm the detected columns, adjusting them in the mapping panel if needed.
-4. Check the data summary and the parsed milestone table.
-5. Press **Generate JSON**, then copy or download `arena-progress.json`.
+2. Pick the exporter if the auto-detected one is wrong.
+3. Confirm the tabs. Sensible defaults are picked automatically.
+   - Arena progress: **Progression**, **Arenas lookup**, **Rewards lookup**
+   - Hero stats: **Heroes lookup**, **Base stats**, **Stats level factors**, **Power settings**
+4. For arena progress, confirm the detected columns in the mapping panel if needed.
+5. Check the data summary and the preview table.
+6. Press **Generate JSON**, then copy or download the file.
 
-Export is blocked while any validation error is outstanding, so a failed name join
-can never produce partial JSON.
+Export is blocked while any validation error is outstanding, so a failed name join or a
+mistyped power parameter can never produce partial JSON.
 
 ### Google Sheets
 
@@ -83,7 +92,7 @@ The production URL is public to anyone who has it. To restrict it, use
 your Vercel team; password protection is the alternative). Check what your plan
 includes before relying on it.
 
-## Output schema
+## Output schema: arena progress
 
 ```json
 {
@@ -105,7 +114,77 @@ includes before relying on it.
 Property order is exactly as shown, numbers are never quoted, and nothing else is
 ever added to a milestone.
 
-## How the spreadsheet is interpreted
+## Output schema: hero stats
+
+```json
+{
+  "Heroes": [
+    {
+      "ID": "heroes.cliff",
+      "MaxSpeed": 24.8,
+      "SpeedIncreasePerSecond": 0.05,
+      "Rarity": "Rare",
+      "PowerCooldown": 5,
+      "Levels": [
+        { "Health": 3, "Speed": 10, "Grip": 6.8 },
+        { "Health": 3.3, "Speed": 11, "Grip": 7.5 }
+      ],
+      "Power": {
+        "ActivationDelay": 0,
+        "Duration": 3,
+        "SpeedMultiplier": 1.5,
+        "EndsOnObstacleHit": true
+      }
+    }
+  ]
+}
+```
+
+Hero key order is always `ID, MaxSpeed, SpeedIncreasePerSecond, Rarity, PowerCooldown,
+Levels, Power`, and level key order is always `Health, Speed, Grip`. `Power` always
+begins with `ActivationDelay` and `Duration`; the remaining parameters differ per hero
+and follow the sheet's column order.
+
+### How the hero sheets are interpreted
+
+- **Hero order** follows the **Base stats** tab, so the sheet owns the ordering.
+- **IDs** come from the **Heroes** tab and are never constructed from a hero name, the
+  same rule the arena lookups follow.
+- **Level stats** are `base stat x that level's multiplier`, rounded to one decimal
+  place, nearest, with halves rounded up.
+- **Levels must run 1..N** with no gaps or duplicates. A gap would silently shift every
+  level above it, so it is an error rather than a warning.
+- **Power settings** are two fixed columns (`Activation Delay`, `Duration`) followed by
+  repeating `Special Param Name` / `Special Param Input` pairs, for any number of slots.
+- Columns are found by header text, so adding or reordering columns is safe. A column
+  the exporter needs but cannot find is reported by name.
+
+### Power parameter validation
+
+Special parameter names are checked against the schema in `src/lib/powerParams.ts`,
+which lists every parameter the game reads along with its value type. This is the one
+place that is deliberately a constant rather than read from the sheet - checking the
+sheet against itself would validate nothing.
+
+- **Exact name** - accepted silently.
+- **Different case, spacing or punctuation** (`speed multiplier`, `SPEED_MULTIPLIER`) -
+  accepted, exported under the canonical spelling, and reported as a warning.
+- **Misspelling** (`SpeedMultiplyer`) - error, naming the likely intended parameter.
+- **Unknown name** (`JumpHeight`) - error, with no suggestion when nothing is close.
+- **Wrong value type** - error. `EndsOnObstacleHit` must be `TRUE`/`FALSE`; everything
+  else must be numeric.
+- **Duplicate parameter**, including one that collides with `Duration` - error.
+- **A name with no value, or a value with no name** - error.
+
+Rounding note: many level products land exactly on a `.x5` boundary, and in binary
+floating point `9.7 * 1.5` is `14.549999999999999` rather than `14.55`. The
+multiplication is therefore done in scaled-integer space, so those cases round on
+intent rather than on representation, and match `ROUND(x, 1)` in the sheet.
+
+When the game gains a new power parameter, add it to `POWER_PARAM_TYPES` in
+`src/lib/powerParams.ts`. That is the only edit needed.
+
+## How the arena spreadsheet is interpreted
 
 Nothing about the current content is hardcoded - no arena names, hero names, reward
 names, or trophy values. The rules are structural:
@@ -152,16 +231,21 @@ against the output schema.
 ```
 src/lib/workbook.ts       xlsx bytes  -> plain grid model
 src/lib/columnDetect.ts   grid        -> column mapping
-src/lib/sheetSelect.ts    workbook    -> default tab choices
-src/lib/lookups.ts        lookup tab  -> name -> id resolver
+src/lib/sheetSelect.ts    workbook    -> default tab choices + dataset detection
+src/lib/lookups.ts        lookup tab  -> name -> id resolver (arenas, rewards, heroes)
 src/lib/transform.ts      rows        -> milestones + issues + preview
 src/lib/validate.ts       milestones  -> schema check + serializer
+src/lib/powerParams.ts    power parameter schema + name resolution
+src/lib/heroes.ts         hero tabs   -> heroes + issues + preview
+src/lib/validateHeroes.ts heroes      -> schema check + serializer
 src/lib/googleSheets.ts   sheet URL   -> workbook
-src/components/           UI
+src/features/             one component per exporter
+src/components/           shared UI
 server/                   Google Sheets proxy (dev plugin + prod server)
-tests/                    transformation tests, including the real workbook
+tests/                    transformation tests, including both real workbooks
 ```
 
-The parsing logic is entirely independent of React, so it is directly testable;
-`tests/workbook.test.ts` runs the real `fixtures/arena-progression.xlsx` through the
-whole pipeline and asserts the exact output.
+The parsing logic is entirely independent of React, so it is directly testable.
+`tests/workbook.test.ts` runs the real `fixtures/arena-progression.xlsx` and
+`tests/heroes.test.ts` runs the real `fixtures/hero-stats.xlsx` through the whole
+pipeline, each asserting the exact output.

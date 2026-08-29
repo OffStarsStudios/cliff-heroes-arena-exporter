@@ -1,76 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { SourceCard, type SourceMode } from './components/SourceCard';
-import { SheetPicker } from './components/SheetPicker';
-import { ColumnMapper } from './components/ColumnMapper';
-import { IssueList, SummaryCard } from './components/SummaryCard';
-import { PreviewTable } from './components/PreviewTable';
-import { JsonOutput } from './components/JsonOutput';
-import { detectColumns } from './lib/columnDetect';
-import { buildLookup } from './lib/lookups';
-import { autoSelectSheets, type SheetSelection } from './lib/sheetSelect';
-import { transform } from './lib/transform';
-import { serializeConfig, validateConfig } from './lib/validate';
+import { ArenaExporter } from './features/ArenaExporter';
+import { HeroExporter } from './features/HeroExporter';
+import { detectDataset, type Dataset } from './lib/sheetSelect';
 import { readWorkbookFile } from './lib/workbook';
 import { GoogleSheetsError, loadGoogleSheet } from './lib/googleSheets';
-import type { ColumnMapping, ColumnRole, Issue, RawSheet, RawWorkbook, TransformResult } from './lib/types';
+import type { RawWorkbook } from './lib/types';
 
-const DOWNLOAD_FILENAME = 'arena-progress.json';
-
-const EMPTY_SELECTION: SheetSelection = { progression: null, arenas: null, rewards: null };
-
-interface Analysis {
-  result: TransformResult | null;
-  issues: Issue[];
-}
-
-function findSheet(workbook: RawWorkbook | null, name: string | null): RawSheet | null {
-  if (workbook === null || name === null) return null;
-  return workbook.sheets.find((sheet) => sheet.name === name) ?? null;
-}
+const DATASETS: { id: Dataset; label: string; blurb: string }[] = [
+  { id: 'arena', label: 'Arena progress', blurb: 'Trophy milestones, arenas and rewards.' },
+  { id: 'heroes', label: 'Hero stats', blurb: 'Base stats, level curves and power settings.' },
+];
 
 export function App() {
   const [mode, setMode] = useState<SourceMode>('file');
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-
   const [workbook, setWorkbook] = useState<RawWorkbook | null>(null);
-  const [selection, setSelection] = useState<SheetSelection>(EMPTY_SELECTION);
-  const [mapping, setMapping] = useState<ColumnMapping | null>(null);
-  const [uncertain, setUncertain] = useState<ColumnRole[]>([]);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [headerRowIndex, setHeaderRowIndex] = useState(0);
-  const [generated, setGenerated] = useState<string | null>(null);
-
-  /** Re-runs automatic column detection for the currently selected progression sheet. */
-  const redetect = useCallback(
-    (sheet: RawSheet | null) => {
-      if (sheet === null) {
-        setMapping(null);
-        setHeaders([]);
-        setUncertain([]);
-        setHeaderRowIndex(0);
-        return;
-      }
-      const detection = detectColumns(sheet);
-      setMapping(detection.mapping);
-      setHeaders(detection.headers);
-      setUncertain(detection.uncertain);
-      setHeaderRowIndex(detection.headerRowIndex);
-    },
-    [],
-  );
-
-  // Re-detect whenever the progression sheet changes.
-  useEffect(() => {
-    redetect(findSheet(workbook, selection.progression));
-    setGenerated(null);
-  }, [workbook, selection.progression, redetect]);
+  const [dataset, setDataset] = useState<Dataset>('arena');
 
   const acceptWorkbook = (loaded: RawWorkbook) => {
     setWorkbook(loaded);
-    setSelection(autoSelectSheets(loaded));
+    // Open the exporter the workbook looks like it is for; still switchable.
+    setDataset(detectDataset(loaded));
     setLoadError(null);
-    setGenerated(null);
   };
 
   const handleFile = async (file: File) => {
@@ -92,7 +45,9 @@ export function App() {
       acceptWorkbook(await loadGoogleSheet(url));
     } catch (error) {
       setLoadError(
-        error instanceof GoogleSheetsError ? error.message : `Could not load that sheet: ${(error as Error).message}`,
+        error instanceof GoogleSheetsError
+          ? error.message
+          : `Could not load that sheet: ${(error as Error).message}`,
       );
     } finally {
       setBusy(false);
@@ -101,85 +56,7 @@ export function App() {
 
   const reset = () => {
     setWorkbook(null);
-    setSelection(EMPTY_SELECTION);
-    setMapping(null);
-    setHeaders([]);
-    setUncertain([]);
-    setGenerated(null);
     setLoadError(null);
-  };
-
-  // Live analysis: everything except the JSON itself updates as selections change.
-  const analysis: Analysis = useMemo(() => {
-    if (workbook === null || mapping === null) return { result: null, issues: [] };
-
-    const progression = findSheet(workbook, selection.progression);
-    const arenaSheet = findSheet(workbook, selection.arenas);
-    const rewardSheet = findSheet(workbook, selection.rewards);
-
-    const issues: Issue[] = [];
-    if (progression === null) {
-      issues.push({
-        severity: 'error',
-        code: 'missing-progression-tab',
-        message: 'Select the progression sheet to continue.',
-      });
-    }
-    if (arenaSheet === null) {
-      issues.push({
-        severity: 'error',
-        code: 'missing-lookup-tab',
-        message: 'This workbook has no Arenas lookup tab selected. Pick the tab that maps arena names to ArenaIDs.',
-      });
-    }
-    if (rewardSheet === null) {
-      issues.push({
-        severity: 'error',
-        code: 'missing-lookup-tab',
-        message: 'This workbook has no Rewards lookup tab selected. Pick the tab that maps reward names to RewardIDs.',
-      });
-    }
-    if (progression === null || arenaSheet === null || rewardSheet === null) {
-      return { result: null, issues };
-    }
-
-    const arenas = buildLookup(arenaSheet, 'arena');
-    const rewards = buildLookup(rewardSheet, 'reward');
-    const result = transform({
-      progression,
-      headerRowIndex,
-      mapping,
-      arenas: arenas.table,
-      rewards: rewards.table,
-    });
-
-    const combined = [...issues, ...arenas.issues, ...rewards.issues, ...result.issues];
-    const errors = combined.filter((issue) => issue.severity === 'error').length;
-
-    return {
-      result: {
-        ...result,
-        issues: combined,
-        stats: { ...result.stats, errors, warnings: combined.length - errors },
-      },
-      issues: combined,
-    };
-  }, [workbook, selection, mapping, headerRowIndex]);
-
-  const errorCount = analysis.issues.filter((issue) => issue.severity === 'error').length;
-  const canGenerate = analysis.result !== null && errorCount === 0 && analysis.result.stats.milestones > 0;
-
-  const generate = () => {
-    if (analysis.result === null) return;
-    // Independent schema check before anything can be copied or downloaded.
-    const schemaIssues = validateConfig(analysis.result.config);
-    if (schemaIssues.length > 0) {
-      setGenerated(null);
-      setLoadError(schemaIssues.map((issue) => issue.message).join(' '));
-      return;
-    }
-    setLoadError(null);
-    setGenerated(serializeConfig(analysis.result.config));
   };
 
   return (
@@ -190,66 +67,29 @@ export function App() {
             {'{}'}
           </span>
           <div>
-            <h1>Arena Progress JSON Exporter</h1>
-            <p className="masthead__subtitle">Convert Cliff Heroes progression sheets into game-ready JSON.</p>
+            <h1>Cliff Heroes JSON Exporter</h1>
+            <p className="masthead__subtitle">Convert Cliff Heroes design sheets into game-ready JSON.</p>
           </div>
         </div>
       </header>
 
-      <div className="columns">
-        <div className="stack">
-          <SourceCard
-            mode={mode}
-            onModeChange={(next) => {
-              setMode(next);
-              setLoadError(null);
-            }}
-            onFile={handleFile}
-            onUrl={handleUrl}
-            busy={busy}
-            error={loadError}
-          />
-
-          {workbook !== null && (
-            <SheetPicker
-              sheetNames={workbook.sheets.map((sheet) => sheet.name)}
-              selection={selection}
-              onChange={(next) => {
-                setSelection(next);
-                setGenerated(null);
+      {workbook === null ? (
+        <div className="columns">
+          <div className="stack">
+            <SourceCard
+              mode={mode}
+              onModeChange={(next) => {
+                setMode(next);
+                setLoadError(null);
               }}
-              sourceName={workbook.sourceName}
-              onReset={reset}
+              onFile={handleFile}
+              onUrl={handleUrl}
+              busy={busy}
+              error={loadError}
             />
-          )}
+          </div>
 
-          {workbook !== null && mapping !== null && (
-            <ColumnMapper
-              headers={headers}
-              mapping={mapping}
-              uncertain={uncertain}
-              onChange={(next) => {
-                setMapping(next);
-                setGenerated(null);
-              }}
-              onRedetect={() => redetect(findSheet(workbook, selection.progression))}
-            />
-          )}
-
-          {analysis.result !== null && <SummaryCard result={analysis.result} />}
-
-          <IssueList issues={analysis.issues} severity="error" title="Validation errors" />
-          <IssueList issues={analysis.issues} severity="warning" title="Warnings" />
-
-          {workbook !== null && (
-            <button type="button" className="btn btn--primary btn--large" onClick={generate} disabled={!canGenerate}>
-              {errorCount > 0 ? `Fix ${errorCount} error${errorCount === 1 ? '' : 's'} to generate` : 'Generate JSON'}
-            </button>
-          )}
-        </div>
-
-        <div className="stack">
-          {workbook === null ? (
+          <div className="stack">
             <section className="card card--muted">
               <header className="card__header">
                 <h2 className="card__title">Output</h2>
@@ -257,35 +97,38 @@ export function App() {
               <div className="card__body">
                 <p className="empty">
                   Upload a workbook or paste a public Google Sheets link to get started. The exporter
-                  reads your progression tab and joins names against the Arenas and Rewards lookup
-                  tabs.
+                  reads the tabs it needs and picks the matching converter automatically - arena
+                  progression or hero stats.
                 </p>
               </div>
             </section>
-          ) : (
-            <>
-              {generated !== null ? (
-                <JsonOutput json={generated} filename={DOWNLOAD_FILENAME} />
-              ) : (
-                <section className="card card--muted">
-                  <header className="card__header">
-                    <h2 className="card__title">Generated JSON</h2>
-                  </header>
-                  <div className="card__body">
-                    <p className="empty">
-                      {errorCount > 0
-                        ? 'Resolve the validation errors on the left - no partial JSON is produced while a join is failing.'
-                        : 'Review the parsed milestones below, then press Generate JSON.'}
-                    </p>
-                  </div>
-                </section>
-              )}
-
-              {analysis.result !== null && <PreviewTable rows={analysis.result.preview} />}
-            </>
-          )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="dataset-tabs" role="tablist" aria-label="Exporter">
+            {DATASETS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                aria-selected={dataset === entry.id}
+                className={`dataset-tab${dataset === entry.id ? ' dataset-tab--active' : ''}`}
+                onClick={() => setDataset(entry.id)}
+              >
+                <span className="dataset-tab__label">{entry.label}</span>
+                <span className="dataset-tab__blurb">{entry.blurb}</span>
+              </button>
+            ))}
+          </div>
+
+          {dataset === 'arena' ? (
+            <ArenaExporter workbook={workbook} onReset={reset} />
+          ) : (
+            <HeroExporter workbook={workbook} onReset={reset} />
+          )}
+        </>
+      )}
     </div>
   );
 }

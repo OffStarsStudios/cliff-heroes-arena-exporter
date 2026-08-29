@@ -135,3 +135,63 @@ export interface TransformResult {
     warnings: number;
   };
 }
+
+/* ---------------------------------------------------------------- Heroes -- */
+
+/** One level's rolled-up stats. Base stat x that level's multiplier. */
+export interface HeroLevel {
+  Health: number;
+  Speed: number;
+  Grip: number;
+}
+
+/**
+ * A hero's power block. `ActivationDelay` and `Duration` are always present;
+ * the remaining parameters differ per hero and are validated by name against
+ * the schema in `powerParams.ts`.
+ */
+export interface HeroPower {
+  ActivationDelay: number;
+  Duration: number;
+  [param: string]: number | boolean;
+}
+
+export interface HeroEntry {
+  ID: string;
+  MaxSpeed: number;
+  SpeedIncreasePerSecond: number;
+  Rarity: string;
+  PowerCooldown: number;
+  Levels: HeroLevel[];
+  Power: HeroPower;
+}
+
+export interface HeroesConfig {
+  Heroes: HeroEntry[];
+}
+
+/** A row of the hero preview table. */
+export interface HeroPreviewRow {
+  name: string;
+  id: string;
+  rarity: string;
+  maxSpeed: number;
+  levelCount: number;
+  first: HeroLevel | null;
+  last: HeroLevel | null;
+  powerParams: string[];
+  sheetRow: number;
+}
+
+export interface HeroTransformResult {
+  config: HeroesConfig;
+  preview: HeroPreviewRow[];
+  issues: Issue[];
+  stats: {
+    heroes: number;
+    levels: number;
+    powerParams: number;
+    errors: number;
+    warnings: number;
+  };
+}

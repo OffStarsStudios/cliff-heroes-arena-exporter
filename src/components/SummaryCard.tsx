@@ -1,4 +1,4 @@
-import type { Issue, TransformResult } from '../lib/types';
+import type { HeroTransformResult, Issue, TransformResult } from '../lib/types';
 
 interface SummaryCardProps {
   result: TransformResult;
@@ -34,6 +34,31 @@ export function SummaryCard({ result }: SummaryCardProps) {
           <Stat value={stats.arenas} label="Arenas" />
           <Stat value={stats.arenaUnlockMilestones} label="Arena unlocks" />
           <Stat value={stats.rewardMilestones} label="Rewards" />
+          <Stat value={stats.errors} label="Errors" tone={stats.errors > 0 ? 'danger' : 'ok'} />
+          <Stat value={stats.warnings} label="Warnings" tone={stats.warnings > 0 ? 'warn' : undefined} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+interface HeroSummaryCardProps {
+  result: HeroTransformResult;
+}
+
+export function HeroSummaryCard({ result }: HeroSummaryCardProps) {
+  const { stats } = result;
+  return (
+    <section className="card">
+      <header className="card__header">
+        <h2 className="card__title">Data summary</h2>
+        <span className="card__hint">Recalculated as you change the selection</span>
+      </header>
+      <div className="card__body">
+        <div className="summary">
+          <Stat value={stats.heroes} label="Heroes" />
+          <Stat value={stats.levels} label="Levels" />
+          <Stat value={stats.powerParams} label="Power params" />
           <Stat value={stats.errors} label="Errors" tone={stats.errors > 0 ? 'danger' : 'ok'} />
           <Stat value={stats.warnings} label="Warnings" tone={stats.warnings > 0 ? 'warn' : undefined} />
         </div>
