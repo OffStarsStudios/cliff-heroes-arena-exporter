@@ -9,8 +9,8 @@ A browser tool with two exporters that share one workbook loader:
 - **Hero stats** - reads base stats, level factors and power settings, rolls the level
   curves out, and exports `heroes.json`.
 
-The right exporter opens automatically based on the tabs the workbook contains; the
-switch at the top of the page overrides that.
+Each exporter is its own section in the left sidebar, and both read from the same
+loaded workbook. Sections are deep-linkable (`#/arena`, `#/heroes`, `#/reference`).
 
 ## Requirements
 
@@ -45,14 +45,27 @@ npm run build && npm start
 
 ## Using it
 
-1. Upload an `.xlsx` workbook, or paste a Google Sheets link.
-2. Pick the exporter if the auto-detected one is wrong.
-3. Confirm the tabs. Sensible defaults are picked automatically.
+Pick a section in the sidebar - **Arena progress** or **Hero stats** - then work down
+the numbered steps. Each step shows its own status, and the step you still have to
+finish opens on its own.
+
+1. **Load the workbook.** Drop an `.xlsx` file, or paste a Google Sheets link. The
+   workbook is shared by both exporters, so this is done once.
+2. **Pick the tabs.** Sensible defaults are picked automatically; every field says what
+   the tab has to contain.
    - Arena progress: **Progression**, **Arenas lookup**, **Rewards lookup**
    - Hero stats: **Heroes lookup**, **Base stats**, **Stats level factors**, **Power settings**
-4. For arena progress, confirm the detected columns in the mapping panel if needed.
-5. Check the data summary and the preview table.
-6. Press **Generate JSON**, then copy or download the file.
+3. **Map the columns** (arena progress only). Detected columns are pre-filled; anything
+   detection was unsure about is called out.
+4. **Review and export.** Live counts, then the errors and warnings, then a tab switch
+   between the parsed rows and the JSON. Press **Generate JSON** in the bar pinned to
+   the bottom of the page, then copy or download.
+
+The bottom bar always says why the export is or is not available, so the reason a
+button is disabled never has to be hunted for.
+
+The **Power parameters** section lists every accepted special parameter name, and a
+failing hero export links straight to it.
 
 Export is blocked while any validation error is outstanding, so a failed name join or a
 mistyped power parameter can never produce partial JSON.
@@ -239,8 +252,9 @@ src/lib/powerParams.ts    power parameter schema + name resolution
 src/lib/heroes.ts         hero tabs   -> heroes + issues + preview
 src/lib/validateHeroes.ts heroes      -> schema check + serializer
 src/lib/googleSheets.ts   sheet URL   -> workbook
-src/features/             one component per exporter
-src/components/           shared UI
+src/features/             one page per section (arena, heroes, parameter reference)
+src/components/           app shell, stepper, and the shared UI primitives
+src/styles.css            design tokens + all component styling
 server/                   Google Sheets proxy (dev plugin + prod server)
 tests/                    transformation tests, including both real workbooks
 ```

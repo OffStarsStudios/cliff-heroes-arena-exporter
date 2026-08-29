@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { SheetPicker } from '../components/SheetPicker';
+import { ActionBar } from '../components/ActionBar';
 import { ColumnMapper } from '../components/ColumnMapper';
-import { IssueList, SummaryCard } from '../components/SummaryCard';
-import { PreviewTable } from '../components/PreviewTable';
+import { Icon } from '../components/Icon';
 import { JsonOutput } from '../components/JsonOutput';
+import { PreviewTable } from '../components/PreviewTable';
+import { SheetPicker } from '../components/SheetPicker';
+import { SourcePanel, type SourceController } from '../components/SourcePanel';
+import { Step, type StepStatus } from '../components/Step';
+import { ArenaStats, IssueList } from '../components/Summary';
 import { detectColumns } from '../lib/columnDetect';
 import { buildLookup } from '../lib/lookups';
-import { autoSelectSheets, type SheetSelection } from '../lib/sheetSelect';
+import { autoSelectSheets, detectDataset, type SheetSelection } from '../lib/sheetSelect';
 import { transform } from '../lib/transform';
 import { serializeConfig, validateConfig } from '../lib/validate';
 import type {
@@ -17,31 +21,37 @@ import type {
   RawWorkbook,
   TransformResult,
 } from '../lib/types';
+import type { View } from '../components/AppShell';
 
 const DOWNLOAD_FILENAME = 'arena-progress.json';
 
 interface ArenaExporterProps {
-  workbook: RawWorkbook;
-  onReset: () => void;
+  source: SourceController;
+  onNavigate: (view: View) => void;
 }
 
-function findSheet(workbook: RawWorkbook, name: string | null): RawSheet | null {
-  if (name === null) return null;
+function findSheet(workbook: RawWorkbook | null, name: string | null): RawSheet | null {
+  if (workbook === null || name === null) return null;
   return workbook.sheets.find((sheet) => sheet.name === name) ?? null;
 }
 
-export function ArenaExporter({ workbook, onReset }: ArenaExporterProps) {
-  const [selection, setSelection] = useState<SheetSelection>(() => autoSelectSheets(workbook));
+const EMPTY_SELECTION: SheetSelection = { progression: null, arenas: null, rewards: null };
+
+export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
+  const { workbook } = source;
+  const [selection, setSelection] = useState<SheetSelection>(EMPTY_SELECTION);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
   const [uncertain, setUncertain] = useState<ColumnRole[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [headerRowIndex, setHeaderRowIndex] = useState(0);
   const [generated, setGenerated] = useState<string | null>(null);
   const [schemaError, setSchemaError] = useState<string | null>(null);
+  const [openStep, setOpenStep] = useState(1);
+  const [outputTab, setOutputTab] = useState<'preview' | 'json'>('preview');
 
   // A new workbook resets the tab choices.
   useEffect(() => {
-    setSelection(autoSelectSheets(workbook));
+    setSelection(workbook === null ? EMPTY_SELECTION : autoSelectSheets(workbook));
     setGenerated(null);
     setSchemaError(null);
   }, [workbook]);
@@ -70,7 +80,7 @@ export function ArenaExporter({ workbook, onReset }: ArenaExporterProps) {
 
   // Live analysis: everything except the JSON itself updates as selections change.
   const analysis: { result: TransformResult | null; issues: Issue[] } = useMemo(() => {
-    if (mapping === null) return { result: null, issues: [] };
+    if (workbook === null || mapping === null) return { result: null, issues: [] };
 
     const progression = findSheet(workbook, selection.progression);
     const arenaSheet = findSheet(workbook, selection.arenas);
@@ -81,21 +91,23 @@ export function ArenaExporter({ workbook, onReset }: ArenaExporterProps) {
       issues.push({
         severity: 'error',
         code: 'missing-progression-tab',
-        message: 'Select the progression sheet to continue.',
+        message: 'Select the progression tab in step 2 to continue.',
       });
     }
     if (arenaSheet === null) {
       issues.push({
         severity: 'error',
         code: 'missing-lookup-tab',
-        message: 'This workbook has no Arenas lookup tab selected. Pick the tab that maps arena names to ArenaIDs.',
+        message:
+          'No Arenas lookup tab is selected. Pick the tab that maps arena names to ArenaIDs in step 2.',
       });
     }
     if (rewardSheet === null) {
       issues.push({
         severity: 'error',
         code: 'missing-lookup-tab',
-        message: 'This workbook has no Rewards lookup tab selected. Pick the tab that maps reward names to RewardIDs.',
+        message:
+          'No Rewards lookup tab is selected. Pick the tab that maps reward names to RewardIDs in step 2.',
       });
     }
     if (progression === null || arenaSheet === null || rewardSheet === null) {
@@ -126,7 +138,47 @@ export function ArenaExporter({ workbook, onReset }: ArenaExporterProps) {
   }, [workbook, selection, mapping, headerRowIndex]);
 
   const errorCount = analysis.issues.filter((issue) => issue.severity === 'error').length;
-  const canGenerate = analysis.result !== null && errorCount === 0 && analysis.result.stats.milestones > 0;
+  const warningCount = analysis.issues.length - errorCount;
+  const canGenerate =
+    analysis.result !== null && errorCount === 0 && analysis.result.stats.milestones > 0;
+
+  /* ---- step state ------------------------------------------------------- */
+
+  const hasWorkbook = workbook !== null;
+  const chosenTabs = [selection.progression, selection.arenas, selection.rewards].filter(
+    (name) => name !== null,
+  ).length;
+  const tabsReady = chosenTabs === 3;
+  const mappingReady =
+    mapping !== null && mapping.trophiesIndex !== null && mapping.arenaIndex !== null;
+
+  const firstIncomplete = !hasWorkbook ? 1 : !tabsReady ? 2 : !mappingReady ? 3 : 4;
+
+  // Advance the open step only when the furthest unfinished step actually
+  // moves, so a step the user opened by hand is not yanked shut under them.
+  useEffect(() => {
+    setOpenStep(firstIncomplete);
+  }, [firstIncomplete]);
+
+  const toggle = (index: number) => setOpenStep((current) => (current === index ? 0 : index));
+
+  const sheetNames = workbook?.sheets.map((sheet) => sheet.name) ?? [];
+
+  const tabsStatus: StepStatus = !hasWorkbook ? 'pending' : tabsReady ? 'done' : 'blocked';
+  const mapStatus: StepStatus = !tabsReady
+    ? 'pending'
+    : !mappingReady
+      ? 'blocked'
+      : uncertain.length > 0
+        ? 'blocked'
+        : 'done';
+  const reviewStatus: StepStatus = !mappingReady
+    ? 'pending'
+    : errorCount > 0
+      ? 'blocked'
+      : generated !== null
+        ? 'done'
+        : 'current';
 
   const generate = () => {
     if (analysis.result === null) return;
@@ -139,67 +191,216 @@ export function ArenaExporter({ workbook, onReset }: ArenaExporterProps) {
     }
     setSchemaError(null);
     setGenerated(serializeConfig(analysis.result.config));
+    setOutputTab('json');
   };
 
-  return (
-    <div className="columns">
-      <div className="stack">
-        <SheetPicker
-          sheetNames={workbook.sheets.map((sheet) => sheet.name)}
-          selection={selection}
-          onChange={(next) => {
-            setSelection(next);
-            setGenerated(null);
-          }}
-          sourceName={workbook.sourceName}
-          onReset={onReset}
-        />
+  const wrongDataset = workbook !== null && detectDataset(workbook) === 'heroes';
 
-        {mapping !== null && (
-          <ColumnMapper
-            headers={headers}
-            mapping={mapping}
-            uncertain={uncertain}
+  const barTone = errorCount > 0 ? 'danger' : generated !== null ? 'ok' : 'neutral';
+  const barMessage =
+    !hasWorkbook
+      ? 'Load a workbook to start.'
+      : errorCount > 0
+        ? `${errorCount} error${errorCount === 1 ? '' : 's'} block the export.`
+        : generated !== null
+          ? `JSON generated from ${analysis.result?.stats.milestones ?? 0} milestones.`
+          : canGenerate
+            ? `Ready - ${analysis.result?.stats.milestones ?? 0} milestones parsed.`
+            : 'Finish the steps above to generate.';
+
+  return (
+    <>
+      <header className="page__head">
+        <h1 className="page__title">
+          <span className="page__badge page__badge--arena" aria-hidden="true">
+            <Icon name="trophy" size={17} />
+          </span>
+          Arena progress
+        </h1>
+        <p className="page__lead">
+          Turns the progression sheet into <span className="mono">arena-progress.json</span> - trophy
+          milestones with their arenas, arena unlocks and rewards, joined against the ID lookups.
+        </p>
+      </header>
+
+      {wrongDataset && (
+        <div className="banner banner--info" style={{ marginBottom: 12 }}>
+          <Icon name="info" size={15} className="banner__icon" />
+          <span>
+            This workbook looks like a hero stats sheet.{' '}
+            <button type="button" className="btn btn--sm" onClick={() => onNavigate('heroes')}>
+              Open the hero exporter
+            </button>
+          </span>
+        </div>
+      )}
+
+      <div className="steps">
+        <Step
+          index={1}
+          title="Load the workbook"
+          hint="Excel file or a shared Google Sheet"
+          status={hasWorkbook ? 'done' : 'current'}
+          statusLabel={hasWorkbook ? 'Loaded' : 'Start here'}
+          open={openStep === 1}
+          onToggle={() => toggle(1)}
+        >
+          <SourcePanel source={source} />
+        </Step>
+
+        <Step
+          index={2}
+          title="Pick the tabs"
+          hint="Progression plus the two ID lookups"
+          status={tabsStatus}
+          statusLabel={hasWorkbook ? `${chosenTabs} of 3 tabs` : 'Waiting'}
+          open={openStep === 2}
+          onToggle={() => toggle(2)}
+          locked={!hasWorkbook}
+        >
+          <SheetPicker
+            sheetNames={sheetNames}
+            selection={selection}
             onChange={(next) => {
-              setMapping(next);
+              setSelection(next);
               setGenerated(null);
             }}
-            onRedetect={() => redetect(findSheet(workbook, selection.progression))}
           />
-        )}
+        </Step>
 
-        {analysis.result !== null && <SummaryCard result={analysis.result} />}
+        <Step
+          index={3}
+          title="Map the columns"
+          hint="Trophies, arena and the reward slots"
+          status={mapStatus}
+          statusLabel={
+            !tabsReady
+              ? 'Waiting'
+              : uncertain.length > 0
+                ? `${uncertain.length} to confirm`
+                : mapping === null
+                  ? 'No columns'
+                  : `${mapping.rewardSlots.length} reward slot${mapping.rewardSlots.length === 1 ? '' : 's'}`
+          }
+          open={openStep === 3}
+          onToggle={() => toggle(3)}
+          locked={!tabsReady}
+        >
+          {mapping === null ? (
+            <p className="empty">No header row was found in the progression tab.</p>
+          ) : (
+            <ColumnMapper
+              headers={headers}
+              mapping={mapping}
+              uncertain={uncertain}
+              onChange={(next) => {
+                setMapping(next);
+                setGenerated(null);
+              }}
+              onRedetect={() => redetect(findSheet(workbook, selection.progression))}
+            />
+          )}
+        </Step>
 
-        {schemaError !== null && <p className="error-text">{schemaError}</p>}
+        <Step
+          index={4}
+          title="Review and export"
+          hint="Check the parsed rows, then generate the JSON"
+          status={reviewStatus}
+          statusLabel={
+            !mappingReady
+              ? 'Waiting'
+              : errorCount > 0
+                ? `${errorCount} error${errorCount === 1 ? '' : 's'}`
+                : generated !== null
+                  ? 'Generated'
+                  : 'Ready'
+          }
+          open={openStep === 4}
+          onToggle={() => toggle(4)}
+          locked={!mappingReady}
+        >
+          {analysis.result === null ? (
+            <p className="empty">Finish steps 2 and 3 to see the parsed data.</p>
+          ) : (
+            <div className="stack-md">
+              <ArenaStats result={analysis.result} />
 
-        <IssueList issues={analysis.issues} severity="error" title="Validation errors" />
-        <IssueList issues={analysis.issues} severity="warning" title="Warnings" />
+              {schemaError !== null && (
+                <div className="banner banner--error" role="alert">
+                  <Icon name="alert" size={15} className="banner__icon" />
+                  <span>{schemaError}</span>
+                </div>
+              )}
 
-        <button type="button" className="btn btn--primary btn--large" onClick={generate} disabled={!canGenerate}>
-          {errorCount > 0 ? `Fix ${errorCount} error${errorCount === 1 ? '' : 's'} to generate` : 'Generate JSON'}
-        </button>
-      </div>
+              {errorCount > 0 && (
+                <div>
+                  <p className="step__section-title">
+                    {errorCount} error{errorCount === 1 ? '' : 's'} - nothing is exported while a join
+                    is failing
+                  </p>
+                  <IssueList issues={analysis.issues} severity="error" />
+                </div>
+              )}
 
-      <div className="stack">
-        {generated !== null ? (
-          <JsonOutput json={generated} filename={DOWNLOAD_FILENAME} />
-        ) : (
-          <section className="card card--muted">
-            <header className="card__header">
-              <h2 className="card__title">Generated JSON</h2>
-            </header>
-            <div className="card__body">
-              <p className="empty">
-                {errorCount > 0
-                  ? 'Resolve the validation errors on the left - no partial JSON is produced while a join is failing.'
-                  : 'Review the parsed milestones below, then press Generate JSON.'}
-              </p>
+              {warningCount > 0 && (
+                <div>
+                  <p className="step__section-title">
+                    {warningCount} warning{warningCount === 1 ? '' : 's'} - exported as-is
+                  </p>
+                  <IssueList issues={analysis.issues} severity="warning" />
+                </div>
+              )}
+
+              <div>
+                <div className="tabs" role="tablist" aria-label="Output">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={outputTab === 'preview'}
+                    className={`tab${outputTab === 'preview' ? ' tab--active' : ''}`}
+                    onClick={() => setOutputTab('preview')}
+                  >
+                    Parsed milestones ({analysis.result.preview.length})
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={outputTab === 'json'}
+                    className={`tab${outputTab === 'json' ? ' tab--active' : ''}`}
+                    onClick={() => setOutputTab('json')}
+                  >
+                    JSON {generated === null ? '(not generated)' : ''}
+                  </button>
+                </div>
+
+                {outputTab === 'preview' ? (
+                  <PreviewTable rows={analysis.result.preview} />
+                ) : generated === null ? (
+                  <p className="empty">
+                    Press <strong>Generate JSON</strong> below. The output is schema-checked first, so
+                    a partial file is never produced.
+                  </p>
+                ) : (
+                  <JsonOutput json={generated} filename={DOWNLOAD_FILENAME} />
+                )}
+              </div>
             </div>
-          </section>
-        )}
-
-        {analysis.result !== null && <PreviewTable rows={analysis.result.preview} />}
+          )}
+        </Step>
       </div>
-    </div>
+
+      <ActionBar tone={barTone} message={barMessage}>
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={generate}
+          disabled={!canGenerate}
+        >
+          <Icon name="code" size={14} />
+          {generated === null ? 'Generate JSON' : 'Regenerate'}
+        </button>
+      </ActionBar>
+    </>
   );
 }

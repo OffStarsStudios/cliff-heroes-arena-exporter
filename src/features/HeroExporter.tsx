@@ -1,24 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
-import { HeroSheetPicker } from '../components/HeroSheetPicker';
+import { ActionBar } from '../components/ActionBar';
 import { HeroPreviewTable } from '../components/HeroPreviewTable';
-import { HeroSummaryCard, IssueList } from '../components/SummaryCard';
+import { HeroSheetPicker } from '../components/HeroSheetPicker';
+import { Icon } from '../components/Icon';
 import { JsonOutput } from '../components/JsonOutput';
+import { SourcePanel, type SourceController } from '../components/SourcePanel';
+import { Step, type StepStatus } from '../components/Step';
+import { HeroStats, IssueList } from '../components/Summary';
 import { buildLookup } from '../lib/lookups';
-import { autoSelectHeroSheets, type HeroSheetSelection } from '../lib/sheetSelect';
+import { autoSelectHeroSheets, detectDataset, type HeroSheetSelection } from '../lib/sheetSelect';
 import { transformHeroes } from '../lib/heroes';
 import { serializeHeroesConfig, validateHeroesConfig } from '../lib/validateHeroes';
-import { POWER_PARAM_NAMES } from '../lib/powerParams';
 import type { HeroTransformResult, Issue, RawSheet, RawWorkbook } from '../lib/types';
+import type { View } from '../components/AppShell';
 
 const DOWNLOAD_FILENAME = 'heroes.json';
 
 interface HeroExporterProps {
-  workbook: RawWorkbook;
-  onReset: () => void;
+  source: SourceController;
+  onNavigate: (view: View) => void;
 }
 
-function findSheet(workbook: RawWorkbook, name: string | null): RawSheet | null {
-  if (name === null) return null;
+function findSheet(workbook: RawWorkbook | null, name: string | null): RawSheet | null {
+  if (workbook === null || name === null) return null;
   return workbook.sheets.find((sheet) => sheet.name === name) ?? null;
 }
 
@@ -29,39 +33,30 @@ const TAB_LABELS: Record<keyof HeroSheetSelection, string> = {
   powerSettings: 'Power settings',
 };
 
-/** The parameter names the sheet is allowed to use, shown as a reference. */
-function ParamReference() {
-  return (
-    <section className="card">
-      <header className="card__header">
-        <h2 className="card__title">Valid power parameters</h2>
-        <span className="card__hint">{POWER_PARAM_NAMES.length} names</span>
-      </header>
-      <div className="card__body">
-        <p className="card__hint" style={{ marginBottom: 10 }}>
-          Special parameter names are checked against this list. Case and spacing do not matter -
-          anything else is reported as an error rather than exported.
-        </p>
-        <p className="mono" style={{ lineHeight: 1.8, fontSize: 12 }}>
-          {POWER_PARAM_NAMES.join(', ')}
-        </p>
-      </div>
-    </section>
-  );
-}
+const EMPTY_SELECTION: HeroSheetSelection = {
+  heroes: null,
+  baseStats: null,
+  levelFactors: null,
+  powerSettings: null,
+};
 
-export function HeroExporter({ workbook, onReset }: HeroExporterProps) {
-  const [selection, setSelection] = useState<HeroSheetSelection>(() => autoSelectHeroSheets(workbook));
+export function HeroExporter({ source, onNavigate }: HeroExporterProps) {
+  const { workbook } = source;
+  const [selection, setSelection] = useState<HeroSheetSelection>(EMPTY_SELECTION);
   const [generated, setGenerated] = useState<string | null>(null);
   const [schemaError, setSchemaError] = useState<string | null>(null);
+  const [openStep, setOpenStep] = useState(1);
+  const [outputTab, setOutputTab] = useState<'preview' | 'json'>('preview');
 
   useEffect(() => {
-    setSelection(autoSelectHeroSheets(workbook));
+    setSelection(workbook === null ? EMPTY_SELECTION : autoSelectHeroSheets(workbook));
     setGenerated(null);
     setSchemaError(null);
   }, [workbook]);
 
   const analysis: { result: HeroTransformResult | null; issues: Issue[] } = useMemo(() => {
+    if (workbook === null) return { result: null, issues: [] };
+
     const sheets = {
       heroes: findSheet(workbook, selection.heroes),
       baseStats: findSheet(workbook, selection.baseStats),
@@ -75,7 +70,7 @@ export function HeroExporter({ workbook, onReset }: HeroExporterProps) {
         issues.push({
           severity: 'error',
           code: 'missing-hero-tab',
-          message: `Select the ${TAB_LABELS[key]} tab to continue.`,
+          message: `Select the ${TAB_LABELS[key]} tab in step 2 to continue.`,
         });
       }
     }
@@ -110,7 +105,34 @@ export function HeroExporter({ workbook, onReset }: HeroExporterProps) {
   }, [workbook, selection]);
 
   const errorCount = analysis.issues.filter((issue) => issue.severity === 'error').length;
+  const warningCount = analysis.issues.length - errorCount;
   const canGenerate = analysis.result !== null && errorCount === 0 && analysis.result.stats.heroes > 0;
+
+  /* ---- step state ------------------------------------------------------- */
+
+  const hasWorkbook = workbook !== null;
+  const chosenTabs = (Object.keys(TAB_LABELS) as (keyof HeroSheetSelection)[]).filter(
+    (key) => selection[key] !== null,
+  ).length;
+  const tabsReady = chosenTabs === 4;
+  const firstIncomplete = !hasWorkbook ? 1 : !tabsReady ? 2 : 3;
+
+  useEffect(() => {
+    setOpenStep(firstIncomplete);
+  }, [firstIncomplete]);
+
+  const toggle = (index: number) => setOpenStep((current) => (current === index ? 0 : index));
+
+  const sheetNames = workbook?.sheets.map((sheet) => sheet.name) ?? [];
+
+  const tabsStatus: StepStatus = !hasWorkbook ? 'pending' : tabsReady ? 'done' : 'blocked';
+  const reviewStatus: StepStatus = !tabsReady
+    ? 'pending'
+    : errorCount > 0
+      ? 'blocked'
+      : generated !== null
+        ? 'done'
+        : 'current';
 
   const generate = () => {
     if (analysis.result === null) return;
@@ -123,56 +145,186 @@ export function HeroExporter({ workbook, onReset }: HeroExporterProps) {
     }
     setSchemaError(null);
     setGenerated(serializeHeroesConfig(analysis.result.config));
+    setOutputTab('json');
   };
 
+  const wrongDataset = workbook !== null && detectDataset(workbook) === 'arena';
+
+  const barTone = errorCount > 0 ? 'danger' : generated !== null ? 'ok' : 'neutral';
+  const barMessage = !hasWorkbook
+    ? 'Load a workbook to start.'
+    : errorCount > 0
+      ? `${errorCount} error${errorCount === 1 ? '' : 's'} block the export.`
+      : generated !== null
+        ? `JSON generated from ${analysis.result?.stats.heroes ?? 0} heroes.`
+        : canGenerate
+          ? `Ready - ${analysis.result?.stats.heroes ?? 0} heroes parsed.`
+          : 'Finish the steps above to generate.';
+
   return (
-    <div className="columns">
-      <div className="stack">
-        <HeroSheetPicker
-          sheetNames={workbook.sheets.map((sheet) => sheet.name)}
-          selection={selection}
-          onChange={(next) => {
-            setSelection(next);
-            setGenerated(null);
-          }}
-          sourceName={workbook.sourceName}
-          onReset={onReset}
-        />
+    <>
+      <header className="page__head">
+        <h1 className="page__title">
+          <span className="page__badge page__badge--heroes" aria-hidden="true">
+            <Icon name="spark" size={17} />
+          </span>
+          Hero stats
+        </h1>
+        <p className="page__lead">
+          Joins four tabs into <span className="mono">heroes.json</span> - base stats, the per-level
+          curve, and each hero&apos;s power cooldown and special parameters.
+        </p>
+      </header>
 
-        {analysis.result !== null && <HeroSummaryCard result={analysis.result} />}
+      {wrongDataset && (
+        <div className="banner banner--info" style={{ marginBottom: 12 }}>
+          <Icon name="info" size={15} className="banner__icon" />
+          <span>
+            This workbook looks like an arena progression sheet.{' '}
+            <button type="button" className="btn btn--sm" onClick={() => onNavigate('arena')}>
+              Open the arena exporter
+            </button>
+          </span>
+        </div>
+      )}
 
-        {schemaError !== null && <p className="error-text">{schemaError}</p>}
+      <div className="steps">
+        <Step
+          index={1}
+          title="Load the workbook"
+          hint="Excel file or a shared Google Sheet"
+          status={hasWorkbook ? 'done' : 'current'}
+          statusLabel={hasWorkbook ? 'Loaded' : 'Start here'}
+          open={openStep === 1}
+          onToggle={() => toggle(1)}
+        >
+          <SourcePanel source={source} />
+        </Step>
 
-        <IssueList issues={analysis.issues} severity="error" title="Validation errors" />
-        <IssueList issues={analysis.issues} severity="warning" title="Warnings" />
+        <Step
+          index={2}
+          title="Pick the tabs"
+          hint="Heroes, base stats, level factors and power settings"
+          status={tabsStatus}
+          statusLabel={hasWorkbook ? `${chosenTabs} of 4 tabs` : 'Waiting'}
+          open={openStep === 2}
+          onToggle={() => toggle(2)}
+          locked={!hasWorkbook}
+        >
+          <HeroSheetPicker
+            sheetNames={sheetNames}
+            selection={selection}
+            onChange={(next) => {
+              setSelection(next);
+              setGenerated(null);
+            }}
+          />
+        </Step>
 
-        <ParamReference />
+        <Step
+          index={3}
+          title="Review and export"
+          hint="Check the parsed heroes, then generate the JSON"
+          status={reviewStatus}
+          statusLabel={
+            !tabsReady
+              ? 'Waiting'
+              : errorCount > 0
+                ? `${errorCount} error${errorCount === 1 ? '' : 's'}`
+                : generated !== null
+                  ? 'Generated'
+                  : 'Ready'
+          }
+          open={openStep === 3}
+          onToggle={() => toggle(3)}
+          locked={!tabsReady}
+        >
+          {analysis.result === null ? (
+            <p className="empty">Finish step 2 to see the parsed heroes.</p>
+          ) : (
+            <div className="stack-md">
+              <HeroStats result={analysis.result} />
 
-        <button type="button" className="btn btn--primary btn--large" onClick={generate} disabled={!canGenerate}>
-          {errorCount > 0 ? `Fix ${errorCount} error${errorCount === 1 ? '' : 's'} to generate` : 'Generate JSON'}
-        </button>
-      </div>
+              {schemaError !== null && (
+                <div className="banner banner--error" role="alert">
+                  <Icon name="alert" size={15} className="banner__icon" />
+                  <span>{schemaError}</span>
+                </div>
+              )}
 
-      <div className="stack">
-        {generated !== null ? (
-          <JsonOutput json={generated} filename={DOWNLOAD_FILENAME} />
-        ) : (
-          <section className="card card--muted">
-            <header className="card__header">
-              <h2 className="card__title">Generated JSON</h2>
-            </header>
-            <div className="card__body">
-              <p className="empty">
-                {errorCount > 0
-                  ? 'Resolve the validation errors on the left - no partial JSON is produced while a parameter name or lookup is failing.'
-                  : 'Review the parsed heroes below, then press Generate JSON.'}
-              </p>
+              {errorCount > 0 && (
+                <div>
+                  <p className="step__section-title">
+                    {errorCount} error{errorCount === 1 ? '' : 's'} - nothing is exported while a
+                    parameter name or lookup is failing
+                  </p>
+                  <IssueList issues={analysis.issues} severity="error" />
+                  <p className="field__note" style={{ marginTop: 8 }}>
+                    Unknown parameter name?{' '}
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      onClick={() => onNavigate('reference')}
+                    >
+                      See the accepted list
+                    </button>
+                  </p>
+                </div>
+              )}
+
+              {warningCount > 0 && (
+                <div>
+                  <p className="step__section-title">
+                    {warningCount} warning{warningCount === 1 ? '' : 's'} - exported as-is
+                  </p>
+                  <IssueList issues={analysis.issues} severity="warning" />
+                </div>
+              )}
+
+              <div>
+                <div className="tabs" role="tablist" aria-label="Output">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={outputTab === 'preview'}
+                    className={`tab${outputTab === 'preview' ? ' tab--active' : ''}`}
+                    onClick={() => setOutputTab('preview')}
+                  >
+                    Parsed heroes ({analysis.result.preview.length})
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={outputTab === 'json'}
+                    className={`tab${outputTab === 'json' ? ' tab--active' : ''}`}
+                    onClick={() => setOutputTab('json')}
+                  >
+                    JSON {generated === null ? '(not generated)' : ''}
+                  </button>
+                </div>
+
+                {outputTab === 'preview' ? (
+                  <HeroPreviewTable rows={analysis.result.preview} />
+                ) : generated === null ? (
+                  <p className="empty">
+                    Press <strong>Generate JSON</strong> below. The output is schema-checked first, so
+                    a partial file is never produced.
+                  </p>
+                ) : (
+                  <JsonOutput json={generated} filename={DOWNLOAD_FILENAME} />
+                )}
+              </div>
             </div>
-          </section>
-        )}
-
-        {analysis.result !== null && <HeroPreviewTable rows={analysis.result.preview} />}
+          )}
+        </Step>
       </div>
-    </div>
+
+      <ActionBar tone={barTone} message={barMessage}>
+        <button type="button" className="btn btn--primary" onClick={generate} disabled={!canGenerate}>
+          <Icon name="code" size={14} />
+          {generated === null ? 'Generate JSON' : 'Regenerate'}
+        </button>
+      </ActionBar>
+    </>
   );
 }

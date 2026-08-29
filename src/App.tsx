@@ -1,29 +1,44 @@
-import { useState } from 'react';
-import { SourceCard, type SourceMode } from './components/SourceCard';
+import { useCallback, useEffect, useState } from 'react';
+import { AppShell, type View } from './components/AppShell';
 import { ArenaExporter } from './features/ArenaExporter';
 import { HeroExporter } from './features/HeroExporter';
-import { detectDataset, type Dataset } from './lib/sheetSelect';
+import { ParamReference } from './features/ParamReference';
+import { detectDataset } from './lib/sheetSelect';
 import { readWorkbookFile } from './lib/workbook';
 import { GoogleSheetsError, loadGoogleSheet } from './lib/googleSheets';
 import type { RawWorkbook } from './lib/types';
 
-const DATASETS: { id: Dataset; label: string; blurb: string }[] = [
-  { id: 'arena', label: 'Arena progress', blurb: 'Trophy milestones, arenas and rewards.' },
-  { id: 'heroes', label: 'Hero stats', blurb: 'Base stats, level curves and power settings.' },
-];
+const VIEWS: View[] = ['arena', 'heroes', 'reference'];
+
+function viewFromHash(): View {
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  return (VIEWS as string[]).includes(hash) ? (hash as View) : 'arena';
+}
 
 export function App() {
-  const [mode, setMode] = useState<SourceMode>('file');
+  const [view, setView] = useState<View>(viewFromHash);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [workbook, setWorkbook] = useState<RawWorkbook | null>(null);
-  const [dataset, setDataset] = useState<Dataset>('arena');
+
+  // Deep-linkable sections, and a back button that goes where it looks like it will.
+  useEffect(() => {
+    const sync = () => setView(viewFromHash());
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
+
+  const navigate = useCallback((next: View) => {
+    window.location.hash = `/${next}`;
+    setView(next);
+  }, []);
 
   const acceptWorkbook = (loaded: RawWorkbook) => {
     setWorkbook(loaded);
-    // Open the exporter the workbook looks like it is for; still switchable.
-    setDataset(detectDataset(loaded));
     setLoadError(null);
+    // Only jump when the current page cannot use the workbook at all; on an
+    // exporter page the user's choice wins and we surface a hint instead.
+    if (view === 'reference') navigate(detectDataset(loaded));
   };
 
   const handleFile = async (file: File) => {
@@ -59,76 +74,21 @@ export function App() {
     setLoadError(null);
   };
 
+  const source = {
+    workbook,
+    busy,
+    error: loadError,
+    onFile: handleFile,
+    onUrl: handleUrl,
+    onReset: reset,
+    onClearError: () => setLoadError(null),
+  };
+
   return (
-    <div className="app">
-      <header className="masthead">
-        <div className="masthead__titles">
-          <span className="masthead__mark" aria-hidden="true">
-            {'{}'}
-          </span>
-          <div>
-            <h1>Cliff Heroes JSON Exporter</h1>
-            <p className="masthead__subtitle">Convert Cliff Heroes design sheets into game-ready JSON.</p>
-          </div>
-        </div>
-      </header>
-
-      {workbook === null ? (
-        <div className="columns">
-          <div className="stack">
-            <SourceCard
-              mode={mode}
-              onModeChange={(next) => {
-                setMode(next);
-                setLoadError(null);
-              }}
-              onFile={handleFile}
-              onUrl={handleUrl}
-              busy={busy}
-              error={loadError}
-            />
-          </div>
-
-          <div className="stack">
-            <section className="card card--muted">
-              <header className="card__header">
-                <h2 className="card__title">Output</h2>
-              </header>
-              <div className="card__body">
-                <p className="empty">
-                  Upload a workbook or paste a public Google Sheets link to get started. The exporter
-                  reads the tabs it needs and picks the matching converter automatically - arena
-                  progression or hero stats.
-                </p>
-              </div>
-            </section>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="dataset-tabs" role="tablist" aria-label="Exporter">
-            {DATASETS.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                role="tab"
-                aria-selected={dataset === entry.id}
-                className={`dataset-tab${dataset === entry.id ? ' dataset-tab--active' : ''}`}
-                onClick={() => setDataset(entry.id)}
-              >
-                <span className="dataset-tab__label">{entry.label}</span>
-                <span className="dataset-tab__blurb">{entry.blurb}</span>
-              </button>
-            ))}
-          </div>
-
-          {dataset === 'arena' ? (
-            <ArenaExporter workbook={workbook} onReset={reset} />
-          ) : (
-            <HeroExporter workbook={workbook} onReset={reset} />
-          )}
-        </>
-      )}
-    </div>
+    <AppShell view={view} onNavigate={navigate} workbook={workbook} onReset={reset}>
+      {view === 'arena' && <ArenaExporter source={source} onNavigate={navigate} />}
+      {view === 'heroes' && <HeroExporter source={source} onNavigate={navigate} />}
+      {view === 'reference' && <ParamReference />}
+    </AppShell>
   );
 }

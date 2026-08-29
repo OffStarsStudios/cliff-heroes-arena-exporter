@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { Icon } from './Icon';
 import { columnLetter } from '../lib/columnDetect';
 import type { ColumnMapping, ColumnRole, RewardSlot } from '../lib/types';
 
@@ -17,22 +18,37 @@ function optionLabel(headers: string[], index: number): string {
 
 interface ColumnSelectProps {
   label: string;
+  note?: string;
   value: number | null;
   headers: string[];
   onChange: (index: number | null) => void;
   emptyLabel?: string;
+  required?: boolean;
 }
 
-function ColumnSelect({ label, value, headers, onChange, emptyLabel = 'Not mapped' }: ColumnSelectProps) {
+function ColumnSelect({
+  label,
+  note,
+  value,
+  headers,
+  onChange,
+  emptyLabel = 'Not mapped',
+  required = false,
+}: ColumnSelectProps) {
   const id = useId();
+  const noteId = `${id}-note`;
+  const missing = required && value === null;
+
   return (
-    <div className="field">
+    <div className={missing ? 'field field--invalid' : 'field'}>
       <label className="field__label" htmlFor={id}>
         {label}
       </label>
       <select
         id={id}
         value={value === null ? '' : String(value)}
+        aria-invalid={missing || undefined}
+        aria-describedby={note !== undefined || missing ? noteId : undefined}
         onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
       >
         <option value="">{emptyLabel}</option>
@@ -42,6 +58,16 @@ function ColumnSelect({ label, value, headers, onChange, emptyLabel = 'Not mappe
           </option>
         ))}
       </select>
+      {missing ? (
+        <span className="field__error" id={noteId}>
+          <Icon name="alert" size={12} />
+          Required - pick the column holding this value.
+        </span>
+      ) : note !== undefined ? (
+        <span className="field__note" id={noteId}>
+          {note}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -79,93 +105,93 @@ export function ColumnMapper({ headers, mapping, uncertain, onChange, onRedetect
   };
 
   return (
-    <section className="card">
-      <header className="card__header">
-        <h2 className="card__title">Column mapping</h2>
-        <button type="button" className="btn btn--ghost" onClick={onRedetect}>
-          Re-detect
+    <div className="stack-md">
+      <div className="row-between">
+        <p className="step__note" style={{ margin: 0 }}>
+          Columns are detected from the header row. Anything mapped wrong here shows up immediately in
+          the preview.
+        </p>
+        <button type="button" className="btn btn--sm" onClick={onRedetect}>
+          <Icon name="refresh" size={13} />
+          Re-detect columns
         </button>
-      </header>
-      <div className="card__body">
-        {uncertain.length > 0 && (
-          <div className="banner banner--error" role="status" style={{ marginBottom: 16 }}>
-            <span aria-hidden="true">⚠</span>
-            <span>
-              Automatic detection was not confident about: {uncertain.join(', ')}. Assign the columns
-              below.
-            </span>
-          </div>
-        )}
+      </div>
 
-        <div className="grid-fields">
-          <ColumnSelect
-            label="Trophies"
-            value={mapping.trophiesIndex}
-            headers={headers}
-            onChange={(trophiesIndex) => onChange({ ...mapping, trophiesIndex })}
-          />
-          <ColumnSelect
-            label="Arena"
-            value={mapping.arenaIndex}
-            headers={headers}
-            onChange={(arenaIndex) => onChange({ ...mapping, arenaIndex })}
-          />
+      {uncertain.length > 0 && (
+        <div className="banner banner--warn" role="status">
+          <Icon name="alert" size={15} className="banner__icon" />
+          <span>
+            Detection was not confident about: <strong>{uncertain.join(', ')}</strong>. Confirm those
+            below before exporting.
+          </span>
         </div>
+      )}
 
-        <p className="field__label" style={{ margin: '20px 0 10px' }}>
-          Reward slots
-        </p>
-        <p className="field__note" style={{ marginBottom: 12 }}>
-          Each slot is a reward-name column plus the column holding its amount. On the first row of an
-          arena, slots with no amount become that arena&apos;s unlocks.
+      <div className="grid-fields">
+        <ColumnSelect
+          label="Trophies"
+          note="The trophy count that unlocks the row."
+          value={mapping.trophiesIndex}
+          headers={headers}
+          required
+          onChange={(trophiesIndex) => onChange({ ...mapping, trophiesIndex })}
+        />
+        <ColumnSelect
+          label="Arena"
+          note="The arena each milestone belongs to."
+          value={mapping.arenaIndex}
+          headers={headers}
+          required
+          onChange={(arenaIndex) => onChange({ ...mapping, arenaIndex })}
+        />
+      </div>
+
+      <div>
+        <p className="step__section-title">Reward slots</p>
+        <p className="step__note">
+          Each slot pairs a reward-name column with the column holding its amount. On the first row of
+          an arena, a slot with no amount becomes that arena&apos;s unlock instead of a reward.
         </p>
 
-        {mapping.rewardSlots.length === 0 && (
-          <p className="field__note">No reward slots mapped yet.</p>
+        {mapping.rewardSlots.length === 0 ? (
+          <p className="empty" style={{ marginBottom: 12 }}>
+            No reward slots mapped yet. Add one to export rewards.
+          </p>
+        ) : (
+          mapping.rewardSlots.map((slot, index) => (
+            <div key={index} className="slot">
+              <ColumnSelect
+                label={`Reward ${index + 1} - name`}
+                value={slot.nameIndex}
+                headers={headers}
+                onChange={(nameIndex) => {
+                  if (nameIndex === null) removeSlot(index);
+                  else
+                    updateSlot(index, {
+                      nameIndex,
+                      label: headers[nameIndex]?.trim() || `Column ${columnLetter(nameIndex)}`,
+                    });
+                }}
+                emptyLabel="Remove this slot"
+              />
+              <ColumnSelect
+                label="Amount"
+                value={slot.amountIndex}
+                headers={headers}
+                onChange={(amountIndex) => updateSlot(index, { amountIndex })}
+                emptyLabel="No amount - arena unlock"
+              />
+              <button
+                type="button"
+                className="btn btn--danger-ghost"
+                onClick={() => removeSlot(index)}
+                aria-label={`Remove reward slot ${index + 1}`}
+              >
+                <Icon name="trash" size={14} />
+              </button>
+            </div>
+          ))
         )}
-
-        {mapping.rewardSlots.map((slot, index) => (
-          <div
-            key={index}
-            style={{
-              alignItems: 'end',
-              display: 'grid',
-              gap: 12,
-              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
-              marginBottom: 12,
-            }}
-          >
-            <ColumnSelect
-              label={`Reward ${index + 1}`}
-              value={slot.nameIndex}
-              headers={headers}
-              onChange={(nameIndex) => {
-                if (nameIndex === null) removeSlot(index);
-                else
-                  updateSlot(index, {
-                    nameIndex,
-                    label: headers[nameIndex]?.trim() || `Column ${columnLetter(nameIndex)}`,
-                  });
-              }}
-              emptyLabel="Remove this slot"
-            />
-            <ColumnSelect
-              label="Amount"
-              value={slot.amountIndex}
-              headers={headers}
-              onChange={(amountIndex) => updateSlot(index, { amountIndex })}
-              emptyLabel="No amount column"
-            />
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => removeSlot(index)}
-              aria-label={`Remove reward slot ${index + 1}`}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
 
         <button
           type="button"
@@ -173,9 +199,10 @@ export function ColumnMapper({ headers, mapping, uncertain, onChange, onRedetect
           onClick={addSlot}
           disabled={mapping.rewardSlots.length >= headers.length}
         >
+          <Icon name="plus" size={14} />
           Add reward slot
         </button>
       </div>
-    </section>
+    </div>
   );
 }

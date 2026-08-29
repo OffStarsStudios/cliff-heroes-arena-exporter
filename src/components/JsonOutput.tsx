@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Icon } from './Icon';
 import { tokenizeJson } from '../lib/highlight';
 
 interface JsonOutputProps {
@@ -58,36 +59,35 @@ export function JsonOutput({ json, filename }: JsonOutputProps) {
   const lineCount = json.split('\n').length;
 
   return (
-    <section className="card">
-      <header className="card__header">
-        <h2 className="card__title">Generated JSON</h2>
+    <div className="stack-sm">
+      <div className="row-between">
+        <span className="card__hint">
+          {lineCount.toLocaleString()} lines - saves as <span className="mono">{filename}</span>
+        </span>
         <div className="toolbar">
           <button
             type="button"
-            className="btn"
+            className="btn btn--sm"
             onClick={async () => setCopied((await copyText(json)) ? 'ok' : 'fail')}
           >
-            {copied === 'ok' ? 'Copied' : copied === 'fail' ? 'Copy failed' : 'Copy JSON'}
+            <Icon name={copied === 'ok' ? 'check' : 'copy'} size={13} />
+            {copied === 'ok' ? 'Copied' : copied === 'fail' ? 'Copy failed' : 'Copy'}
           </button>
-          <button type="button" className="btn btn--primary" onClick={download}>
-            Download JSON
+          <button type="button" className="btn btn--sm" onClick={download}>
+            <Icon name="download" size={13} />
+            Download
           </button>
         </div>
-      </header>
-      <div className="card__body" style={{ paddingBottom: 12 }}>
-        <p className="card__hint" style={{ marginBottom: 10 }}>
-          {lineCount} lines - saves as <span className="mono">{filename}</span>
-        </p>
-        <pre className="json-view">
-          <code>
-            {tokens.map((token, index) => (
-              <span key={index} className={`tok-${token.kind}`}>
-                {token.text}
-              </span>
-            ))}
-          </code>
-        </pre>
       </div>
-    </section>
+      <pre className="json-view" tabIndex={0} aria-label="Generated JSON">
+        <code>
+          {tokens.map((token, index) => (
+            <span key={index} className={`tok-${token.kind}`}>
+              {token.text}
+            </span>
+          ))}
+        </code>
+      </pre>
+    </div>
   );
 }
