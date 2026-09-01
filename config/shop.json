@@ -1,0 +1,200 @@
+{
+  "Products": [
+    {
+      "ID": "shop.featured.cinder",
+      "IsEnabled": true,
+      "BadgeLabel": "SALE",
+      "OfferDurationHours": 6,
+      "Contents": [
+        {
+          "RewardID": "reward.hero.cinder",
+          "Amount": 1
+        },
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 3500
+        }
+      ]
+    },
+    {
+      "ID": "shop.featured.starter",
+      "IsEnabled": true,
+      "BadgeLabel": "LIMITED",
+      "OfferDurationHours": 12,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 8000
+        },
+        {
+          "RewardID": "reward.currency.cards",
+          "Amount": 320
+        }
+      ]
+    },
+    {
+      "ID": "shop.skin.cliff.halloween",
+      "IsEnabled": true,
+      "PriceInCurrency": 500,
+      "Contents": [
+        {
+          "RewardID": "reward.skin.cliff.halloween",
+          "Amount": 1
+        }
+      ]
+    },
+    {
+      "ID": "shop.skin.tank.flower",
+      "IsEnabled": true,
+      "PriceInCurrency": 500,
+      "Contents": [
+        {
+          "RewardID": "reward.skin.tank.flower",
+          "Amount": 1
+        }
+      ]
+    },
+    {
+      "ID": "shop.coins.tier1",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 500
+        }
+      ]
+    },
+    {
+      "ID": "shop.coins.tier2",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 1250
+        }
+      ]
+    },
+    {
+      "ID": "shop.coins.tier3",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 3500
+        }
+      ]
+    },
+    {
+      "ID": "shop.coins.tier4",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 8000
+        }
+      ]
+    },
+    {
+      "ID": "shop.coins.tier5",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 19000
+        }
+      ]
+    },
+    {
+      "ID": "shop.coins.tier6",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 55000
+        }
+      ]
+    },
+    {
+      "ID": "shop.cards.tier1",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.cards",
+          "Amount": 20
+        }
+      ]
+    },
+    {
+      "ID": "shop.cards.tier2",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.cards",
+          "Amount": 50
+        }
+      ]
+    },
+    {
+      "ID": "shop.cards.tier3",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.cards",
+          "Amount": 140
+        }
+      ]
+    },
+    {
+      "ID": "shop.cards.tier4",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.cards",
+          "Amount": 320
+        }
+      ]
+    },
+    {
+      "ID": "shop.cards.tier5",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.cards",
+          "Amount": 760
+        }
+      ]
+    },
+    {
+      "ID": "shop.cards.tier6",
+      "IsEnabled": true,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.cards",
+          "Amount": 2200
+        }
+      ]
+    },
+    {
+      "ID": "shop.free.coins",
+      "IsEnabled": true,
+      "CooldownHours": 24,
+      "Contents": [
+        {
+          "RewardID": "reward.currency.coins",
+          "Amount": 100
+        }
+      ]
+    },
+    {
+      "ID": "shop.rv.lootbox.common",
+      "IsEnabled": true,
+      "DailyLimit": 5,
+      "Contents": [
+        {
+          "RewardID": "reward.lootbox.common",
+          "Amount": 1
+        }
+      ]
+    }
+  ]
+}

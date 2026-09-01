@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:graph": "esbuild scripts/checkGraph.ts --bundle --platform=node --format=cjs --outfile=dist/check-graph.cjs --log-level=warning && node dist/check-graph.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",

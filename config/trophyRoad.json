@@ -1,0 +1,147 @@
+{
+  "Milestones": [
+    {
+      "Trophies": 0,
+      "ArenaID": "arena.lostoasis"
+    },
+    {
+      "Trophies": 10,
+      "RewardID": "reward.currency.coins",
+      "Amount": 50
+    },
+    {
+      "Trophies": 25,
+      "RewardID": "reward.currency.cards",
+      "Amount": 5
+    },
+    {
+      "Trophies": 50,
+      "RewardID": "reward.currency.coins",
+      "Amount": 75
+    },
+    {
+      "Trophies": 75,
+      "RewardID": "reward.currency.cards",
+      "Amount": 10
+    },
+    {
+      "Trophies": 100,
+      "RewardID": "reward.currency.coins",
+      "Amount": 100
+    },
+    {
+      "Trophies": 250,
+      "ArenaID": "arena.mysticforest",
+      "Unlocks": [
+        {
+          "RewardID": "reward.arena.mysticforest"
+        },
+        {
+          "RewardID": "reward.hero.glint"
+        }
+      ]
+    },
+    {
+      "Trophies": 350,
+      "RewardID": "reward.currency.coins",
+      "Amount": 125
+    },
+    {
+      "Trophies": 500,
+      "RewardID": "reward.currency.cards",
+      "Amount": 15
+    },
+    {
+      "Trophies": 550,
+      "RewardID": "reward.currency.coins",
+      "Amount": 150
+    },
+    {
+      "Trophies": 600,
+      "RewardID": "reward.currency.cards",
+      "Amount": 20
+    },
+    {
+      "Trophies": 700,
+      "RewardID": "reward.currency.coins",
+      "Amount": 175
+    },
+    {
+      "Trophies": 750,
+      "RewardID": "reward.currency.cards",
+      "Amount": 25
+    },
+    {
+      "Trophies": 1500,
+      "ArenaID": "arena.sakuracliffs",
+      "Unlocks": [
+        {
+          "RewardID": "reward.arena.sakuracliffs"
+        },
+        {
+          "RewardID": "reward.hero.cinder"
+        }
+      ]
+    },
+    {
+      "Trophies": 1600,
+      "RewardID": "reward.currency.coins",
+      "Amount": 200
+    },
+    {
+      "Trophies": 1750,
+      "RewardID": "reward.currency.cards",
+      "Amount": 30
+    },
+    {
+      "Trophies": 1900,
+      "RewardID": "reward.currency.coins",
+      "Amount": 225
+    },
+    {
+      "Trophies": 2000,
+      "RewardID": "reward.currency.cards",
+      "Amount": 35
+    },
+    {
+      "Trophies": 2250,
+      "RewardID": "reward.currency.coins",
+      "Amount": 250
+    },
+    {
+      "Trophies": 2500,
+      "RewardID": "reward.currency.cards",
+      "Amount": 40
+    },
+    {
+      "Trophies": 2600,
+      "RewardID": "reward.currency.coins",
+      "Amount": 350
+    },
+    {
+      "Trophies": 2750,
+      "RewardID": "reward.currency.cards",
+      "Amount": 50
+    },
+    {
+      "Trophies": 2900,
+      "RewardID": "reward.currency.coins",
+      "Amount": 500
+    },
+    {
+      "Trophies": 3000,
+      "RewardID": "reward.currency.cards",
+      "Amount": 75
+    },
+    {
+      "Trophies": 3250,
+      "RewardID": "reward.currency.coins",
+      "Amount": 750
+    },
+    {
+      "Trophies": 3500,
+      "RewardID": "reward.currency.cards",
+      "Amount": 100
+    }
+  ]
+}

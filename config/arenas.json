@@ -1,0 +1,31 @@
+{
+  "Arenas": [
+    {
+      "ID": "arena.lostoasis",
+      "TrackCount": 25,
+      "BotLevels": [
+        "Easy",
+        "Medium",
+        "Medium"
+      ]
+    },
+    {
+      "ID": "arena.mysticforest",
+      "TrackCount": 25,
+      "BotLevels": [
+        "Medium",
+        "Medium",
+        "Hard"
+      ]
+    },
+    {
+      "ID": "arena.sakuracliffs",
+      "TrackCount": 25,
+      "BotLevels": [
+        "Hard",
+        "Hard",
+        "VeryHard"
+      ]
+    }
+  ]
+}

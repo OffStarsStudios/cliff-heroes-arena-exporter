@@ -105,6 +105,65 @@ The production URL is public to anyone who has it. To restrict it, use
 your Vercel team; password protection is the alternative). Check what your plan
 includes before relying on it.
 
+## ConfigCat
+
+The console reads the live config straight from ConfigCat. Nothing writes yet -
+every route below is read-only.
+
+### Credentials
+
+The Management API credentials are organization-wide and can modify any product,
+so they are server-side only and must never be `VITE_`-prefixed - Vite copies
+every `VITE_` variable into the public browser bundle.
+
+| Variable | Where to get it |
+| --- | --- |
+| `CONFIGCAT_API_USER` | ConfigCat dashboard, account menu, Public API credentials |
+| `CONFIGCAT_API_PASS` | the same credential pair; shown once at creation |
+
+Set them in Vercel under Project Settings > Environment Variables. For local
+work copy `.env.example` to `.env.local` (already gitignored) - `vite.config.ts`
+loads those keys into `process.env` for the dev API handlers.
+
+### Routes
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/configcat/tree` | Products, configs, environments and settings |
+| `GET /api/configcat/values?configId=&environmentId=` | Live values, with byte sizes and parsed JSON |
+| `GET /api/configcat/probe?productId=` | What this account and plan actually allow |
+| `GET /api/drift?configId=&from=&to=` | Which settings differ between two environments |
+
+Each is a Vercel serverless function in `api/` over a shared handler in
+`server/configcatHandler.mjs`, so the dev server and production behave the same.
+
+### Which environment is live
+
+The game currently reads the **Test** environment, not Production. Test is
+therefore the environment where a mistake reaches players, and Production is the
+safe place to rehearse a change. This is the reverse of the usual arrangement
+and is worth stating out loud before touching either.
+
+## Cross-config validation
+
+The seven settings reference each other - the trophy road names arenas and
+rewards, rewards name heroes, arena bot counts have to match the number of
+scoring places - and nothing checked those edges before. `npm run check:graph`
+validates them against the payloads in `config/`.
+
+```bash
+npm run check:graph
+```
+
+It exits non-zero on errors, so it works as a CI gate as well as a report.
+Rules whose inputs are absent are skipped rather than passed, and the output
+says which ones those were. `src/workspace/graph.ts` holds the rules and
+`src/workspace/registry.ts` builds the shared ID registry from the workbook
+lookup tabs.
+
+`config/` holds the current live payload for each setting, formatted exactly as
+the exporters emit it, as the git-tracked baseline for future diffs.
+
 ## Output schema: arena progress
 
 ```json

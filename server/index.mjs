@@ -9,6 +9,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleGSheetRequest } from './gsheetHandler.mjs';
+import { handleConfigCatRequest } from './configcatHandler.mjs';
 
 const root = resolve(fileURLToPath(new URL('../dist', import.meta.url)));
 const port = Number(process.env.PORT ?? 4173);
@@ -38,6 +39,7 @@ async function readIfFile(path) {
 
 const server = createServer(async (req, res) => {
   if (await handleGSheetRequest(req, res)) return;
+  if (await handleConfigCatRequest(req, res)) return;
 
   const url = new URL(req.url ?? '/', `http://localhost:${port}`);
   const requested = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');

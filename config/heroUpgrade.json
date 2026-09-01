@@ -1,0 +1,52 @@
+{
+  "CoinsGrowth": 1.42,
+  "CardsGrowth": 1.3,
+  "CoinsRounding": 10,
+  "CardsRounding": 1,
+  "ReferenceRarity": "Common",
+  "CardsPayoutModifier": 2,
+  "Costs": [
+    {
+      "Rarity": "Common",
+      "CoinsBase": 250,
+      "CardsBase": 20,
+      "CostModifier": 1,
+      "GrowthModifier": 1
+    },
+    {
+      "Rarity": "Uncommon",
+      "CoinsBase": 350,
+      "CardsBase": 22,
+      "CostModifier": 1,
+      "GrowthModifier": 1
+    },
+    {
+      "Rarity": "Rare",
+      "CoinsBase": 450,
+      "CardsBase": 26,
+      "CostModifier": 1,
+      "GrowthModifier": 1
+    },
+    {
+      "Rarity": "Epic",
+      "CoinsBase": 600,
+      "CardsBase": 34,
+      "CostModifier": 1,
+      "GrowthModifier": 1
+    },
+    {
+      "Rarity": "Legendary",
+      "CoinsBase": 800,
+      "CardsBase": 40,
+      "CostModifier": 1,
+      "GrowthModifier": 1
+    },
+    {
+      "Rarity": "Mythic",
+      "CoinsBase": 1100,
+      "CardsBase": 50,
+      "CostModifier": 1,
+      "GrowthModifier": 1
+    }
+  ]
+}
