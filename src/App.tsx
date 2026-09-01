@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { AppShell, type View } from './components/AppShell';
 import { ArenaExporter } from './features/ArenaExporter';
 import { HeroExporter } from './features/HeroExporter';
+import { LiveConfig } from './features/LiveConfig';
 import { ParamReference } from './features/ParamReference';
 import { detectDataset } from './lib/sheetSelect';
 import { readWorkbookFile } from './lib/workbook';
 import { GoogleSheetsError, loadGoogleSheet } from './lib/googleSheets';
 import type { RawWorkbook } from './lib/types';
 
-const VIEWS: View[] = ['arena', 'heroes', 'reference'];
+const VIEWS: View[] = ['live', 'arena', 'heroes', 'reference'];
 
 function viewFromHash(): View {
   const hash = window.location.hash.replace(/^#\/?/, '');
@@ -38,7 +39,7 @@ export function App() {
     setLoadError(null);
     // Only jump when the current page cannot use the workbook at all; on an
     // exporter page the user's choice wins and we surface a hint instead.
-    if (view === 'reference') navigate(detectDataset(loaded));
+    if (view === 'reference' || view === 'live') navigate(detectDataset(loaded));
   };
 
   const handleFile = async (file: File) => {
@@ -86,6 +87,7 @@ export function App() {
 
   return (
     <AppShell view={view} onNavigate={navigate} workbook={workbook} onReset={reset}>
+      {view === 'live' && <LiveConfig />}
       {view === 'arena' && <ArenaExporter source={source} onNavigate={navigate} />}
       {view === 'heroes' && <HeroExporter source={source} onNavigate={navigate} />}
       {view === 'reference' && <ParamReference />}

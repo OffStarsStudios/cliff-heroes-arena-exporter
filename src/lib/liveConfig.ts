@@ -1,0 +1,194 @@
+/**
+ * Client side of the read-only ConfigCat routes.
+ *
+ * The Management API credentials never reach the browser - every call here
+ * goes to this app's own `/api/*` routes, which hold the credentials
+ * server-side. See `server/configcat.mjs`.
+ */
+
+import type { ConfigSet, DomainId } from '../domains/types';
+import { SETTING_KEYS } from '../domains/types';
+
+export interface TreeSetting {
+  settingId: number;
+  key: string;
+  name: string;
+  settingType: string;
+}
+
+export interface TreeConfig {
+  configId: string;
+  name: string;
+  settings: TreeSetting[];
+}
+
+export interface TreeEnvironment {
+  environmentId: string;
+  name: string;
+}
+
+export interface TreeProduct {
+  productId: string;
+  name: string;
+  configs: TreeConfig[];
+  environments: TreeEnvironment[];
+}
+
+export interface Tree {
+  products: TreeProduct[];
+}
+
+export interface SettingValue {
+  settingId: number | null;
+  key: string | null;
+  name: string | null;
+  settingType: string | null;
+  value: unknown;
+  /** Byte length of the stored string, or null for non-string settings. */
+  bytes: number | null;
+  /** Parsed payload for string settings holding JSON, else null. */
+  json: unknown;
+  /** Set when a string setting was expected to hold JSON but does not parse. */
+  parseError: string | null;
+}
+
+export interface Values {
+  configId: string;
+  environmentId: string;
+  settings: SettingValue[];
+  totalBytes: number;
+}
+
+export type ChangeKind = 'added' | 'removed' | 'changed' | 'reordered';
+
+export interface Change {
+  kind: ChangeKind;
+  path: string;
+  before?: unknown;
+  after?: unknown;
+  description: string;
+}
+
+export interface DriftSetting {
+  key: string;
+  name: string | null;
+  status: 'same' | 'different' | 'only-in-from' | 'only-in-to';
+  comparedAs?: 'json' | 'raw';
+  bytes?: { from: number | null; to: number | null };
+  summary?: { added: number; removed: number; changed: number; reordered: number; total: number };
+  changes?: Change[];
+  truncated?: number;
+}
+
+export interface Drift {
+  configId: string;
+  from: string;
+  to: string;
+  settings: DriftSetting[];
+  differing: number;
+}
+
+export interface Probe {
+  productId: string;
+  changeRequests: {
+    available: boolean;
+    status: number;
+    message: string;
+    sample: unknown;
+  };
+}
+
+/** An API error carrying the status, so callers can tell 401 from 502. */
+export class LiveConfigError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'LiveConfigError';
+    this.status = status;
+  }
+}
+
+async function get<T>(path: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, { headers: { Accept: 'application/json' } });
+  } catch (error) {
+    throw new LiveConfigError(
+      `Could not reach the server: ${(error as Error).message}. If this is a local build, the API routes only exist on the dev server or on Vercel.`,
+      0,
+    );
+  }
+
+  const text = await response.text();
+  let body: unknown = null;
+  try {
+    body = text === '' ? null : JSON.parse(text);
+  } catch {
+    body = null;
+  }
+
+  if (!response.ok) {
+    const message =
+      body !== null && typeof body === 'object' && 'error' in body
+        ? String((body as { error: unknown }).error)
+        : `The server returned HTTP ${response.status}.`;
+    throw new LiveConfigError(message, response.status);
+  }
+
+  return body as T;
+}
+
+export function fetchTree(): Promise<Tree> {
+  return get<Tree>('/api/configcat/tree');
+}
+
+export function fetchValues(configId: string, environmentId: string): Promise<Values> {
+  return get<Values>(
+    `/api/configcat/values?configId=${encodeURIComponent(configId)}&environmentId=${encodeURIComponent(environmentId)}`,
+  );
+}
+
+export function fetchDrift(configId: string, from: string, to: string): Promise<Drift> {
+  return get<Drift>(
+    `/api/drift?configId=${encodeURIComponent(configId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+}
+
+export function fetchProbe(productId: string): Promise<Probe> {
+  return get<Probe>(`/api/configcat/probe?productId=${encodeURIComponent(productId)}`);
+}
+
+/** Setting key -> domain id, the reverse of `SETTING_KEYS`. */
+const DOMAIN_BY_KEY = new Map<string, DomainId>(
+  (Object.keys(SETTING_KEYS) as DomainId[]).map((domain) => [SETTING_KEYS[domain], domain]),
+);
+
+export function domainForKey(key: string | null): DomainId | null {
+  return key === null ? null : DOMAIN_BY_KEY.get(key) ?? null;
+}
+
+/**
+ * Turns live values into the config set the graph checker consumes.
+ *
+ * A setting that failed to parse is left out rather than passed through as
+ * something malformed - the parse error is reported separately, and the graph
+ * report says which domains it could not check.
+ */
+export function toConfigSet(values: Values): ConfigSet {
+  const set: Record<string, unknown> = {};
+  for (const setting of values.settings) {
+    const domain = domainForKey(setting.key);
+    if (domain === null) continue;
+    if (setting.parseError !== null || setting.json === null) continue;
+    set[domain] = setting.json;
+  }
+  return set as ConfigSet;
+}
+
+/** Settings ConfigCat holds that this console has no domain for. */
+export function unknownSettingKeys(values: Values): string[] {
+  return values.settings
+    .map((setting) => setting.key)
+    .filter((key): key is string => key !== null && domainForKey(key) === null);
+}

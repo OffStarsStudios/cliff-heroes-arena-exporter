@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import type { RawWorkbook } from '../lib/types';
 
-export type View = 'arena' | 'heroes' | 'reference';
+export type View = 'live' | 'arena' | 'heroes' | 'reference';
 
 interface NavItem {
   id: View;
@@ -10,6 +10,13 @@ interface NavItem {
   blurb: string;
   icon: IconName;
 }
+
+export const LIVE_ITEM: NavItem = {
+  id: 'live',
+  label: 'Live config',
+  blurb: 'What the game is serving now',
+  icon: 'link',
+};
 
 export const NAV_ITEMS: NavItem[] = [
   {
@@ -34,12 +41,14 @@ export const REFERENCE_ITEM: NavItem = {
 };
 
 const CRUMB_LABEL: Record<View, string> = {
+  live: 'Live config',
   arena: 'Arena progress',
   heroes: 'Hero stats',
   reference: 'Power parameters',
 };
 
 const CRUMB_SECTION: Record<View, string> = {
+  live: 'Live ops',
   arena: 'Exporters',
   heroes: 'Exporters',
   reference: 'Reference',
@@ -82,6 +91,11 @@ export function AppShell({ view, onNavigate, workbook, onReset, children }: AppS
               <span className="rail__name">Cliff Heroes</span>
               <span className="rail__sub">Back office</span>
             </span>
+          </div>
+
+          <div className="rail__group">
+            <p className="rail__group-title">Live ops</p>
+            {renderLink(LIVE_ITEM)}
           </div>
 
           <div className="rail__group">

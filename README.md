@@ -137,6 +137,16 @@ loads those keys into `process.env` for the dev API handlers.
 Each is a Vercel serverless function in `api/` over a shared handler in
 `server/configcatHandler.mjs`, so the dev server and production behave the same.
 
+### The Live config page
+
+`#/live` in the sidebar shows what is deployed right now: every setting with its
+byte size, whether its payload parses, the cross-config check results, and a
+structural comparison of the two environments. It is read-only.
+
+Graph validation runs in the browser over the fetched payloads, so nothing has
+to be sent anywhere to be checked. Reward IDs are the exception - they need the
+workbook, so load one on an exporter page to include them.
+
 ### Which environment is live
 
 The game currently reads the **Test** environment, not Production. Test is
