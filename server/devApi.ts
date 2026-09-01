@@ -3,10 +3,12 @@ import type { Plugin } from 'vite';
 import { handleGSheetRequest } from './gsheetHandler.mjs';
 // @ts-expect-error - plain .mjs modules shared with the production server.
 import { handleConfigCatRequest } from './configcatHandler.mjs';
+// @ts-expect-error - plain .mjs modules shared with the production server.
+import { handlePublishRequest } from './publishHandler.mjs';
 
 type Handler = (req: unknown, res: unknown) => Promise<boolean>;
 
-const HANDLERS: Handler[] = [handleGSheetRequest, handleConfigCatRequest];
+const HANDLERS: Handler[] = [handleGSheetRequest, handleConfigCatRequest, handlePublishRequest];
 
 /**
  * Serves the `/api/*` routes on the Vite dev and preview servers, so the app

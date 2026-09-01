@@ -4,6 +4,7 @@ import { ColumnMapper } from '../components/ColumnMapper';
 import { Icon } from '../components/Icon';
 import { JsonOutput } from '../components/JsonOutput';
 import { PreviewTable } from '../components/PreviewTable';
+import { PublishPanel } from '../components/PublishPanel';
 import { SheetPicker } from '../components/SheetPicker';
 import { SourcePanel, type SourceController } from '../components/SourcePanel';
 import { Step, type StepStatus } from '../components/Step';
@@ -385,6 +386,19 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
                   <JsonOutput json={generated} filename={DOWNLOAD_FILENAME} />
                 )}
               </div>
+
+              {analysis.result !== null && (
+                <PublishPanel
+                  domain="trophyRoad"
+                  payload={analysis.result.config}
+                  blocked={!canGenerate}
+                  blockedReason={
+                    errorCount > 0
+                      ? `${errorCount} error${errorCount === 1 ? '' : 's'} block publishing, the same way they block the download.`
+                      : 'There is nothing to publish yet.'
+                  }
+                />
+              )}
             </div>
           )}
         </Step>

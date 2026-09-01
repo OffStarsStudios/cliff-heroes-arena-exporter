@@ -128,6 +128,17 @@ export const SETTING_KEYS: Record<DomainId, string> = {
   shop: 'shopSettings',
 };
 
+/** Where each domain's payload is recorded in git, as the deployed baseline. */
+export const GIT_PATHS: Record<DomainId, string> = {
+  heroes: 'config/heroes.json',
+  trophyRoad: 'config/trophyRoad.json',
+  bots: 'config/bots.json',
+  heroUpgrade: 'config/heroUpgrade.json',
+  matchTrophy: 'config/matchTrophy.json',
+  arenas: 'config/arenas.json',
+  shop: 'config/shop.json',
+};
+
 export const DOMAIN_LABELS: Record<DomainId, string> = {
   heroes: 'Heroes',
   trophyRoad: 'Trophy road',

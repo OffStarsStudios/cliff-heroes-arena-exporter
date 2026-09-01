@@ -4,6 +4,7 @@ import { HeroPreviewTable } from '../components/HeroPreviewTable';
 import { HeroSheetPicker } from '../components/HeroSheetPicker';
 import { Icon } from '../components/Icon';
 import { JsonOutput } from '../components/JsonOutput';
+import { PublishPanel } from '../components/PublishPanel';
 import { SourcePanel, type SourceController } from '../components/SourcePanel';
 import { Step, type StepStatus } from '../components/Step';
 import { HeroStats, IssueList } from '../components/Summary';
@@ -314,6 +315,19 @@ export function HeroExporter({ source, onNavigate }: HeroExporterProps) {
                   <JsonOutput json={generated} filename={DOWNLOAD_FILENAME} />
                 )}
               </div>
+
+              {analysis.result !== null && (
+                <PublishPanel
+                  domain="heroes"
+                  payload={analysis.result.config}
+                  blocked={!canGenerate}
+                  blockedReason={
+                    errorCount > 0
+                      ? `${errorCount} error${errorCount === 1 ? '' : 's'} block publishing, the same way they block the download.`
+                      : 'There is nothing to publish yet.'
+                  }
+                />
+              )}
             </div>
           )}
         </Step>

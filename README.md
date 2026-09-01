@@ -137,6 +137,44 @@ loads those keys into `process.env` for the dev API handlers.
 Each is a Vercel serverless function in `api/` over a shared handler in
 `server/configcatHandler.mjs`, so the dev server and production behave the same.
 
+### Publishing
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/publish/plan` | What would change. Writes nothing, and issues the baseline hash. |
+| `POST /api/publish/apply` | Performs the write. Requires that hash. |
+
+Both exporters end in a **Publish to ConfigCat** panel. Pick the environment,
+press *Show what would change* for a structural diff against the live value,
+then publish. Publishing to the environment the game reads needs one more
+explicit confirmation.
+
+Three things stand between the button and the live game:
+
+- The exporter’s own validation. Errors block publishing exactly as they block
+  the download.
+- The baseline hash. `apply` refuses if the live value changed after the plan
+  was made, so a second publisher gets a conflict rather than overwriting the
+  first.
+- A read-back. After writing, the value is fetched again and compared. A write
+  that cannot be confirmed is reported as unverified rather than as success.
+
+Only the default value is written, as a JSON Patch, so targeting rules and
+percentage options on a setting are left alone.
+
+ConfigCat stores the minified form and git stores the pretty-printed one. They
+are the same config - the diff is structural - but the wire payload every client
+downloads should be small and a git history is only useful if its diffs are
+readable.
+
+Recording to git needs `GITHUB_TOKEN` (a fine-grained PAT with Contents:
+read/write on this repo). Without it the publish still happens and the result
+says the history was not written; publishing is not failed over bookkeeping.
+
+Writes are not atomic across settings. ConfigCat’s Change Requests API exposes
+reading and updating but not creating, so a genuine multi-setting transaction is
+not available yet.
+
 ### The Live config page
 
 `#/live` in the sidebar shows what is deployed right now: every setting with its

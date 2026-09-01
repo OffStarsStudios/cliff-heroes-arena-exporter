@@ -167,6 +167,126 @@ async function get<T>(path: string): Promise<T> {
   return body as T;
 }
 
+async function post<T>(path: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    throw new LiveConfigError(`Could not reach the server: ${(error as Error).message}`, 0);
+  }
+
+  const text = await response.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text === '' ? null : JSON.parse(text);
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    const record = parsed !== null && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+    const message =
+      record !== null && 'error' in record
+        ? String(record.error)
+        : `The server returned HTTP ${response.status}.`;
+    throw new LiveConfigError(message, response.status);
+  }
+
+  return parsed as T;
+}
+
+/* ------------------------------------------------------------- publishing -- */
+
+export interface PlanEntry {
+  settingKey: string;
+  settingId: number | null;
+  name?: string | null;
+  error?: string;
+  baselineHash?: string;
+  unchanged?: boolean;
+  bytesBefore?: number | null;
+  bytesAfter?: number;
+  summary?: { added: number; removed: number; changed: number; reordered: number; total: number };
+  changes?: Change[];
+  truncated?: number;
+}
+
+export interface PendingCheck {
+  checked: boolean;
+  count: number;
+  blocking: boolean;
+  message: string;
+}
+
+export interface Plan {
+  configId: string;
+  environmentId: string;
+  apiVersion: string;
+  entries: PlanEntry[];
+  pending: PendingCheck;
+  blockers: string[];
+  writable: boolean;
+}
+
+export interface ApplyResult {
+  settingKey: string;
+  settingId?: number | null;
+  status: 'written' | 'unchanged' | 'conflict' | 'error' | 'unverified';
+  message?: string;
+  apiVersion?: string;
+  bytes?: number;
+  verified?: boolean;
+}
+
+export interface GitCommit {
+  path: string;
+  committed: boolean;
+  reason?: string;
+  sha?: string | null;
+  url?: string | null;
+}
+
+export interface ApplyResponse {
+  configId: string;
+  environmentId: string;
+  results: ApplyResult[];
+  pending: PendingCheck;
+  git: { available: boolean; commits: GitCommit[] };
+  written: number;
+  failed: number;
+  conflicts: number;
+}
+
+export interface PublishEntryInput {
+  settingKey: string;
+  payload: unknown;
+  gitPath?: string;
+  baselineHash?: string;
+  note?: string;
+}
+
+export function planPublish(input: {
+  configId: string;
+  environmentId: string;
+  productId?: string;
+  entries: PublishEntryInput[];
+}): Promise<Plan> {
+  return post<Plan>('/api/publish/plan', input);
+}
+
+export function applyPublish(input: {
+  configId: string;
+  environmentId: string;
+  productId?: string;
+  entries: PublishEntryInput[];
+}): Promise<ApplyResponse> {
+  return post<ApplyResponse>('/api/publish/apply', input);
+}
+
 export function fetchTree(): Promise<Tree> {
   return get<Tree>('/api/configcat/tree');
 }
