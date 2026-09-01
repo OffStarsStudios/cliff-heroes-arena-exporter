@@ -161,6 +161,9 @@ export async function serveDrift(req, res) {
       to,
       settings,
       differing: settings.filter((setting) => setting.status !== 'same').length,
+      // Two empty reads compare as identical, which would report agreement
+      // that was never actually established. Say so instead.
+      unreadable: left.unreadable ?? right.unreadable ?? null,
     });
   } catch (error) {
     fail(res, error);

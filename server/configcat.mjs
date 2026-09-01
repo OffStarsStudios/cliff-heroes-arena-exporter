@@ -165,6 +165,31 @@ function unwrapValue(raw) {
 }
 
 /**
+ * The property holding the per-setting entries differs by API version: v2
+ * calls them setting formulas, because a v2 entry is a formula of a default
+ * value plus targeting rules, while v1 calls them setting values.
+ */
+const ENTRY_LIST_KEYS = ['settingFormulas', 'settingValues', 'settings'];
+
+/** The value on an entry, under whichever property this version uses. */
+const ENTRY_VALUE_KEYS = ['value', 'defaultValue'];
+
+function entriesFrom(response) {
+  if (Array.isArray(response)) return { entries: response, listKey: '(root array)' };
+  for (const key of ENTRY_LIST_KEYS) {
+    if (Array.isArray(response?.[key])) return { entries: response[key], listKey: key };
+  }
+  return { entries: [], listKey: null };
+}
+
+function valueFrom(entry) {
+  for (const key of ENTRY_VALUE_KEYS) {
+    if (entry?.[key] !== undefined) return unwrapValue(entry[key]);
+  }
+  return null;
+}
+
+/**
  * Live values for every setting in one config and environment.
  *
  * Tries v2 first and falls back to v1. Configs created after ConfigCat's V2
@@ -200,13 +225,11 @@ export async function getValues(configId, environmentId) {
     apiVersion = 'v1';
   }
 
-  const entries = Array.isArray(response)
-    ? response
-    : (response?.settingValues ?? response?.settings ?? []);
+  const { entries, listKey } = entriesFrom(response);
 
   const settings = entries.map((entry) => {
     const setting = entry.setting ?? {};
-    const value = unwrapValue(entry.value);
+    const value = valueFrom(entry);
     const text = typeof value === 'string' ? value : null;
     let parsed = null;
     let parseError = null;
@@ -231,12 +254,31 @@ export async function getValues(configId, environmentId) {
     };
   });
 
+  // An empty result almost always means the response shape moved, not that the
+  // config is empty. Reporting the keys actually present turns a blank table -
+  // which reads as "nothing is wrong" - into something diagnosable.
+  const extracted = settings.filter((setting) => setting.value !== null).length;
+  const unreadable =
+    settings.length === 0 || extracted === 0
+      ? {
+          reason:
+            settings.length === 0
+              ? 'No setting entries were found in the response.'
+              : 'Setting entries were found but none carried a readable value.',
+          apiVersion,
+          listKey,
+          responseKeys: response === null || typeof response !== 'object' ? [] : Object.keys(response),
+          sampleEntryKeys: entries.length > 0 ? Object.keys(entries[0] ?? {}) : [],
+        }
+      : null;
+
   return {
     configId,
     environmentId,
     apiVersion,
     settings,
     totalBytes: settings.reduce((sum, setting) => sum + (setting.bytes ?? 0), 0),
+    unreadable,
   };
 }
 

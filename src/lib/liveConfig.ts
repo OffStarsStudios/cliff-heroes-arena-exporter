@@ -52,6 +52,18 @@ export interface SettingValue {
   parseError: string | null;
 }
 
+/**
+ * Set when the response parsed but yielded nothing usable, which nearly always
+ * means the API's response shape moved rather than that the config is empty.
+ */
+export interface Unreadable {
+  reason: string;
+  apiVersion: string;
+  listKey: string | null;
+  responseKeys: string[];
+  sampleEntryKeys: string[];
+}
+
 export interface Values {
   configId: string;
   environmentId: string;
@@ -59,6 +71,7 @@ export interface Values {
   apiVersion: string;
   settings: SettingValue[];
   totalBytes: number;
+  unreadable: Unreadable | null;
 }
 
 export type ChangeKind = 'added' | 'removed' | 'changed' | 'reordered';
@@ -88,6 +101,7 @@ export interface Drift {
   to: string;
   settings: DriftSetting[];
   differing: number;
+  unreadable: Unreadable | null;
 }
 
 export interface Probe {

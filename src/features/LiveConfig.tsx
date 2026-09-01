@@ -19,6 +19,7 @@ import {
   type Drift,
   type DriftSetting,
   type SettingValue,
+  type Unreadable,
   type Values,
 } from '../lib/liveConfig';
 import { registryFromConfigs } from '../workspace/registry';
@@ -218,7 +219,50 @@ function DriftRow({ setting }: { setting: DriftSetting }) {
   );
 }
 
+/**
+ * Shown when a response parsed but yielded nothing usable. Without this the
+ * page renders an empty table and a row of zeroes, which reads as a clean bill
+ * of health rather than as a failure to read anything at all.
+ */
+function UnreadableBanner({ unreadable }: { unreadable: Unreadable }) {
+  return (
+    <p className="banner banner--error" role="alert">
+      <Icon name="alert" size={14} className="banner__icon" />
+      <span className="stack-sm">
+        <span>
+          {unreadable.reason} Nothing below was actually checked. This is a response-shape
+          mismatch, not an empty config.
+        </span>
+        <span className="mono">
+          {unreadable.apiVersion} API, list key {unreadable.listKey ?? 'not found'}, response keys:{' '}
+          {unreadable.responseKeys.join(', ') || 'none'}
+          {unreadable.sampleEntryKeys.length > 0 &&
+            `, entry keys: ${unreadable.sampleEntryKeys.join(', ')}`}
+        </span>
+      </span>
+    </p>
+  );
+}
+
 function DriftSection({ drift, from, to }: { drift: Drift; from: string; to: string }) {
+  if (drift.unreadable !== null) {
+    return (
+      <div className="card">
+        <div className="card__header">
+          <h3 className="card__title">
+            {environmentName(from)} vs {environmentName(to)}
+          </h3>
+        </div>
+        <div className="card__body">
+          <UnreadableBanner unreadable={drift.unreadable} />
+        </div>
+      </div>
+    );
+  }
+  return <DriftComparison drift={drift} from={from} to={to} />;
+}
+
+function DriftComparison({ drift, from, to }: { drift: Drift; from: string; to: string }) {
   return (
     <div className="card">
       <div className="card__header">
@@ -364,6 +408,7 @@ export function LiveConfig() {
               </p>
             </div>
             <div className="card__body stack-md">
+              {values.unreadable !== null && <UnreadableBanner unreadable={values.unreadable} />}
               <SettingsTable values={values} />
               {unmanaged.length > 0 && (
                 <p className="banner banner--info">
@@ -385,7 +430,9 @@ export function LiveConfig() {
             </div>
           </div>
 
-          {graph !== null && <GraphSection report={graph} missing={graph.missing} />}
+          {graph !== null && values.unreadable === null && (
+            <GraphSection report={graph} missing={graph.missing} />
+          )}
         </>
       )}
 
