@@ -359,7 +359,8 @@ export function LiveConfig() {
             <div className="card__header">
               <h3 className="card__title">Settings</h3>
               <p className="card__hint">
-                {values.settings.length} settings, {formatBytes(values.totalBytes)} in total.
+                {values.settings.length} settings, {formatBytes(values.totalBytes)} in total, read
+                through the {values.apiVersion} API.
               </p>
             </div>
             <div className="card__body stack-md">

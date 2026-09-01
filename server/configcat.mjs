@@ -148,19 +148,65 @@ export async function getTree() {
 }
 
 /**
+ * Unwraps a setting value.
+ *
+ * The v1 API returns the value directly. The v2 API wraps it in a typed
+ * object - `{ stringValue: "..." }` - because a v2 setting can also carry
+ * targeting rules and percentage options. Both shapes reduce to the same
+ * thing here, since every setting in this config is a plain string.
+ */
+function unwrapValue(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  for (const key of ['stringValue', 'boolValue', 'intValue', 'doubleValue']) {
+    if (key in raw) return raw[key];
+  }
+  return raw;
+}
+
+/**
  * Live values for every setting in one config and environment.
+ *
+ * Tries v2 first and falls back to v1. Configs created after ConfigCat's V2
+ * format landed are rejected by the v1 values endpoint, and configs older than
+ * it are not served by v2, so which one works is a property of the config
+ * rather than something to hard-code. The fallback keeps this working either
+ * way, and the successful version is reported so it is visible which was used.
  *
  * Byte sizes are included because payload size against ConfigCat's limits is
  * something this phase is meant to measure, and it is free to report here.
  */
 export async function getValues(configId, environmentId) {
-  const response = await configcatRequest(
-    `/v1/configs/${configId}/environments/${environmentId}/values`,
-  );
+  const path = (version) => `/${version}/configs/${configId}/environments/${environmentId}/values`;
 
-  const settings = (response?.settingValues ?? []).map((entry) => {
+  let response = null;
+  let apiVersion = 'v2';
+  const attempt = await tryRequest(path('v2'));
+
+  if (attempt.ok) {
+    response = attempt.data;
+  } else {
+    const fallback = await tryRequest(path('v1'));
+    if (!fallback.ok) {
+      // Report the v2 failure: it is the one expected to work for this config,
+      // so its message is the more useful of the two.
+      throw new ConfigCatError(
+        `${attempt.message} (v2 responded ${attempt.status}, v1 responded ${fallback.status})`,
+        attempt.status || fallback.status || 502,
+        attempt.detail ?? fallback.detail,
+      );
+    }
+    response = fallback.data;
+    apiVersion = 'v1';
+  }
+
+  const entries = Array.isArray(response)
+    ? response
+    : (response?.settingValues ?? response?.settings ?? []);
+
+  const settings = entries.map((entry) => {
     const setting = entry.setting ?? {};
-    const value = entry.value;
+    const value = unwrapValue(entry.value);
     const text = typeof value === 'string' ? value : null;
     let parsed = null;
     let parseError = null;
@@ -188,6 +234,7 @@ export async function getValues(configId, environmentId) {
   return {
     configId,
     environmentId,
+    apiVersion,
     settings,
     totalBytes: settings.reduce((sum, setting) => sum + (setting.bytes ?? 0), 0),
   };

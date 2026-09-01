@@ -55,6 +55,8 @@ export interface SettingValue {
 export interface Values {
   configId: string;
   environmentId: string;
+  /** Which Management API version served this config: 'v1' or 'v2'. */
+  apiVersion: string;
   settings: SettingValue[];
   totalBytes: number;
 }
@@ -129,11 +131,23 @@ async function get<T>(path: string): Promise<T> {
   }
 
   if (!response.ok) {
+    const record = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : null;
     const message =
-      body !== null && typeof body === 'object' && 'error' in body
-        ? String((body as { error: unknown }).error)
+      record !== null && 'error' in record
+        ? String(record.error)
         : `The server returned HTTP ${response.status}.`;
-    throw new LiveConfigError(message, response.status);
+    // ConfigCat puts the actual reason in the response body. Without it an
+    // error like a rejected API version reads as an unexplained 400.
+    const detail =
+      record !== null && record.detail !== undefined && record.detail !== null
+        ? typeof record.detail === 'string'
+          ? record.detail
+          : JSON.stringify(record.detail)
+        : null;
+    throw new LiveConfigError(
+      detail === null ? message : `${message} ConfigCat said: ${detail}`,
+      response.status,
+    );
   }
 
   return body as T;
