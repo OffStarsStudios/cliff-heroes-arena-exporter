@@ -256,10 +256,58 @@ export function autoSelectBotsSheets(workbook: RawWorkbook): BotsSheetSelection 
   return { bots: bestSheet(workbook.sheets, scoreBots, 50) };
 }
 
+/* ---------------------------------------------------------- Hero upgrades -- */
+
+export type HeroUpgradeSheetSelection = {
+  /** The Growth key/value tab. */
+  growth: string | null;
+  /** The Costs tab: one row per rarity. */
+  costs: string | null;
+};
+
+function scoreGrowth(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  const firstColumn = sheet.rows.slice(0, 8).flatMap((row) => tokens(String(row[0] ?? '')));
+  let score = 0;
+  if (words.includes('growth')) score += 30;
+  if (words.includes('settings') || words.includes('setting') || words.includes('scalars')) score += 10;
+  if (words.includes('upgrade') || words.includes('upgrades')) score += 10;
+  if (headers.includes('value') || headers.includes('values')) score += 20;
+  // The setting names themselves are the strongest signal.
+  if (firstColumn.includes('growth') && firstColumn.includes('rounding')) score += 40;
+  if (headers.includes('rarity')) score -= 40;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+function scoreCosts(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  let score = 0;
+  if (words.includes('costs') || words.includes('cost')) score += 30;
+  if (words.includes('rarity') || words.includes('rarities')) score += 15;
+  const hasRarity = headers.includes('rarity');
+  const hasBases = headers.includes('coins') || headers.includes('cards') || headers.includes('base');
+  if (hasRarity && hasBases && headers.includes('modifier')) score += 50;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+export function autoSelectHeroUpgradeSheets(workbook: RawWorkbook): HeroUpgradeSheetSelection {
+  const costs = bestSheet(workbook.sheets, scoreCosts, 50);
+  const growth = bestSheet(
+    workbook.sheets.filter((sheet) => sheet.name !== costs),
+    scoreGrowth,
+    50,
+  );
+  return { growth, costs };
+}
+
 /* --------------------------------------------------------------- Dataset -- */
 
 /** Which exporter a freshly loaded workbook looks like it is for. */
-export type Dataset = 'arena' | 'heroes' | 'arenas' | 'matchTrophy' | 'bots';
+export type Dataset = 'arena' | 'heroes' | 'arenas' | 'matchTrophy' | 'bots' | 'heroUpgrade';
 
 /**
  * Guesses the dataset so the right exporter opens by default. A hero workbook
@@ -279,6 +327,9 @@ export function detectDataset(workbook: RawWorkbook): Dataset {
 
   if (autoSelectMatchTrophySheets(workbook).places !== null) return 'matchTrophy';
   if (autoSelectBotsSheets(workbook).bots !== null) return 'bots';
+
+  const upgrade = autoSelectHeroUpgradeSheets(workbook);
+  if (upgrade.growth !== null && upgrade.costs !== null) return 'heroUpgrade';
 
   const arena = autoSelectSheets(workbook);
   const arenaTabs = [arena.arenas, arena.rewards].filter((name) => name !== null).length;

@@ -1,11 +1,11 @@
 /**
  * Payload types for the eight ConfigCat settings that make up the live config.
  *
- * Five of them (`heroes`, `trophyRoad`, `arenas`, `matchTrophy`, `bots`) are
- * produced by the spreadsheet exporters and have their types in `../lib/types`.
- * The other three are hand-authored JSON pasted into the ConfigCat dashboard;
- * their shapes are transcribed here from the live values so the config graph
- * can be checked.
+ * Six of them (`heroes`, `trophyRoad`, `arenas`, `matchTrophy`, `bots`,
+ * `heroUpgrade`) are produced by the spreadsheet exporters and have their types
+ * in `../lib/types`. The other two are hand-authored JSON pasted into the
+ * ConfigCat dashboard; their shapes are transcribed here from the live values
+ * so the config graph can be checked.
  */
 
 import type {
@@ -15,7 +15,9 @@ import type {
   BotTuning,
   BotsConfig,
   HeroesConfig,
+  HeroUpgradeConfig,
   MatchTrophyConfig,
+  RarityCost,
 } from '../lib/types';
 
 export type {
@@ -25,32 +27,10 @@ export type {
   BotTuning,
   BotsConfig,
   HeroesConfig,
+  HeroUpgradeConfig,
   MatchTrophyConfig,
+  RarityCost,
 };
-
-/* ----------------------------------------------------------- heroUpgrade -- */
-
-export interface RarityCost {
-  Rarity: string;
-  CoinsBase: number;
-  CardsBase: number;
-  CostModifier: number;
-  GrowthModifier: number;
-}
-
-/**
- * Generative: the client rolls a cost curve out of these growth factors and
- * per-rarity bases rather than reading a table of levels.
- */
-export interface HeroUpgradeConfig {
-  CoinsGrowth: number;
-  CardsGrowth: number;
-  CoinsRounding: number;
-  CardsRounding: number;
-  ReferenceRarity: string;
-  CardsPayoutModifier: number;
-  Costs: RarityCost[];
-}
 
 /* ----------------------------------------------------------------- shop -- */
 
@@ -127,9 +107,16 @@ export type DomainId =
   | 'battlePass';
 
 /** Domains that have an exporter page, and therefore their own workbook. */
-export type ExporterDomain = 'heroes' | 'trophyRoad' | 'arenas' | 'matchTrophy' | 'bots';
+export type ExporterDomain = 'heroes' | 'trophyRoad' | 'arenas' | 'matchTrophy' | 'bots' | 'heroUpgrade';
 
-export const EXPORTER_DOMAINS: ExporterDomain[] = ['heroes', 'trophyRoad', 'arenas', 'matchTrophy', 'bots'];
+export const EXPORTER_DOMAINS: ExporterDomain[] = [
+  'heroes',
+  'trophyRoad',
+  'arenas',
+  'matchTrophy',
+  'bots',
+  'heroUpgrade',
+];
 
 /** The ConfigCat setting key each domain publishes to. */
 export const SETTING_KEYS: Record<DomainId, string> = {

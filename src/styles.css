@@ -57,6 +57,8 @@
   --matchtrophy-soft: #fff1f2;
   --bots: #4d7c0f;
   --bots-soft: #f7fee7;
+  --heroupgrade: #a16207;
+  --heroupgrade-soft: #fefce8;
 
   /* Density 8/10: 4px base, 8-32px working range */
   --space-1: 4px;
@@ -404,6 +406,11 @@ textarea {
 .page__badge--bots {
   background: var(--bots-soft);
   color: var(--bots);
+}
+
+.page__badge--heroupgrade {
+  background: var(--heroupgrade-soft);
+  color: var(--heroupgrade);
 }
 
 /* ---------- generic card ---------- */

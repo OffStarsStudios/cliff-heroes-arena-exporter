@@ -294,3 +294,47 @@ export interface BotsTransformResult {
     warnings: number;
   };
 }
+
+/* ---------------------------------------------------------- Hero upgrades -- */
+
+export interface RarityCost {
+  Rarity: string;
+  CoinsBase: number;
+  CardsBase: number;
+  CostModifier: number;
+  GrowthModifier: number;
+}
+
+/**
+ * Generative: the client rolls a cost curve out of these growth factors and
+ * per-rarity bases rather than reading a table of levels.
+ */
+export interface HeroUpgradeConfig {
+  CoinsGrowth: number;
+  CardsGrowth: number;
+  CoinsRounding: number;
+  CardsRounding: number;
+  ReferenceRarity: string;
+  CardsPayoutModifier: number;
+  Costs: RarityCost[];
+}
+
+export interface HeroUpgradePreviewRow {
+  rarity: string;
+  coinsBase: number;
+  cardsBase: number;
+  costModifier: number;
+  growthModifier: number;
+  sheetRow: number;
+}
+
+export interface HeroUpgradeTransformResult {
+  config: HeroUpgradeConfig;
+  preview: HeroUpgradePreviewRow[];
+  issues: Issue[];
+  stats: {
+    rarities: number;
+    errors: number;
+    warnings: number;
+  };
+}

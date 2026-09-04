@@ -27,6 +27,7 @@ const VIEW_FOR_DATASET: Record<Dataset, { view: View; label: string }> = {
   arenas: { view: 'arenas', label: 'arenas' },
   matchTrophy: { view: 'matchTrophy', label: 'match trophies' },
   bots: { view: 'bots', label: 'bots' },
+  heroUpgrade: { view: 'heroUpgrade', label: 'hero upgrades' },
 };
 
 function emptySelection<S extends TabSelection>(tabs: TabSpec<S>[]): S {
