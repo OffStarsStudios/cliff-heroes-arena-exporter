@@ -1,0 +1,277 @@
+{
+  "SeasonID": "pass.season1",
+  "SeasonName": "SEASON 1",
+  "StartUtc": "2026-09-01 00:00",
+  "DurationDays": 30,
+  "TokensPerTier": 100,
+  "PremiumProductID": "shop.pass.season1.premium",
+  "SkipTierCost": 75,
+  "SkipCurrencyID": "hardCurrency",
+  "FinalRewardArt": "",
+  "Tiers": [
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 200
+      },
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 25
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 300
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 5
+      },
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 25
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 250
+      },
+      "Premium": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 1
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 1
+      },
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 50
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 400
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 8
+      },
+      "Premium": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 12
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 300
+      },
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 30
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 1
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 1
+      },
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 75
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 10
+      },
+      "Premium": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 500
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 350
+      },
+      "Premium": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 15
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 40
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 12
+      },
+      "Premium": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 2
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 400
+      },
+      "Premium": {
+        "RewardID": "reward.skin.tank.flower",
+        "Amount": 1
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 50
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 14
+      },
+      "Premium": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 600
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 450
+      },
+      "Premium": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 1
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 50
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 1
+      },
+      "Premium": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 20
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 15
+      },
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 60
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 500
+      },
+      "Premium": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 700
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 2
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 18
+      },
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 75
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 550
+      },
+      "Premium": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 25
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 800
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.cards",
+        "Amount": 20
+      },
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 80
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.currency.coins",
+        "Amount": 600
+      },
+      "Premium": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 2
+      }
+    },
+    {
+      "Premium": {
+        "RewardID": "reward.currency.gems",
+        "Amount": 100
+      }
+    },
+    {
+      "Free": {
+        "RewardID": "reward.lootbox.common",
+        "Amount": 2
+      },
+      "Premium": {
+        "RewardID": "reward.skin.cliff.halloween",
+        "Amount": 1
+      }
+    }
+  ]
+}

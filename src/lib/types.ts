@@ -195,3 +195,37 @@ export interface HeroTransformResult {
     warnings: number;
   };
 }
+
+/* ---------------------------------------------------------------- Arenas -- */
+
+export interface ArenaDefinition {
+  ID: string;
+  TrackCount: number;
+  /** Difficulty names, one per bot. Resolved to `BotsConfig` levels by the client. */
+  BotLevels: string[];
+}
+
+export interface ArenasConfig {
+  Arenas: ArenaDefinition[];
+}
+
+/** A row of the arena preview table. */
+export interface ArenaPreviewRow {
+  name: string;
+  id: string;
+  trackCount: number;
+  botLevels: string[];
+  sheetRow: number;
+}
+
+export interface ArenasTransformResult {
+  config: ArenasConfig;
+  preview: ArenaPreviewRow[];
+  issues: Issue[];
+  stats: {
+    arenas: number;
+    bots: number;
+    errors: number;
+    warnings: number;
+  };
+}

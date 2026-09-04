@@ -2,7 +2,7 @@
   "Arenas": [
     {
       "ID": "arena.lostoasis",
-      "TrackCount": 25,
+      "TrackCount": 15,
       "BotLevels": [
         "Easy",
         "Medium",
@@ -11,7 +11,7 @@
     },
     {
       "ID": "arena.mysticforest",
-      "TrackCount": 25,
+      "TrackCount": 20,
       "BotLevels": [
         "Medium",
         "Medium",

@@ -1,7 +1,7 @@
 /**
  * Cross-config validation.
  *
- * The seven ConfigCat settings form a reference graph. Each existing validator
+ * The eight ConfigCat settings form a reference graph. Each existing validator
  * checks one payload in isolation, and ConfigCat sees only opaque strings, so
  * nothing today checks the edges between them: an arena on the trophy road
  * that no arenas entry defines, a hero whose rarity has no upgrade cost row, a
@@ -68,6 +68,15 @@ export function collectRewardRefs(set: ConfigSet): RewardRef[] {
       }
     }
   }
+
+  (set.battlePass?.Tiers ?? []).forEach((tier, index) => {
+    for (const track of ['Free', 'Premium'] as const) {
+      const id = tier?.[track]?.RewardID;
+      if (typeof id === 'string') {
+        refs.push({ id, where: `battle pass tier ${index + 1} (${track.toLowerCase()})` });
+      }
+    }
+  });
 
   for (const product of set.shop?.Products ?? []) {
     for (const content of product?.Contents ?? []) {
@@ -328,6 +337,7 @@ const ALL_DOMAINS: (keyof ConfigSet)[] = [
   'matchTrophy',
   'arenas',
   'shop',
+  'battlePass',
 ];
 
 /** Runs every cross-config rule over whatever is loaded. */

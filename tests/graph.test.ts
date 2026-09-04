@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { validateGraph } from '../src/workspace/graph';
 import { emptyRegistry, mergeRegistries, registryFromConfigs, type IdRegistry } from '../src/workspace/registry';
-import type { ArenasConfig, BotsConfig, ConfigSet, HeroUpgradeConfig, MatchTrophyConfig, ShopConfig } from '../src/domains/types';
+import type { ArenasConfig, BattlePassConfig, BotsConfig, ConfigSet, HeroUpgradeConfig, MatchTrophyConfig, ShopConfig } from '../src/domains/types';
 import type { ArenaProgressConfig, HeroEntry, HeroesConfig } from '../src/lib/types';
 
 import arenasJson from '../config/arenas.json';
+import battlePassJson from '../config/battlePass.json';
 import botsJson from '../config/bots.json';
 import heroUpgradeJson from '../config/heroUpgrade.json';
 import matchTrophyJson from '../config/matchTrophy.json';
@@ -12,13 +13,14 @@ import shopJson from '../config/shop.json';
 import trophyRoadJson from '../config/trophyRoad.json';
 
 /**
- * The six live payloads, exactly as they are published today. `heroesSettings`
+ * The seven live payloads, exactly as they are published today. `heroesSettings`
  * is not among them - it is pulled from ConfigCat at runtime rather than kept
  * as a fixture - so hero-dependent rules are exercised with the small synthetic
  * hero sets below.
  */
 const live = {
   arenas: arenasJson as ArenasConfig,
+  battlePass: battlePassJson as BattlePassConfig,
   bots: botsJson as BotsConfig,
   heroUpgrade: heroUpgradeJson as HeroUpgradeConfig,
   matchTrophy: matchTrophyJson as MatchTrophyConfig,

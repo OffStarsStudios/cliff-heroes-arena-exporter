@@ -1,15 +1,15 @@
 /**
- * Payload types for the seven ConfigCat settings that make up the live config.
+ * Payload types for the eight ConfigCat settings that make up the live config.
  *
- * Two of them (`heroes`, `trophyRoad`) are produced by the spreadsheet
- * exporters and already have types in `../lib/types`. The other five are
- * hand-authored JSON pasted into the ConfigCat dashboard; their shapes are
+ * Three of them (`heroes`, `trophyRoad`, `arenas`) are produced by the
+ * spreadsheet exporters and have their types in `../lib/types`. The other five
+ * are hand-authored JSON pasted into the ConfigCat dashboard; their shapes are
  * transcribed here from the live values so the config graph can be checked.
  */
 
-import type { ArenaProgressConfig, HeroesConfig } from '../lib/types';
+import type { ArenaDefinition, ArenaProgressConfig, ArenasConfig, HeroesConfig } from '../lib/types';
 
-export type { ArenaProgressConfig, HeroesConfig };
+export type { ArenaDefinition, ArenaProgressConfig, ArenasConfig, HeroesConfig };
 
 /* ------------------------------------------------------------------ bots -- */
 
@@ -63,19 +63,6 @@ export interface MatchTrophyConfig {
   TrophiesByPlace: number[];
 }
 
-/* --------------------------------------------------------------- arenas -- */
-
-export interface ArenaDefinition {
-  ID: string;
-  TrackCount: number;
-  /** Difficulty names, one per bot. Resolved to `BotsConfig` levels by the client. */
-  BotLevels: string[];
-}
-
-export interface ArenasConfig {
-  Arenas: ArenaDefinition[];
-}
-
 /* ----------------------------------------------------------------- shop -- */
 
 export interface ShopContent {
@@ -93,7 +80,11 @@ export interface ShopContent {
  */
 export interface ShopProduct {
   ID: string;
+  /** How it is bought. Absent on older payloads; the shop exporter will require it. */
+  SoldIn?: 'RealMoney' | 'Gems' | 'Free' | 'Ad';
   IsEnabled: boolean;
+  /** False hides the product from the store list while keeping it purchasable by ID. */
+  IsListed?: boolean;
   BadgeLabel?: string;
   OfferDurationHours?: number;
   PriceInCurrency?: number;
@@ -106,6 +97,34 @@ export interface ShopConfig {
   Products: ShopProduct[];
 }
 
+/* ----------------------------------------------------------- battlePass -- */
+
+export interface BattlePassReward {
+  RewardID: string;
+  Amount: number;
+}
+
+/** One tier of the pass. Either track may be absent on a given tier. */
+export interface BattlePassTier {
+  Free?: BattlePassReward;
+  Premium?: BattlePassReward;
+}
+
+export interface BattlePassConfig {
+  SeasonID: string;
+  SeasonName: string;
+  /** `YYYY-MM-DD HH:mm`, UTC. */
+  StartUtc: string;
+  DurationDays: number;
+  TokensPerTier: number;
+  /** A `shop.*` product ID that must exist in shopSettings. */
+  PremiumProductID: string;
+  SkipTierCost: number;
+  SkipCurrencyID: string;
+  FinalRewardArt: string;
+  Tiers: BattlePassTier[];
+}
+
 /* ------------------------------------------------------------- the set -- */
 
 export type DomainId =
@@ -115,7 +134,13 @@ export type DomainId =
   | 'heroUpgrade'
   | 'matchTrophy'
   | 'arenas'
-  | 'shop';
+  | 'shop'
+  | 'battlePass';
+
+/** Domains that have an exporter page, and therefore their own workbook. */
+export type ExporterDomain = 'heroes' | 'trophyRoad' | 'arenas';
+
+export const EXPORTER_DOMAINS: ExporterDomain[] = ['heroes', 'trophyRoad', 'arenas'];
 
 /** The ConfigCat setting key each domain publishes to. */
 export const SETTING_KEYS: Record<DomainId, string> = {
@@ -126,6 +151,7 @@ export const SETTING_KEYS: Record<DomainId, string> = {
   matchTrophy: 'matchTrophySettings',
   arenas: 'arenasSettings',
   shop: 'shopSettings',
+  battlePass: 'battlePassSettings',
 };
 
 /** Where each domain's payload is recorded in git, as the deployed baseline. */
@@ -137,6 +163,7 @@ export const GIT_PATHS: Record<DomainId, string> = {
   matchTrophy: 'config/matchTrophy.json',
   arenas: 'config/arenas.json',
   shop: 'config/shop.json',
+  battlePass: 'config/battlePass.json',
 };
 
 export const DOMAIN_LABELS: Record<DomainId, string> = {
@@ -147,6 +174,7 @@ export const DOMAIN_LABELS: Record<DomainId, string> = {
   matchTrophy: 'Match trophies',
   arenas: 'Arenas',
   shop: 'Shop',
+  battlePass: 'Battle pass',
 };
 
 /**
@@ -162,4 +190,5 @@ export interface ConfigSet {
   matchTrophy?: MatchTrophyConfig;
   arenas?: ArenasConfig;
   shop?: ShopConfig;
+  battlePass?: BattlePassConfig;
 }
