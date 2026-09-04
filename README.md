@@ -2,15 +2,21 @@
 
 Convert Cliff Heroes design sheets into game-ready JSON.
 
-A browser tool with two exporters that share one workbook loader:
+A browser tool with one exporter per ConfigCat setting:
 
-- **Arena progress** - reads an arena progression sheet, joins arena and reward names
-  against the workbook's own lookup tabs, and exports `arena-progress.json`.
+- **Trophy road** - reads an arena progression sheet, joins arena and reward names
+  against the workbook's own lookup tabs, and exports `arena-progress.json`
+  (`trophyRoadSettings`).
 - **Hero stats** - reads base stats, level factors and power settings, rolls the level
-  curves out, and exports `heroes.json`.
+  curves out, and exports `heroes.json` (`heroesSettings`).
+- **Arenas** - reads the Arenas Settings workbook and exports `arenas.json`
+  (`arenasSettings`): track count and bot line-up per arena.
 
-Each exporter is its own section in the left sidebar, and both read from the same
-loaded workbook. Sections are deep-linkable (`#/arena`, `#/heroes`, `#/reference`).
+Each exporter is its own section in the left sidebar and **keeps its own workbook**,
+because every config lives in its own Google Sheet (one folder per config under the
+`Economy` Drive folder). A page remembers the last Google Sheet link it loaded and
+offers to reload it with one click. Sections are deep-linkable (`#/arena` is the
+trophy road, `#/heroes`, `#/arenas`, `#/live`, `#/reference`).
 
 ## Requirements
 
@@ -45,21 +51,25 @@ npm run build && npm start
 
 ## Using it
 
-Pick a section in the sidebar - **Arena progress** or **Hero stats** - then work down
-the numbered steps. Each step shows its own status, and the step you still have to
-finish opens on its own.
+Pick a section in the sidebar - **Trophy road**, **Hero stats** or **Arenas** - then
+work down the numbered steps. Each step shows its own status, and the step you still
+have to finish opens on its own.
 
-1. **Load the workbook.** Drop an `.xlsx` file, or paste a Google Sheets link. The
-   workbook is shared by both exporters, so this is done once.
+1. **Load the workbook.** Drop an `.xlsx` file, or paste a Google Sheets link. Each
+   exporter has its own workbook; a page that has loaded a sheet before offers to
+   reload it.
 2. **Pick the tabs.** Sensible defaults are picked automatically; every field says what
    the tab has to contain.
-   - Arena progress: **Progression**, **Arenas lookup**, **Rewards lookup**
+   - Trophy road: **Progression**, **Arenas lookup**, **Rewards lookup**
    - Hero stats: **Heroes lookup**, **Base stats**, **Stats level factors**, **Power settings**
-3. **Map the columns** (arena progress only). Detected columns are pre-filled; anything
+   - Arenas: **Arenas lookup**, **Arena settings**
+3. **Map the columns** (trophy road only). Detected columns are pre-filled; anything
    detection was unsure about is called out.
 4. **Review and export.** Live counts, then the errors and warnings, then a tab switch
    between the parsed rows and the JSON. Press **Generate JSON** in the bar pinned to
-   the bottom of the page, then copy or download.
+   the bottom of the page, then copy or download. Generating also runs the
+   **Check against live config** (below), and the publish panel only ever sends
+   exactly what was generated and checked.
 
 The bottom bar always says why the export is or is not available, so the reason a
 button is disabled never has to be hunted for.
@@ -107,8 +117,8 @@ includes before relying on it.
 
 ## ConfigCat
 
-The console reads the live config straight from ConfigCat. Nothing writes yet -
-every route below is read-only.
+The console reads the live config straight from ConfigCat, and the exporters
+publish to it through the plan/apply routes described under *Publishing*.
 
 ### Credentials
 
@@ -144,7 +154,7 @@ Each is a Vercel serverless function in `api/` over a shared handler in
 | `POST /api/publish/plan` | What would change. Writes nothing, and issues the baseline hash. |
 | `POST /api/publish/apply` | Performs the write. Requires that hash. |
 
-Both exporters end in a **Publish to ConfigCat** panel. Pick the environment,
+Every exporter ends in a **Publish to ConfigCat** panel. Pick the environment,
 press *Show what would change* for a structural diff against the live value,
 then publish. Publishing to the environment the game reads needs one more
 explicit confirmation.
@@ -175,6 +185,23 @@ Writes are not atomic across settings. ConfigCat’s Change Requests API exposes
 reading and updating but not creating, so a genuine multi-setting transaction is
 not available yet.
 
+### Check against live config
+
+Every exporter runs the cross-config rules *before* publishing. When the JSON is
+generated, the page fetches every setting of the target environment, substitutes
+the generated payload for its own setting, and runs the same graph checks the Live
+config page runs. The report is split against the live baseline:
+
+- **Introduced** issues are ones this change causes. Introduced *errors* block
+  publishing; introduced warnings do not.
+- **Already present** issues exist with or without the change (the undeclared
+  difficulty mapping, for instance) and are folded away so they are not blamed on it.
+- **Fixed** issues are live problems the change makes go away.
+
+If the live config cannot be read (no credentials, no network) the check says so
+and does not block - the publish step needs the same connection and fails on its
+own. Download and copy are never gated by the graph.
+
 ### The Live config page
 
 `#/live` in the sidebar shows what is deployed right now: every setting with its
@@ -194,7 +221,7 @@ and is worth stating out loud before touching either.
 
 ## Cross-config validation
 
-The seven settings reference each other - the trophy road names arenas and
+The eight settings reference each other - the trophy road names arenas and
 rewards, rewards name heroes, arena bot counts have to match the number of
 scoring places - and nothing checked those edges before. `npm run check:graph`
 validates them against the payloads in `config/`.
@@ -233,6 +260,57 @@ the exporters emit it, as the git-tracked baseline for future diffs.
 
 Property order is exactly as shown, numbers are never quoted, and nothing else is
 ever added to a milestone.
+
+## Output schema: arenas
+
+```json
+{
+  "Arenas": [
+    { "ID": "arena.lostoasis", "TrackCount": 15, "BotLevels": ["Easy", "Medium", "Medium"] }
+  ]
+}
+```
+
+Key order is always `ID, TrackCount, BotLevels`. `TrackCount` is a whole number of 1
+or more; `BotLevels` holds one difficulty name per bot, spelled exactly `Easy`,
+`Medium`, `Hard` or `VeryHard` (the list lives in `src/lib/arenaDifficulties.ts`,
+the same way power parameters live in `powerParams.ts`).
+
+### The Arenas Settings sheet
+
+The workbook follows the Heroes Configuration convention: a lookup tab that owns
+the IDs, and a settings tab that references entities by name through a dropdown.
+
+- **Arenas** tab: `Arena Name | Arena ID`. The ID column is one `ARRAYFORMULA`
+  (`arena.` plus the lowercase name without spaces), so a new arena only needs its
+  name typed in. The exporter still reads the ID from the cell, never rebuilds it.
+- **Arena Settings** tab: `Arena Name | Track Count | Bot 1 Level | Bot 2 Level | Bot 3 Level`.
+  Arena Name is a dropdown validated against the Arenas tab; Track Count rejects
+  anything but a whole number of 1 or more; the bot columns are dropdowns
+  (colour-coded Easy to VeryHard). Add a bot by adding a `Bot 4 Level` column - the
+  live-config check will then report the mismatch against the four trophy places.
+- Columns are found by header, so `Tracks`, `Bot Level 1` or `Bot 1 Difficulty` also
+  work, and the bot columns may sit in any order - they are read in numeric order.
+
+### Arenas validation
+
+Errors (block export and publish): missing Arena Name / Track Count / bot columns,
+an arena the lookup tab does not define, a name mapped to two IDs, an arena
+configured twice (by name or by resolved ID), a blank, non-numeric, fractional or
+zero track count, an arena with no bots, a blank bot column followed by a filled
+one, a difficulty the game does not know (with a "did you mean" suggestion), a row
+with values but no name, an empty settings tab, and the independent schema gate on
+the generated object.
+
+Warnings (exported as-is): an ID not matching `arena.<name>`, a difficulty spelled
+with different case or spacing (exported under the canonical spelling), arenas
+running different numbers of bots, bot columns numbered with gaps, and lookup
+arenas that have no settings row.
+
+Cross-config (from the live-config check): an arena the trophy road introduces
+but this config does not define, an arena no milestone introduces, a bot count
+that does not match the number of scoring places, more difficulty names than bot
+levels, and arena rewards that grant an arena this config does not define.
 
 ## Output schema: hero stats
 
@@ -358,15 +436,33 @@ src/lib/validate.ts       milestones  -> schema check + serializer
 src/lib/powerParams.ts    power parameter schema + name resolution
 src/lib/heroes.ts         hero tabs   -> heroes + issues + preview
 src/lib/validateHeroes.ts heroes      -> schema check + serializer
+src/lib/arenas.ts         arena tabs  -> arenas + issues + preview
+src/lib/validateArenas.ts arenas      -> schema check + serializer
+src/lib/arenaDifficulties.ts  bot difficulty schema + name resolution
+src/lib/columns.ts        header-driven column resolution shared by the tabular parsers
+src/lib/nameResolve.ts    fuzzy name resolution against a constant list
+src/lib/recentSources.ts  remembered Google Sheet link per exporter
 src/lib/googleSheets.ts   sheet URL   -> workbook
-src/features/             one page per section (arena, heroes, parameter reference)
-src/components/           app shell, stepper, and the shared UI primitives
+src/exporters/            one ExporterDefinition per config (arenas.tsx) + the pure analysis runner
+src/hooks/                per-page workbook sources
+src/features/             the hand-written pages (trophy road, heroes, live config, reference)
+src/components/           app shell, stepper, ExporterPage, LiveGraphCheck, and the shared UI primitives
 src/styles.css            design tokens + all component styling
 server/                   Google Sheets proxy (dev plugin + prod server)
 tests/                    transformation tests, including both real workbooks
 ```
 
 The parsing logic is entirely independent of React, so it is directly testable.
-`tests/workbook.test.ts` runs the real `fixtures/arena-progression.xlsx` and
-`tests/heroes.test.ts` runs the real `fixtures/hero-stats.xlsx` through the whole
-pipeline, each asserting the exact output.
+`tests/workbook.test.ts` runs the real `fixtures/arena-progression.xlsx`,
+`tests/heroes.test.ts` the real `fixtures/hero-stats.xlsx`, and `tests/arenas.test.ts`
+the real `fixtures/arenas-settings.xlsx` (downloaded from the Arenas Settings Google
+Sheet) through the whole pipeline, each asserting the exact live payload.
+
+### Adding the next config
+
+Each exporter page is an `ExporterDefinition` (see `src/exporters/arenas.tsx`): the
+tabs it needs, how to auto-select them, a pure `analyze` over the chosen sheets, an
+independent `validate` gate, a serializer and a preview table. `ExporterPage`
+supplies the rest - loading, tab picking, review, the live-config check and
+publishing. The remaining settings (match trophies, bots, hero upgrades, shop,
+battle pass) are each one definition plus a parser in `src/lib`.
