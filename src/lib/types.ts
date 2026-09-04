@@ -229,3 +229,27 @@ export interface ArenasTransformResult {
     warnings: number;
   };
 }
+
+/* --------------------------------------------------------- Match trophies -- */
+
+/** Trophy delta per finishing place. Its length is the racer count. */
+export interface MatchTrophyConfig {
+  TrophiesByPlace: number[];
+}
+
+export interface MatchTrophyPreviewRow {
+  place: number;
+  trophies: number;
+  sheetRow: number;
+}
+
+export interface MatchTrophyTransformResult {
+  config: MatchTrophyConfig;
+  preview: MatchTrophyPreviewRow[];
+  issues: Issue[];
+  stats: {
+    places: number;
+    errors: number;
+    warnings: number;
+  };
+}

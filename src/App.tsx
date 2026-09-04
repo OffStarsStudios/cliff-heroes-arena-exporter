@@ -4,18 +4,20 @@ import { ExporterPage } from './components/ExporterPage';
 import type { ExporterDomain } from './domains/types';
 import { ARENAS_EXPORTER } from './exporters/arenas';
 import { HEROES_EXPORTER } from './exporters/heroes';
+import { MATCH_TROPHY_EXPORTER } from './exporters/matchTrophy';
 import { ArenaExporter } from './features/ArenaExporter';
 import { LiveConfig } from './features/LiveConfig';
 import { ParamReference } from './features/ParamReference';
 import { SOURCE_LABELS, useWorkbookSources } from './hooks/useWorkbookSources';
 
-const VIEWS: View[] = ['live', 'arena', 'heroes', 'arenas', 'reference'];
+const VIEWS: View[] = ['live', 'arena', 'heroes', 'arenas', 'matchTrophy', 'reference'];
 
 /** Which workbook each page owns. Pages without one show no source in the shell. */
 const DOMAIN_FOR_VIEW: Partial<Record<View, ExporterDomain>> = {
   arena: 'trophyRoad',
   heroes: 'heroes',
   arenas: 'arenas',
+  matchTrophy: 'matchTrophy',
 };
 
 function viewFromHash(): View {
@@ -66,6 +68,13 @@ export function App() {
         <ExporterPage
           definition={ARENAS_EXPORTER}
           source={controllerFor('arenas')}
+          onNavigate={navigate}
+        />
+      )}
+      {view === 'matchTrophy' && (
+        <ExporterPage
+          definition={MATCH_TROPHY_EXPORTER}
+          source={controllerFor('matchTrophy')}
           onNavigate={navigate}
         />
       )}

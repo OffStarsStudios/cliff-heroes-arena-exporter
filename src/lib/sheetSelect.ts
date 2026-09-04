@@ -203,15 +203,45 @@ export function autoSelectArenaSheets(workbook: RawWorkbook): ArenaSheetSelectio
   return { arenas, settings };
 }
 
+/* -------------------------------------------------------- Match trophies -- */
+
+export type MatchTrophySheetSelection = {
+  /** The Trophies By Place tab. */
+  places: string | null;
+};
+
+/**
+ * Scores a sheet as the trophies-by-place tab. Headers decide: it needs both a
+ * place column and a trophies column, which no trophy-road or hero tab has.
+ */
+function scoreMatchTrophy(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  let score = 0;
+  if (words.includes('place') || words.includes('places')) score += 20;
+  if (words.includes('trophies') || words.includes('trophy')) score += 15;
+  if (words.includes('match')) score += 10;
+  const hasPlace = headers.includes('place') || headers.includes('position') || headers.includes('rank');
+  const hasTrophies = headers.includes('trophies') || headers.includes('trophy');
+  if (hasPlace && hasTrophies) score += 50;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+export function autoSelectMatchTrophySheets(workbook: RawWorkbook): MatchTrophySheetSelection {
+  return { places: bestSheet(workbook.sheets, scoreMatchTrophy, 50) };
+}
+
 /* --------------------------------------------------------------- Dataset -- */
 
 /** Which exporter a freshly loaded workbook looks like it is for. */
-export type Dataset = 'arena' | 'heroes' | 'arenas';
+export type Dataset = 'arena' | 'heroes' | 'arenas' | 'matchTrophy';
 
 /**
  * Guesses the dataset so the right exporter opens by default. A hero workbook
  * is one where the hero tabs all resolve; an arenas workbook is one with a
- * settings tab beside its lookup; anything else is treated as a trophy road.
+ * settings tab beside its lookup; a match-trophy workbook has a places tab;
+ * anything else is treated as a trophy road.
  */
 export function detectDataset(workbook: RawWorkbook): Dataset {
   const hero = autoSelectHeroSheets(workbook);
@@ -222,6 +252,8 @@ export function detectDataset(workbook: RawWorkbook): Dataset {
 
   const arenas = autoSelectArenaSheets(workbook);
   if (arenas.settings !== null && arenas.arenas !== null) return 'arenas';
+
+  if (autoSelectMatchTrophySheets(workbook).places !== null) return 'matchTrophy';
 
   const arena = autoSelectSheets(workbook);
   const arenaTabs = [arena.arenas, arena.rewards].filter((name) => name !== null).length;

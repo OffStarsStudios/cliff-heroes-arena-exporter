@@ -6,7 +6,7 @@ import type { RawWorkbook } from '../lib/types';
  * Page ids. Note `'arena'` is the trophy road page (its historical route,
  * `#/arena`, is documented and kept) while `'arenas'` is the arenas config.
  */
-export type View = 'live' | 'arena' | 'heroes' | 'arenas' | 'reference';
+export type View = 'live' | 'arena' | 'heroes' | 'arenas' | 'matchTrophy' | 'reference';
 
 interface NavItem {
   id: View;
@@ -41,6 +41,12 @@ export const NAV_ITEMS: NavItem[] = [
     blurb: 'Track counts and bot line-ups',
     icon: 'table',
   },
+  {
+    id: 'matchTrophy',
+    label: 'Match trophies',
+    blurb: 'Trophies won or lost per finishing place',
+    icon: 'medal',
+  },
 ];
 
 export const REFERENCE_ITEM: NavItem = {
@@ -55,6 +61,7 @@ const CRUMB_LABEL: Record<View, string> = {
   arena: 'Trophy road',
   heroes: 'Hero stats',
   arenas: 'Arenas',
+  matchTrophy: 'Match trophies',
   reference: 'Power parameters',
 };
 
@@ -63,6 +70,7 @@ const CRUMB_SECTION: Record<View, string> = {
   arena: 'Exporters',
   heroes: 'Exporters',
   arenas: 'Exporters',
+  matchTrophy: 'Exporters',
   reference: 'Reference',
 };
 
