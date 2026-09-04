@@ -26,7 +26,8 @@ export type IconName =
   | 'table'
   | 'code'
   | 'swap'
-  | 'medal';
+  | 'medal'
+  | 'bot';
 
 interface IconProps {
   name: IconName;
@@ -40,6 +41,16 @@ const PATHS: Record<IconName, JSX.Element> = {
     <>
       <path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1" />
       <path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1" />
+    </>
+  ),
+  bot: (
+    <>
+      <path d="M12 8V4H8" />
+      <rect width="16" height="12" x="4" y="8" rx="2" />
+      <path d="M2 14h2" />
+      <path d="M20 14h2" />
+      <path d="M15 13v2" />
+      <path d="M9 13v2" />
     </>
   ),
   medal: (

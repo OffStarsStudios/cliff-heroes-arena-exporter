@@ -13,12 +13,14 @@ A browser tool with one exporter per ConfigCat setting:
   (`arenasSettings`): track count and bot line-up per arena.
 - **Match trophies** - reads the Match Trophy Settings workbook and exports
   `match-trophy.json` (`matchTrophySettings`): the trophy delta per finishing place.
+- **Bots** - reads the Bots Settings workbook and exports `bots.json`
+  (`botsSettings`): the tuning of every bot difficulty level.
 
 Each exporter is its own section in the left sidebar and **keeps its own workbook**,
 because every config lives in its own Google Sheet (one folder per config under the
 `Economy` Drive folder). A page remembers the last Google Sheet link it loaded and
 offers to reload it with one click. Sections are deep-linkable (`#/arena` is the
-trophy road, `#/heroes`, `#/arenas`, `#/matchTrophy`, `#/live`, `#/reference`).
+trophy road, `#/heroes`, `#/arenas`, `#/matchTrophy`, `#/bots`, `#/live`, `#/reference`).
 
 ## Requirements
 
@@ -53,8 +55,8 @@ npm run build && npm start
 
 ## Using it
 
-Pick a section in the sidebar - **Trophy road**, **Hero stats**, **Arenas** or
-**Match trophies** - then work down the numbered steps. Each step shows its own status, and the step you still
+Pick a section in the sidebar - **Trophy road**, **Hero stats**, **Arenas**,
+**Match trophies** or **Bots** - then work down the numbered steps. Each step shows its own status, and the step you still
 have to finish opens on its own.
 
 1. **Load the workbook.** Drop an `.xlsx` file, or paste a Google Sheets link. Each
@@ -66,6 +68,7 @@ have to finish opens on its own.
    - Hero stats: **Heroes lookup**, **Base stats**, **Stats level factors**, **Power settings**
    - Arenas: **Arenas lookup**, **Arena settings**
    - Match trophies: **Trophies by place**
+   - Bots: **Bots**
 3. **Map the columns** (trophy road only). Detected columns are pre-filled; anything
    detection was unsure about is called out.
 4. **Review and export.** Live counts, then the errors and warnings, then a tab switch
@@ -343,6 +346,40 @@ non-numeric or fractional trophy value, an empty tab, and the schema gate.
 Warnings: a first place that awards no trophies, and a place that awards more
 than the place above it.
 
+## Output schema: bots
+
+```json
+{
+  "BotLevel": 4,
+  "Bots": [
+    { "Level": 0, "MinJumpInterval": 4, "MaxJumpInterval": 6, "MinDodgeChance": 0.1, "MaxDodgeChance": 0.2,
+      "RaycastDistance": 8, "RaycastInterval": 0.3, "MinFireInterval": 2, "MaxFireInterval": 4 }
+  ]
+}
+```
+
+Key order is fixed as shown. `BotLevel` is never authored: it is the highest
+level in the table. Levels must run 0..N with no gaps or duplicates, the same
+rule hero levels follow, because the client indexes into the table.
+
+### The Bots Settings sheet
+
+One tab, `Bots`: `Level | Min Jump Interval | Max Jump Interval | Min Dodge Chance |
+Max Dodge Chance | Raycast Distance | Raycast Interval | Min Fire Interval | Max Fire Interval`,
+one row per level. Level rejects anything but a whole number of 0 or more; the
+dodge chances reject anything outside 0..1; the other columns reject anything
+that is not a positive number. Rows may be in any order.
+
+### Bots validation
+
+Errors: a missing column (reported by name), a blank or non-numeric value, a
+fractional or negative level, a level listed twice, a gap in the level sequence,
+an interval or distance that is not positive, a dodge chance outside 0..1, a
+minimum above its maximum, an empty tab, and the schema gate (key order,
+`BotLevel` equal to the highest level).
+
+Warnings: a level that dodges less or fires slower than the level below it.
+
 ## Output schema: hero stats
 
 ```json
@@ -471,12 +508,14 @@ src/lib/arenas.ts         arena tabs  -> arenas + issues + preview
 src/lib/validateArenas.ts arenas      -> schema check + serializer
 src/lib/arenaDifficulties.ts  bot difficulty schema + name resolution
 src/lib/matchTrophy.ts    places tab  -> trophies by place + issues + preview
+src/lib/bots.ts           bots tab    -> bot levels + issues + preview
+src/lib/validateBots.ts   schema check + serializer
 src/lib/validateMatchTrophy.ts  schema check + serializer
 src/lib/columns.ts        header-driven column resolution shared by the tabular parsers
 src/lib/nameResolve.ts    fuzzy name resolution against a constant list
 src/lib/recentSources.ts  remembered Google Sheet link per exporter
 src/lib/googleSheets.ts   sheet URL   -> workbook
-src/exporters/            one ExporterDefinition per config (heroes, arenas, matchTrophy) + the pure analysis runner
+src/exporters/            one ExporterDefinition per config (heroes, arenas, matchTrophy, bots) + the pure analysis runner
 src/hooks/                per-page workbook sources
 src/features/             the hand-written pages (trophy road, heroes, live config, reference)
 src/components/           app shell, stepper, ExporterPage, LiveGraphCheck, and the shared UI primitives
@@ -497,5 +536,5 @@ Each exporter page is an `ExporterDefinition` (see `src/exporters/arenas.tsx`): 
 tabs it needs, how to auto-select them, a pure `analyze` over the chosen sheets, an
 independent `validate` gate, a serializer and a preview table. `ExporterPage`
 supplies the rest - loading, tab picking, review, the live-config check and
-publishing. The remaining settings (bots, hero upgrades, shop, battle pass) are each one
+publishing. The remaining settings (hero upgrades, shop, battle pass) are each one
 definition plus a parser in `src/lib`.

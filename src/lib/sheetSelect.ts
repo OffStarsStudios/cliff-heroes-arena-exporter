@@ -232,10 +232,34 @@ export function autoSelectMatchTrophySheets(workbook: RawWorkbook): MatchTrophyS
   return { places: bestSheet(workbook.sheets, scoreMatchTrophy, 50) };
 }
 
+/* ------------------------------------------------------------------ Bots -- */
+
+export type BotsSheetSelection = {
+  /** The Bots tab: one row per level. */
+  bots: string | null;
+};
+
+/** Scores a sheet as the bots tab: a level column beside the tuning columns. */
+function scoreBots(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  let score = 0;
+  if (words.includes('bot') || words.includes('bots')) score += 30;
+  const hasLevel = headers.includes('level') || headers.includes('lvl');
+  const tuning = ['jump', 'dodge', 'raycast', 'fire'].filter((word) => headers.includes(word)).length;
+  if (hasLevel && tuning >= 2) score += 50;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+export function autoSelectBotsSheets(workbook: RawWorkbook): BotsSheetSelection {
+  return { bots: bestSheet(workbook.sheets, scoreBots, 50) };
+}
+
 /* --------------------------------------------------------------- Dataset -- */
 
 /** Which exporter a freshly loaded workbook looks like it is for. */
-export type Dataset = 'arena' | 'heroes' | 'arenas' | 'matchTrophy';
+export type Dataset = 'arena' | 'heroes' | 'arenas' | 'matchTrophy' | 'bots';
 
 /**
  * Guesses the dataset so the right exporter opens by default. A hero workbook
@@ -254,6 +278,7 @@ export function detectDataset(workbook: RawWorkbook): Dataset {
   if (arenas.settings !== null && arenas.arenas !== null) return 'arenas';
 
   if (autoSelectMatchTrophySheets(workbook).places !== null) return 'matchTrophy';
+  if (autoSelectBotsSheets(workbook).bots !== null) return 'bots';
 
   const arena = autoSelectSheets(workbook);
   const arenaTabs = [arena.arenas, arena.rewards].filter((name) => name !== null).length;

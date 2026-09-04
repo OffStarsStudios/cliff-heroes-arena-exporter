@@ -3,6 +3,7 @@ import { AppShell, type ShellSource, type View } from './components/AppShell';
 import { ExporterPage } from './components/ExporterPage';
 import type { ExporterDomain } from './domains/types';
 import { ARENAS_EXPORTER } from './exporters/arenas';
+import { BOTS_EXPORTER } from './exporters/bots';
 import { HEROES_EXPORTER } from './exporters/heroes';
 import { MATCH_TROPHY_EXPORTER } from './exporters/matchTrophy';
 import { ArenaExporter } from './features/ArenaExporter';
@@ -10,7 +11,7 @@ import { LiveConfig } from './features/LiveConfig';
 import { ParamReference } from './features/ParamReference';
 import { SOURCE_LABELS, useWorkbookSources } from './hooks/useWorkbookSources';
 
-const VIEWS: View[] = ['live', 'arena', 'heroes', 'arenas', 'matchTrophy', 'reference'];
+const VIEWS: View[] = ['live', 'arena', 'heroes', 'arenas', 'matchTrophy', 'bots', 'reference'];
 
 /** Which workbook each page owns. Pages without one show no source in the shell. */
 const DOMAIN_FOR_VIEW: Partial<Record<View, ExporterDomain>> = {
@@ -18,6 +19,7 @@ const DOMAIN_FOR_VIEW: Partial<Record<View, ExporterDomain>> = {
   heroes: 'heroes',
   arenas: 'arenas',
   matchTrophy: 'matchTrophy',
+  bots: 'bots',
 };
 
 function viewFromHash(): View {
@@ -77,6 +79,9 @@ export function App() {
           source={controllerFor('matchTrophy')}
           onNavigate={navigate}
         />
+      )}
+      {view === 'bots' && (
+        <ExporterPage definition={BOTS_EXPORTER} source={controllerFor('bots')} onNavigate={navigate} />
       )}
       {view === 'reference' && <ParamReference />}
     </AppShell>

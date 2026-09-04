@@ -253,3 +253,44 @@ export interface MatchTrophyTransformResult {
     warnings: number;
   };
 }
+
+/* ------------------------------------------------------------------ Bots -- */
+
+/** One difficulty step. Levels are numeric and run 0..N. */
+export interface BotTuning {
+  Level: number;
+  MinJumpInterval: number;
+  MaxJumpInterval: number;
+  MinDodgeChance: number;
+  MaxDodgeChance: number;
+  RaycastDistance: number;
+  RaycastInterval: number;
+  MinFireInterval: number;
+  MaxFireInterval: number;
+}
+
+export interface BotsConfig {
+  /** Highest defined level. Must equal the maximum `Level` in `Bots`. */
+  BotLevel: number;
+  Bots: BotTuning[];
+}
+
+export interface BotPreviewRow {
+  level: number;
+  jump: [number, number];
+  dodge: [number, number];
+  raycast: [number, number];
+  fire: [number, number];
+  sheetRow: number;
+}
+
+export interface BotsTransformResult {
+  config: BotsConfig;
+  preview: BotPreviewRow[];
+  issues: Issue[];
+  stats: {
+    levels: number;
+    errors: number;
+    warnings: number;
+  };
+}

@@ -55,6 +55,8 @@
   --arenas-soft: #fffbeb;
   --matchtrophy: #be123c;
   --matchtrophy-soft: #fff1f2;
+  --bots: #4d7c0f;
+  --bots-soft: #f7fee7;
 
   /* Density 8/10: 4px base, 8-32px working range */
   --space-1: 4px;
@@ -397,6 +399,11 @@ textarea {
 .page__badge--matchtrophy {
   background: var(--matchtrophy-soft);
   color: var(--matchtrophy);
+}
+
+.page__badge--bots {
+  background: var(--bots-soft);
+  color: var(--bots);
 }
 
 /* ---------- generic card ---------- */

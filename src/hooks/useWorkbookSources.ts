@@ -28,6 +28,7 @@ export const SOURCE_LABELS: Record<ExporterDomain, string> = {
   trophyRoad: 'Arena progression',
   arenas: 'Arenas Settings',
   matchTrophy: 'Match Trophy Settings',
+  bots: 'Bots Settings',
 };
 
 type Sources = Record<ExporterDomain, PageSource>;

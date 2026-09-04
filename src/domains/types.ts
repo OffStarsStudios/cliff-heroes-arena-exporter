@@ -1,43 +1,32 @@
 /**
  * Payload types for the eight ConfigCat settings that make up the live config.
  *
- * Four of them (`heroes`, `trophyRoad`, `arenas`, `matchTrophy`) are produced
- * by the spreadsheet exporters and have their types in `../lib/types`. The
- * other four are hand-authored JSON pasted into the ConfigCat dashboard; their
- * shapes are transcribed here from the live values so the config graph can be
- * checked.
+ * Five of them (`heroes`, `trophyRoad`, `arenas`, `matchTrophy`, `bots`) are
+ * produced by the spreadsheet exporters and have their types in `../lib/types`.
+ * The other three are hand-authored JSON pasted into the ConfigCat dashboard;
+ * their shapes are transcribed here from the live values so the config graph
+ * can be checked.
  */
 
 import type {
   ArenaDefinition,
   ArenaProgressConfig,
   ArenasConfig,
+  BotTuning,
+  BotsConfig,
   HeroesConfig,
   MatchTrophyConfig,
 } from '../lib/types';
 
-export type { ArenaDefinition, ArenaProgressConfig, ArenasConfig, HeroesConfig, MatchTrophyConfig };
-
-/* ------------------------------------------------------------------ bots -- */
-
-/** One difficulty step. Levels are numeric and run 0..N. */
-export interface BotTuning {
-  Level: number;
-  MinJumpInterval: number;
-  MaxJumpInterval: number;
-  MinDodgeChance: number;
-  MaxDodgeChance: number;
-  RaycastDistance: number;
-  RaycastInterval: number;
-  MinFireInterval: number;
-  MaxFireInterval: number;
-}
-
-export interface BotsConfig {
-  /** Highest defined level. Must equal the maximum `Level` in `Bots`. */
-  BotLevel: number;
-  Bots: BotTuning[];
-}
+export type {
+  ArenaDefinition,
+  ArenaProgressConfig,
+  ArenasConfig,
+  BotTuning,
+  BotsConfig,
+  HeroesConfig,
+  MatchTrophyConfig,
+};
 
 /* ----------------------------------------------------------- heroUpgrade -- */
 
@@ -138,9 +127,9 @@ export type DomainId =
   | 'battlePass';
 
 /** Domains that have an exporter page, and therefore their own workbook. */
-export type ExporterDomain = 'heroes' | 'trophyRoad' | 'arenas' | 'matchTrophy';
+export type ExporterDomain = 'heroes' | 'trophyRoad' | 'arenas' | 'matchTrophy' | 'bots';
 
-export const EXPORTER_DOMAINS: ExporterDomain[] = ['heroes', 'trophyRoad', 'arenas', 'matchTrophy'];
+export const EXPORTER_DOMAINS: ExporterDomain[] = ['heroes', 'trophyRoad', 'arenas', 'matchTrophy', 'bots'];
 
 /** The ConfigCat setting key each domain publishes to. */
 export const SETTING_KEYS: Record<DomainId, string> = {
