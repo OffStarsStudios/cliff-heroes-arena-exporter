@@ -1,4 +1,7 @@
+import * as XLSX from 'xlsx';
 import { buildLookup } from '../src/lib/lookups';
+import { readWorkbookBytes } from '../src/lib/workbook';
+import type { RawWorkbook } from '../src/lib/types';
 import { detectColumns } from '../src/lib/columnDetect';
 import { transform } from '../src/lib/transform';
 import type { RawCell, RawSheet, TransformResult } from '../src/lib/types';
@@ -58,4 +61,17 @@ export const REWARDS_SHEET = sheet('Rewards', [
 /** Errors only, as plain messages - handy for assertions. */
 export function errorMessages(result: TransformResult): string[] {
   return result.issues.filter((issue) => issue.severity === 'error').map((issue) => issue.message);
+}
+
+/**
+ * Builds a real workbook (through SheetJS and back) from literal grids, so tab
+ * selection and dataset detection can be tested without a binary fixture.
+ */
+export function workbookFromGrids(name: string, tabs: Record<string, RawCell[][]>): RawWorkbook {
+  const book = XLSX.utils.book_new();
+  for (const [tabName, rows] of Object.entries(tabs)) {
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(rows), tabName);
+  }
+  const bytes = XLSX.write(book, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+  return readWorkbookBytes(bytes, name);
 }

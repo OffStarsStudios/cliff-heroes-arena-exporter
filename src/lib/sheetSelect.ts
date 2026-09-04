@@ -94,12 +94,13 @@ export function autoSelectSheets(workbook: RawWorkbook): SheetSelection {
 
 /* ---------------------------------------------------------------- Heroes -- */
 
-export interface HeroSheetSelection {
+/** A type alias rather than an interface so it satisfies the generic tab-selection constraint. */
+export type HeroSheetSelection = {
   heroes: string | null;
   baseStats: string | null;
   levelFactors: string | null;
   powerSettings: string | null;
-}
+};
 
 /** Scores a sheet against a keyword set, rewarding the tab's actual shape. */
 function scoreHeroTab(sheet: RawSheet, required: string[], bonus: string[], negative: string[]): number {
@@ -152,22 +153,77 @@ export function autoSelectHeroSheets(workbook: RawWorkbook): HeroSheetSelection 
   return { heroes, baseStats, levelFactors, powerSettings };
 }
 
+/* ---------------------------------------------------------------- Arenas -- */
+
+/** A type alias rather than an interface so it satisfies the generic tab-selection constraint. */
+export type ArenaSheetSelection = {
+  /** The Arena Name -> Arena ID lookup tab. */
+  arenas: string | null;
+  /** The per-arena settings tab: track count and bot levels. */
+  settings: string | null;
+};
+
+function headerWords(sheet: RawSheet): string[] {
+  return (sheet.rows[0] ?? []).flatMap((cell) => tokens(String(cell ?? '')));
+}
+
+/**
+ * Scores a sheet as the arena settings tab. The name helps, but the headers
+ * decide: only a tab with track and bot columns can pass the minimum, so a
+ * hero workbook's `Power Settings` tab never qualifies on its name alone.
+ */
+function scoreArenaSettings(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  let score = 0;
+  if (words.includes('settings') || words.includes('setting')) score += 30;
+  if (words.includes('arena') || words.includes('arenas')) score += 15;
+  if (headers.includes('track') || headers.includes('tracks')) score += 25;
+  if (headers.includes('bot') || headers.includes('bots')) score += 25;
+  // A lookup tab names IDs; a settings tab never does.
+  if (headers.includes('id')) score -= 30;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+/** Picks default tabs for an arenas workbook: the settings tab, then the lookup. */
+export function autoSelectArenaSheets(workbook: RawWorkbook): ArenaSheetSelection {
+  const sheets = workbook.sheets;
+  const settings = bestSheet(sheets, scoreArenaSettings, 50);
+  const lookupCandidates = sheets.filter((sheet) => sheet.name !== settings);
+  const arenas = bestSheet(
+    lookupCandidates,
+    (sheet) => {
+      const headers = headerWords(sheet);
+      const penalty = headers.includes('track') || headers.includes('bot') ? 50 : 0;
+      return scoreLookup(sheet, ['arena', 'arenas']) - penalty;
+    },
+    30,
+  );
+  return { arenas, settings };
+}
+
+/* --------------------------------------------------------------- Dataset -- */
+
 /** Which exporter a freshly loaded workbook looks like it is for. */
-export type Dataset = 'arena' | 'heroes';
+export type Dataset = 'arena' | 'heroes' | 'arenas';
 
 /**
  * Guesses the dataset so the right exporter opens by default. A hero workbook
- * is one where the hero tabs all resolve and the arena lookups do not.
+ * is one where the hero tabs all resolve; an arenas workbook is one with a
+ * settings tab beside its lookup; anything else is treated as a trophy road.
  */
 export function detectDataset(workbook: RawWorkbook): Dataset {
   const hero = autoSelectHeroSheets(workbook);
   const heroTabs = [hero.heroes, hero.baseStats, hero.levelFactors, hero.powerSettings].filter(
     (name) => name !== null,
   ).length;
+  if (heroTabs === 4) return 'heroes';
+
+  const arenas = autoSelectArenaSheets(workbook);
+  if (arenas.settings !== null && arenas.arenas !== null) return 'arenas';
 
   const arena = autoSelectSheets(workbook);
   const arenaTabs = [arena.arenas, arena.rewards].filter((name) => name !== null).length;
-
-  if (heroTabs === 4) return 'heroes';
   return heroTabs > arenaTabs + 1 ? 'heroes' : 'arena';
 }
