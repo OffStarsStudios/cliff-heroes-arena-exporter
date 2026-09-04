@@ -28,6 +28,7 @@ const VIEW_FOR_DATASET: Record<Dataset, { view: View; label: string }> = {
   matchTrophy: { view: 'matchTrophy', label: 'match trophies' },
   bots: { view: 'bots', label: 'bots' },
   heroUpgrade: { view: 'heroUpgrade', label: 'hero upgrades' },
+  shop: { view: 'shop', label: 'shop' },
 };
 
 function emptySelection<S extends TabSelection>(tabs: TabSpec<S>[]): S {
@@ -305,6 +306,7 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
                 domain={definition.domain}
                 payload={generatedConfig}
                 environmentId={environmentId}
+                extraRegistry={result.registry}
                 onResult={setLiveCheck}
               />
 

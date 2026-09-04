@@ -203,11 +203,13 @@ describe('rewards', () => {
     const shop = clone(live.shop);
     shop.Products.push({
       ID: 'shop.featured.ghost',
+      SoldIn: 'RealMoney',
       IsEnabled: true,
       Contents: [{ RewardID: 'reward.hero.ghost', Amount: 1 }],
     });
     shop.Products.push({
       ID: 'shop.featured.ghost.again',
+      SoldIn: 'RealMoney',
       IsEnabled: true,
       Contents: [{ RewardID: 'reward.hero.ghost', Amount: 1 }],
     });

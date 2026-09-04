@@ -338,3 +338,60 @@ export interface HeroUpgradeTransformResult {
     warnings: number;
   };
 }
+
+/* ------------------------------------------------------------------ Shop -- */
+
+export type ShopSoldIn = 'RealMoney' | 'Gems' | 'Free' | 'Ad';
+
+export interface ShopContent {
+  RewardID: string;
+  Amount: number;
+}
+
+/**
+ * Which optional fields a product carries follows from how it is sold:
+ * `Gems` products carry `PriceInCurrency`, `Free` products `CooldownHours`,
+ * `Ad` products `DailyLimit`; real-money products are priced store-side.
+ * `IsListed` is written only when false.
+ */
+export interface ShopProduct {
+  ID: string;
+  SoldIn: ShopSoldIn;
+  IsEnabled: boolean;
+  IsListed?: boolean;
+  PriceInCurrency?: number;
+  BadgeLabel?: string;
+  OfferDurationHours?: number;
+  CooldownHours?: number;
+  DailyLimit?: number;
+  Contents: ShopContent[];
+}
+
+export interface ShopConfig {
+  Products: ShopProduct[];
+}
+
+export interface ShopPreviewRow {
+  id: string;
+  soldIn: ShopSoldIn;
+  enabled: boolean;
+  listed: boolean;
+  price: number | null;
+  badge: string | null;
+  /** "Coins x3500" per granted reward. */
+  contents: string[];
+  sheetRow: number;
+}
+
+export interface ShopTransformResult {
+  config: ShopConfig;
+  preview: ShopPreviewRow[];
+  issues: Issue[];
+  stats: {
+    products: number;
+    enabled: number;
+    contents: number;
+    errors: number;
+    warnings: number;
+  };
+}

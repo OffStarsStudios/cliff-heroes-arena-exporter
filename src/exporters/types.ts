@@ -4,6 +4,7 @@ import type { View } from '../components/AppShell';
 import type { DomainId } from '../domains/types';
 import type { Dataset } from '../lib/sheetSelect';
 import type { Issue, RawSheet, RawWorkbook } from '../lib/types';
+import type { IdRegistry } from '../workspace/registry';
 
 /**
  * Everything that differs between two exporter pages.
@@ -39,6 +40,11 @@ export interface AnalysisResult<TConfig, TRow> {
   stats: Stat[];
   /** Number of exported entries; the export is refused while it is zero. */
   count: number;
+  /**
+   * IDs the workbook defines (a Rewards lookup tab, say), so the live graph
+   * check can judge references the published configs alone cannot.
+   */
+  registry?: IdRegistry;
 }
 
 export interface ExporterDefinition<S extends TabSelection, TConfig, TRow> {

@@ -14,6 +14,7 @@ export type View =
   | 'matchTrophy'
   | 'bots'
   | 'heroUpgrade'
+  | 'shop'
   | 'reference';
 
 interface NavItem {
@@ -67,6 +68,12 @@ export const NAV_ITEMS: NavItem[] = [
     blurb: 'Upgrade cost curve per rarity',
     icon: 'coins',
   },
+  {
+    id: 'shop',
+    label: 'Shop',
+    blurb: 'Products, prices and what they grant',
+    icon: 'cart',
+  },
 ];
 
 export const REFERENCE_ITEM: NavItem = {
@@ -84,6 +91,7 @@ const CRUMB_LABEL: Record<View, string> = {
   matchTrophy: 'Match trophies',
   bots: 'Bots',
   heroUpgrade: 'Hero upgrades',
+  shop: 'Shop',
   reference: 'Power parameters',
 };
 
@@ -95,6 +103,7 @@ const CRUMB_SECTION: Record<View, string> = {
   matchTrophy: 'Exporters',
   bots: 'Exporters',
   heroUpgrade: 'Exporters',
+  shop: 'Exporters',
   reference: 'Reference',
 };
 

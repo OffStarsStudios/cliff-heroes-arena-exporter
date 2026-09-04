@@ -304,10 +304,42 @@ export function autoSelectHeroUpgradeSheets(workbook: RawWorkbook): HeroUpgradeS
   return { growth, costs };
 }
 
+/* ------------------------------------------------------------------ Shop -- */
+
+export type ShopSheetSelection = {
+  /** The Products tab. */
+  products: string | null;
+  /** The Reward Name -> Reward ID lookup tab. */
+  rewards: string | null;
+};
+
+function scoreProducts(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  let score = 0;
+  if (words.includes('products') || words.includes('product')) score += 30;
+  if (words.includes('shop') || words.includes('store')) score += 15;
+  const hasSale = headers.includes('sold') || headers.includes('enabled') || headers.includes('price');
+  const hasContents = headers.includes('reward') || headers.includes('amount');
+  if (hasSale && hasContents) score += 50;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+export function autoSelectShopSheets(workbook: RawWorkbook): ShopSheetSelection {
+  const products = bestSheet(workbook.sheets, scoreProducts, 50);
+  const rewards = bestSheet(
+    workbook.sheets.filter((sheet) => sheet.name !== products),
+    (sheet) => scoreLookup(sheet, ['reward', 'rewards']),
+    30,
+  );
+  return { products, rewards };
+}
+
 /* --------------------------------------------------------------- Dataset -- */
 
 /** Which exporter a freshly loaded workbook looks like it is for. */
-export type Dataset = 'arena' | 'heroes' | 'arenas' | 'matchTrophy' | 'bots' | 'heroUpgrade';
+export type Dataset = 'arena' | 'heroes' | 'arenas' | 'matchTrophy' | 'bots' | 'heroUpgrade' | 'shop';
 
 /**
  * Guesses the dataset so the right exporter opens by default. A hero workbook
@@ -330,6 +362,9 @@ export function detectDataset(workbook: RawWorkbook): Dataset {
 
   const upgrade = autoSelectHeroUpgradeSheets(workbook);
   if (upgrade.growth !== null && upgrade.costs !== null) return 'heroUpgrade';
+
+  const shop = autoSelectShopSheets(workbook);
+  if (shop.products !== null && shop.rewards !== null) return 'shop';
 
   const arena = autoSelectSheets(workbook);
   const arenaTabs = [arena.arenas, arena.rewards].filter((name) => name !== null).length;

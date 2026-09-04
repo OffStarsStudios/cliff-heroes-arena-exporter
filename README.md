@@ -18,13 +18,15 @@ A browser tool with one exporter per ConfigCat setting:
 - **Hero upgrades** - reads the Hero Upgrade Settings workbook and exports
   `hero-upgrade.json` (`heroUpgradeSettings`): the upgrade cost curve and the
   per-rarity bases.
+- **Shop** - reads the Shop Settings workbook and exports `shop.json`
+  (`shopSettings`): every product, how it is sold, and what it grants.
 
 Each exporter is its own section in the left sidebar and **keeps its own workbook**,
 because every config lives in its own Google Sheet (one folder per config under the
 `Economy` Drive folder). A page remembers the last Google Sheet link it loaded and
 offers to reload it with one click. Sections are deep-linkable (`#/arena` is the
-trophy road, `#/heroes`, `#/arenas`, `#/matchTrophy`, `#/bots`, `#/heroUpgrade`, `#/live`,
-`#/reference`).
+trophy road, `#/heroes`, `#/arenas`, `#/matchTrophy`, `#/bots`, `#/heroUpgrade`, `#/shop`,
+`#/live`, `#/reference`).
 
 ## Requirements
 
@@ -60,8 +62,8 @@ npm run build && npm start
 ## Using it
 
 Pick a section in the sidebar - **Trophy road**, **Hero stats**, **Arenas**,
-**Match trophies**, **Bots** or **Hero upgrades** - then work down the numbered
-steps. Each step shows its own status, and the step you still
+**Match trophies**, **Bots**, **Hero upgrades** or **Shop** - then work down the
+numbered steps. Each step shows its own status, and the step you still
 have to finish opens on its own.
 
 1. **Load the workbook.** Drop an `.xlsx` file, or paste a Google Sheets link. Each
@@ -75,6 +77,7 @@ have to finish opens on its own.
    - Match trophies: **Trophies by place**
    - Bots: **Bots**
    - Hero upgrades: **Growth**, **Costs**
+   - Shop: **Products**, **Rewards lookup**
 3. **Map the columns** (trophy road only). Detected columns are pre-filled; anything
    detection was unsure about is called out.
 4. **Review and export.** Live counts, then the errors and warnings, then a tab switch
@@ -426,6 +429,54 @@ and the schema gate.
 
 Warnings: a growth factor below 1 (each level would cost less than the last).
 
+## Output schema: shop
+
+```json
+{
+  "Products": [
+    { "ID": "shop.featured.cinder", "SoldIn": "RealMoney", "IsEnabled": true, "BadgeLabel": "SALE",
+      "OfferDurationHours": 6, "Contents": [{ "RewardID": "reward.hero.cinder", "Amount": 1 }] },
+    { "ID": "shop.coins.tier1", "SoldIn": "Gems", "IsEnabled": true, "PriceInCurrency": 80,
+      "Contents": [{ "RewardID": "reward.currency.coins", "Amount": 500 }] }
+  ]
+}
+```
+
+Keys follow the order `ID, SoldIn, IsEnabled, IsListed, PriceInCurrency, BadgeLabel,
+OfferDurationHours, CooldownHours, DailyLimit, Contents`, with unused optional keys
+omitted rather than written as null. `IsListed` is written only when false.
+
+### The Shop Settings sheet
+
+Two tabs. `Products` has one row per product: `Product ID | Sold In | Enabled |
+Listed | Price | Badge Label | Offer Duration Hours | Cooldown Hours | Daily Limit |
+Reward 1 | Amount 1 | Reward 2 | Amount 2 ...` - any number of reward/amount pairs.
+Sold In is a dropdown (RealMoney, Gems, Free, Ad); Enabled and Listed are
+checkboxes; Reward N is a dropdown fed by the `Rewards` tab, which maps reward
+names to reward IDs exactly as the trophy road workbook does.
+
+Which optional columns a row uses follows from Sold In: **Gems** products need a
+Price and real-money, free and ad products must not have one; **Free** products
+need Cooldown Hours; **Ad** products need a Daily Limit; Badge Label and Offer
+Duration Hours are optional for any product.
+
+### Shop validation
+
+Errors: missing Product ID / Sold In / Enabled / reward columns, a reward column
+with no amount column, a row with values but no ID, a duplicated ID, an unknown
+Sold In (with a suggestion), a non-boolean Enabled or Listed, a price / cooldown /
+daily limit that is missing where required or present where not, a non-numeric or
+out-of-range number, a reward name the Rewards tab does not define, a reward
+granted twice by one product, an amount missing or not a whole number of 1 or
+more, an amount with no reward beside it, an empty tab, and the schema gate.
+
+Warnings: an ID not matching `shop.<kind>.<name>`, a Sold In spelled with different
+case or spacing, and a product that grants nothing.
+
+The Rewards tab also feeds the live-config check, so reward IDs named by the
+trophy road and the battle pass are checked against it when this workbook is
+loaded.
+
 ## Output schema: hero stats
 
 ```json
@@ -556,6 +607,8 @@ src/lib/arenaDifficulties.ts  bot difficulty schema + name resolution
 src/lib/matchTrophy.ts    places tab  -> trophies by place + issues + preview
 src/lib/bots.ts           bots tab    -> bot levels + issues + preview
 src/lib/heroUpgrade.ts    growth + costs tabs -> upgrade config + issues + preview
+src/lib/shop.ts           products tab -> shop products + issues + preview
+src/lib/validateShop.ts   schema check + serializer
 src/lib/validateHeroUpgrade.ts  schema check + serializer
 src/lib/validateBots.ts   schema check + serializer
 src/lib/validateMatchTrophy.ts  schema check + serializer
@@ -563,7 +616,7 @@ src/lib/columns.ts        header-driven column resolution shared by the tabular 
 src/lib/nameResolve.ts    fuzzy name resolution against a constant list
 src/lib/recentSources.ts  remembered Google Sheet link per exporter
 src/lib/googleSheets.ts   sheet URL   -> workbook
-src/exporters/            one ExporterDefinition per config (heroes, arenas, matchTrophy, bots, heroUpgrade) + the pure analysis runner
+src/exporters/            one ExporterDefinition per config (heroes, arenas, matchTrophy, bots, heroUpgrade, shop) + the pure analysis runner
 src/hooks/                per-page workbook sources
 src/features/             the hand-written pages (trophy road, heroes, live config, reference)
 src/components/           app shell, stepper, ExporterPage, LiveGraphCheck, and the shared UI primitives
@@ -584,5 +637,5 @@ Each exporter page is an `ExporterDefinition` (see `src/exporters/arenas.tsx`): 
 tabs it needs, how to auto-select them, a pure `analyze` over the chosen sheets, an
 independent `validate` gate, a serializer and a preview table. `ExporterPage`
 supplies the rest - loading, tab picking, review, the live-config check and
-publishing. The remaining settings (shop, battle pass) are each one definition plus a
-parser in `src/lib`.
+publishing. The one remaining setting, battle pass, is one definition plus a parser in
+`src/lib`.

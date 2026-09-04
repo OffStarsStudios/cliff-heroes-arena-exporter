@@ -1,11 +1,10 @@
 /**
  * Payload types for the eight ConfigCat settings that make up the live config.
  *
- * Six of them (`heroes`, `trophyRoad`, `arenas`, `matchTrophy`, `bots`,
- * `heroUpgrade`) are produced by the spreadsheet exporters and have their types
- * in `../lib/types`. The other two are hand-authored JSON pasted into the
- * ConfigCat dashboard; their shapes are transcribed here from the live values
- * so the config graph can be checked.
+ * Seven of them are produced by the spreadsheet exporters and have their
+ * types in `../lib/types`. `battlePass` is still hand-authored JSON pasted
+ * into the ConfigCat dashboard; its shape is transcribed here from the live
+ * value so the config graph can be checked.
  */
 
 import type {
@@ -18,6 +17,10 @@ import type {
   HeroUpgradeConfig,
   MatchTrophyConfig,
   RarityCost,
+  ShopConfig,
+  ShopContent,
+  ShopProduct,
+  ShopSoldIn,
 } from '../lib/types';
 
 export type {
@@ -30,41 +33,11 @@ export type {
   HeroUpgradeConfig,
   MatchTrophyConfig,
   RarityCost,
+  ShopConfig,
+  ShopContent,
+  ShopProduct,
+  ShopSoldIn,
 };
-
-/* ----------------------------------------------------------------- shop -- */
-
-export interface ShopContent {
-  RewardID: string;
-  Amount: number;
-}
-
-/**
- * Polymorphic with no discriminator field: the product variant is inferred
- * from the `ID` prefix. `shop.featured.*` carries `BadgeLabel` and
- * `OfferDurationHours`, `shop.skin.*` carries `PriceInCurrency`,
- * `shop.free.*` carries `CooldownHours`, `shop.rv.*` carries `DailyLimit`,
- * and the currency tiers carry no price at all because they are priced
- * store-side as IAPs.
- */
-export interface ShopProduct {
-  ID: string;
-  /** How it is bought. Absent on older payloads; the shop exporter will require it. */
-  SoldIn?: 'RealMoney' | 'Gems' | 'Free' | 'Ad';
-  IsEnabled: boolean;
-  /** False hides the product from the store list while keeping it purchasable by ID. */
-  IsListed?: boolean;
-  BadgeLabel?: string;
-  OfferDurationHours?: number;
-  PriceInCurrency?: number;
-  CooldownHours?: number;
-  DailyLimit?: number;
-  Contents: ShopContent[];
-}
-
-export interface ShopConfig {
-  Products: ShopProduct[];
-}
 
 /* ----------------------------------------------------------- battlePass -- */
 
@@ -107,7 +80,7 @@ export type DomainId =
   | 'battlePass';
 
 /** Domains that have an exporter page, and therefore their own workbook. */
-export type ExporterDomain = 'heroes' | 'trophyRoad' | 'arenas' | 'matchTrophy' | 'bots' | 'heroUpgrade';
+export type ExporterDomain = 'heroes' | 'trophyRoad' | 'arenas' | 'matchTrophy' | 'bots' | 'heroUpgrade' | 'shop';
 
 export const EXPORTER_DOMAINS: ExporterDomain[] = [
   'heroes',
@@ -116,6 +89,7 @@ export const EXPORTER_DOMAINS: ExporterDomain[] = [
   'matchTrophy',
   'bots',
   'heroUpgrade',
+  'shop',
 ];
 
 /** The ConfigCat setting key each domain publishes to. */
