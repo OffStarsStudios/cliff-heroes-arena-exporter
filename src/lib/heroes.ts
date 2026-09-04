@@ -1,4 +1,11 @@
-import { cellText, headerTokens, isBlank, normalizeName, parseNumber } from './normalize';
+import {
+  requireNumber as requireSheetNumber,
+  resolveColumns as resolveSheetColumns,
+  type ColumnSpec,
+  type Columns,
+  type NumberCodes,
+} from './columns';
+import { cellText, isBlank, normalizeName, parseNumber } from './normalize';
 import { resolveLookup } from './lookups';
 import {
   FIXED_POWER_PARAMS,
@@ -78,57 +85,18 @@ const FIELD_TITLE: Record<FieldName, string> = {
   duration: 'Duration',
 };
 
-function headerText(row: RawCell[], index: number): string {
-  const cell = row[index] ?? null;
-  return isBlank(cell) ? '' : String(cell).trim();
-}
-
-/**
- * Finds a column by header text. Earlier spellings in the accepted list win,
- * so a bare `Speed` header never steals the `Max Speed` column.
- */
-function findColumn(headers: string[], field: FieldName): number {
-  const accepted = COLUMN_LABELS[field] as readonly string[];
-  let best = -1;
-  let bestRank = Infinity;
-  headers.forEach((header, index) => {
-    const tokens = headerTokens(header).join(' ');
-    if (tokens === '') return;
-    const rank = accepted.indexOf(tokens);
-    if (rank >= 0 && rank < bestRank) {
-      bestRank = rank;
-      best = index;
-    }
-  });
-  return best;
-}
-
-interface Columns {
-  headers: string[];
-  index: Partial<Record<FieldName, number>>;
-}
+const COLUMN_SPEC: ColumnSpec<FieldName> = {
+  labels: COLUMN_LABELS,
+  titles: FIELD_TITLE,
+  missingCode: 'hero-missing-column',
+};
 
 /** Resolves the required columns of a hero tab, reporting any that are absent. */
-function resolveColumns(sheet: RawSheet, fields: FieldName[], issues: Issue[]): Columns {
-  const headerRow = sheet.rows[0] ?? [];
-  const width = sheet.rows.reduce((max, row) => Math.max(max, row.length), headerRow.length);
-  const headers = Array.from({ length: width }, (_, i) => headerText(headerRow, i));
-
-  const index: Partial<Record<FieldName, number>> = {};
-  for (const field of fields) {
-    const found = findColumn(headers, field);
-    if (found === -1) {
-      issues.push({
-        severity: 'error',
-        code: 'hero-missing-column',
-        message: `The "${sheet.name}" tab has no "${FIELD_TITLE[field]}" column.`,
-      });
-      continue;
-    }
-    index[field] = found;
-  }
-  return { headers, index };
+function resolveColumns(sheet: RawSheet, fields: FieldName[], issues: Issue[]): Columns<FieldName> {
+  return resolveSheetColumns(sheet, fields, COLUMN_SPEC, issues);
 }
+
+const NUMBER_CODES: NumberCodes = { missing: 'hero-missing-value', nonNumeric: 'hero-non-numeric' };
 
 /** Reads a required numeric cell, reporting rather than substituting on failure. */
 function requireNumber(
@@ -138,23 +106,7 @@ function requireNumber(
   sheetRow: number,
   issues: Issue[],
 ): number | null {
-  if (column === undefined) return null;
-  const cell = row[column] ?? null;
-  if (isBlank(cell)) {
-    issues.push({ severity: 'error', code: 'hero-missing-value', message: `${what} is empty.`, sheetRow });
-    return null;
-  }
-  const parsed = parseNumber(cell);
-  if (!parsed.ok) {
-    issues.push({
-      severity: 'error',
-      code: 'hero-non-numeric',
-      message: `${what} is not a number (found ${JSON.stringify(cell)}).`,
-      sheetRow,
-    });
-    return null;
-  }
-  return parsed.value;
+  return requireSheetNumber(row, column, what, sheetRow, issues, NUMBER_CODES);
 }
 
 /* ----------------------------------------------------------- base stats -- */
