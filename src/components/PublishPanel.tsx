@@ -17,6 +17,12 @@ interface PublishPanelProps {
   /** True when the exporter has outstanding errors, so publishing is refused. */
   blocked: boolean;
   blockedReason: string;
+  /**
+   * Controlled environment, for pages that share the picker with another
+   * component (the live graph check). Uncontrolled when omitted.
+   */
+  environmentId?: string;
+  onEnvironmentChange?: (environmentId: string) => void;
 }
 
 function ChangeList({ entry }: { entry: PlanEntry }) {
@@ -122,11 +128,23 @@ function Results({ response }: { response: ApplyResponse }) {
  * silent overwrite. Publishing to the environment the game actually reads
  * needs one more explicit confirmation on top.
  */
-export function PublishPanel({ domain, payload, blocked, blockedReason }: PublishPanelProps) {
+export function PublishPanel({
+  domain,
+  payload,
+  blocked,
+  blockedReason,
+  environmentId: controlledEnvironmentId,
+  onEnvironmentChange,
+}: PublishPanelProps) {
   const live = liveEnvironment();
-  const [environmentId, setEnvironmentId] = useState(
+  const [ownEnvironmentId, setOwnEnvironmentId] = useState(
     live?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
+  const environmentId = controlledEnvironmentId ?? ownEnvironmentId;
+  const setEnvironmentId = (next: string) => {
+    setOwnEnvironmentId(next);
+    onEnvironmentChange?.(next);
+  };
   const [plan, setPlan] = useState<Plan | null>(null);
   const [response, setResponse] = useState<ApplyResponse | null>(null);
   const [confirmed, setConfirmed] = useState(false);

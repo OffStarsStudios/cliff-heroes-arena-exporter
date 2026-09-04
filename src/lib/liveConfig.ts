@@ -8,6 +8,8 @@
 
 import type { ConfigSet, DomainId } from '../domains/types';
 import { SETTING_KEYS } from '../domains/types';
+import type { Issue } from './types';
+import type { GraphReport } from '../workspace/graph';
 
 export interface TreeSetting {
   settingId: number;
@@ -339,4 +341,39 @@ export function unknownSettingKeys(values: Values): string[] {
   return values.settings
     .map((setting) => setting.key)
     .filter((key): key is string => key !== null && domainForKey(key) === null);
+}
+
+/* ---------------------------------------------------- candidate checking -- */
+
+/** The live set with one domain replaced by a payload that is about to be published. */
+export function withCandidate(set: ConfigSet, domain: DomainId, payload: unknown): ConfigSet {
+  return { ...set, [domain]: payload } as ConfigSet;
+}
+
+export interface GraphComparison {
+  /** Issues the candidate causes that the live config does not have. */
+  introduced: Issue[];
+  /** Issues present with and without the candidate - not this change's doing. */
+  preexisting: Issue[];
+  /** Live issues the candidate makes go away. */
+  resolved: Issue[];
+}
+
+function issueKey(issue: Issue): string {
+  return `${issue.code}\n${issue.message}`;
+}
+
+/**
+ * Splits a candidate's graph report against the live baseline, so a warning
+ * that fires on every run (the undeclared difficulty mapping, say) is never
+ * read as something the current change caused.
+ */
+export function compareGraphReports(baseline: GraphReport, candidate: GraphReport): GraphComparison {
+  const before = new Set(baseline.issues.map(issueKey));
+  const after = new Set(candidate.issues.map(issueKey));
+  return {
+    introduced: candidate.issues.filter((issue) => !before.has(issueKey(issue))),
+    preexisting: candidate.issues.filter((issue) => before.has(issueKey(issue))),
+    resolved: baseline.issues.filter((issue) => !after.has(issueKey(issue))),
+  };
 }

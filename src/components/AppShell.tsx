@@ -2,7 +2,11 @@ import type { ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import type { RawWorkbook } from '../lib/types';
 
-export type View = 'live' | 'arena' | 'heroes' | 'reference';
+/**
+ * Page ids. Note `'arena'` is the trophy road page (its historical route,
+ * `#/arena`, is documented and kept) while `'arenas'` is the arenas config.
+ */
+export type View = 'live' | 'arena' | 'heroes' | 'arenas' | 'reference';
 
 interface NavItem {
   id: View;
@@ -21,8 +25,8 @@ export const LIVE_ITEM: NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   {
     id: 'arena',
-    label: 'Arena progress',
-    blurb: 'Trophy milestones, arenas, rewards',
+    label: 'Trophy road',
+    blurb: 'Trophy milestones, arena unlocks, rewards',
     icon: 'trophy',
   },
   {
@@ -30,6 +34,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Hero stats',
     blurb: 'Base stats, level curves, power',
     icon: 'spark',
+  },
+  {
+    id: 'arenas',
+    label: 'Arenas',
+    blurb: 'Track counts and bot line-ups',
+    icon: 'table',
   },
 ];
 
@@ -42,8 +52,9 @@ export const REFERENCE_ITEM: NavItem = {
 
 const CRUMB_LABEL: Record<View, string> = {
   live: 'Live config',
-  arena: 'Arena progress',
+  arena: 'Trophy road',
   heroes: 'Hero stats',
+  arenas: 'Arenas',
   reference: 'Power parameters',
 };
 
@@ -51,18 +62,27 @@ const CRUMB_SECTION: Record<View, string> = {
   live: 'Live ops',
   arena: 'Exporters',
   heroes: 'Exporters',
+  arenas: 'Exporters',
   reference: 'Reference',
 };
+
+/** The current page's workbook, for the rail and the top bar. Null on pages without one. */
+export interface ShellSource {
+  label: string;
+  workbook: RawWorkbook | null;
+  onReset: () => void;
+}
 
 interface AppShellProps {
   view: View;
   onNavigate: (view: View) => void;
-  workbook: RawWorkbook | null;
-  onReset: () => void;
+  source: ShellSource | null;
   children: ReactNode;
 }
 
-export function AppShell({ view, onNavigate, workbook, onReset, children }: AppShellProps) {
+export function AppShell({ view, onNavigate, source, children }: AppShellProps) {
+  const workbook = source?.workbook ?? null;
+
   const renderLink = (item: NavItem) => (
     <button
       key={item.id}
@@ -109,14 +129,14 @@ export function AppShell({ view, onNavigate, workbook, onReset, children }: AppS
           {renderLink(REFERENCE_ITEM)}
         </div>
 
-        {workbook !== null && (
+        {source !== null && workbook !== null && (
           <div className="rail__source">
             <span className="rail__source-label">Loaded workbook</span>
             <span className="rail__source-name">{workbook.sourceName}</span>
             <span className="rail__source-meta">
-              {workbook.sheets.length} tab{workbook.sheets.length === 1 ? '' : 's'}
+              for {source.label} - {workbook.sheets.length} tab{workbook.sheets.length === 1 ? '' : 's'}
             </span>
-            <button type="button" className="btn btn--sm" onClick={onReset}>
+            <button type="button" className="btn btn--sm" onClick={source.onReset}>
               <Icon name="swap" size={13} />
               Change source
             </button>

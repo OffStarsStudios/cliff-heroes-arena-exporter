@@ -4,25 +4,40 @@ import type { RawWorkbook } from '../lib/types';
 
 export type SourceMode = 'file' | 'url';
 
-/** Everything the source step needs, owned by App so both exporters share it. */
+/** Everything the source step needs. Each exporter page has its own. */
 export interface SourceController {
+  /** How this page names its workbook, e.g. "Arenas Settings". */
+  label: string;
   workbook: RawWorkbook | null;
   busy: boolean;
   error: string | null;
+  /** The Google Sheet link this page loaded last time, if any. */
+  lastUrl: string | null;
   onFile: (file: File) => void;
   onUrl: (url: string) => void;
+  /** Loads `lastUrl` again. No-op when there is none. */
+  onReloadLast: () => void;
   onReset: () => void;
   onClearError: () => void;
 }
 
 const ACCEPT = '.xlsx,.xlsm,.xls,.csv';
 
+/** A short, recognisable form of a sheet link for the reload banner. */
+function describeUrl(url: string): string {
+  const match = /\/spreadsheets\/d\/(?:e\/)?([a-zA-Z0-9-_]+)/.exec(url);
+  if (match) return `sheet ${match[1].slice(0, 10)}...`;
+  return url.length > 48 ? `${url.slice(0, 45)}...` : url;
+}
+
 export function SourcePanel({ source }: { source: SourceController }) {
-  const { workbook, busy, error, onFile, onUrl, onReset, onClearError } = source;
+  const { label, workbook, busy, error, lastUrl, onFile, onUrl, onReloadLast, onReset, onClearError } =
+    source;
   const inputRef = useRef<HTMLInputElement>(null);
-  const [mode, setMode] = useState<SourceMode>('file');
+  // A page that has loaded a sheet before opens on the link form, prefilled.
+  const [mode, setMode] = useState<SourceMode>(lastUrl === null ? 'file' : 'url');
   const [dragging, setDragging] = useState(false);
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(lastUrl ?? '');
   const urlId = useId();
 
   const handleDrop = useCallback(
@@ -72,7 +87,7 @@ export function SourcePanel({ source }: { source: SourceController }) {
     <div className="stack-sm">
       <div className="row-between">
         <p className="step__note" style={{ margin: 0 }}>
-          Load the design workbook once - both exporters read from it.
+          Load the <strong>{label}</strong> workbook. Each exporter keeps its own.
         </p>
         <div className="segmented" role="group" aria-label="Spreadsheet source">
           <button
@@ -97,6 +112,19 @@ export function SourcePanel({ source }: { source: SourceController }) {
           </button>
         </div>
       </div>
+
+      {lastUrl !== null && (
+        <div className="banner banner--info">
+          <Icon name="link" size={15} className="banner__icon" />
+          <span>
+            Last time this page loaded {describeUrl(lastUrl)}.{' '}
+            <button type="button" className="btn btn--sm" onClick={onReloadLast} disabled={busy}>
+              {busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" size={13} />}
+              Reload that sheet
+            </button>
+          </span>
+        </div>
+      )}
 
       {mode === 'file' ? (
         <>

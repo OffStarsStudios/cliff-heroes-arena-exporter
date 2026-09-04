@@ -3,6 +3,7 @@ import { ActionBar } from '../components/ActionBar';
 import { ColumnMapper } from '../components/ColumnMapper';
 import { Icon } from '../components/Icon';
 import { JsonOutput } from '../components/JsonOutput';
+import { LiveGraphCheck, type LiveCheckResult } from '../components/LiveGraphCheck';
 import { PreviewTable } from '../components/PreviewTable';
 import { PublishPanel } from '../components/PublishPanel';
 import { SheetPicker } from '../components/SheetPicker';
@@ -23,6 +24,7 @@ import type {
   TransformResult,
 } from '../lib/types';
 import type { View } from '../components/AppShell';
+import { ENVIRONMENTS, liveEnvironment } from '../domains/account';
 
 const DOWNLOAD_FILENAME = 'arena-progress.json';
 
@@ -49,6 +51,10 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
   const [schemaError, setSchemaError] = useState<string | null>(null);
   const [openStep, setOpenStep] = useState(1);
   const [outputTab, setOutputTab] = useState<'preview' | 'json'>('preview');
+  const [environmentId, setEnvironmentId] = useState(
+    () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
+  );
+  const [liveCheck, setLiveCheck] = useState<LiveCheckResult | null>(null);
 
   // A new workbook resets the tab choices.
   useEffect(() => {
@@ -216,7 +222,7 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
           <span className="page__badge page__badge--arena" aria-hidden="true">
             <Icon name="trophy" size={17} />
           </span>
-          Arena progress
+          Trophy road
         </h1>
         <p className="page__lead">
           Turns the progression sheet into <span className="mono">arena-progress.json</span> - trophy
@@ -387,18 +393,29 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
                 )}
               </div>
 
-              {analysis.result !== null && (
-                <PublishPanel
-                  domain="trophyRoad"
-                  payload={analysis.result.config}
-                  blocked={!canGenerate}
-                  blockedReason={
-                    errorCount > 0
-                      ? `${errorCount} error${errorCount === 1 ? '' : 's'} block publishing, the same way they block the download.`
-                      : 'There is nothing to publish yet.'
-                  }
-                />
-              )}
+              <LiveGraphCheck
+                domain="trophyRoad"
+                payload={generated === null ? null : analysis.result.config}
+                environmentId={environmentId}
+                onResult={setLiveCheck}
+              />
+
+              <PublishPanel
+                domain="trophyRoad"
+                payload={analysis.result.config}
+                blocked={!canGenerate || generated === null || (liveCheck?.introducedErrors ?? 0) > 0}
+                blockedReason={
+                  errorCount > 0
+                    ? `${errorCount} error${errorCount === 1 ? '' : 's'} block publishing, the same way they block the download.`
+                    : (liveCheck?.introducedErrors ?? 0) > 0
+                      ? `The check against the live config found ${liveCheck?.introducedErrors} error${liveCheck?.introducedErrors === 1 ? '' : 's'} this change would introduce. Fix the sheet and regenerate.`
+                      : generated === null
+                        ? 'Generate the JSON first - publishing sends exactly what was generated and checked.'
+                        : 'There is nothing to publish yet.'
+                }
+                environmentId={environmentId}
+                onEnvironmentChange={setEnvironmentId}
+              />
             </div>
           )}
         </Step>

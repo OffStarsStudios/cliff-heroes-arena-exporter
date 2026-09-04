@@ -51,6 +51,8 @@
   --arena-soft: #f5f3ff;
   --heroes: #0891b2;
   --heroes-soft: #ecfeff;
+  --arenas: #b45309;
+  --arenas-soft: #fffbeb;
 
   /* Density 8/10: 4px base, 8-32px working range */
   --space-1: 4px;
@@ -383,6 +385,11 @@ textarea {
 .page__badge--heroes {
   background: var(--heroes-soft);
   color: var(--heroes);
+}
+
+.page__badge--arenas {
+  background: var(--arenas-soft);
+  color: var(--arenas);
 }
 
 /* ---------- generic card ---------- */
@@ -1072,6 +1079,48 @@ tbody tr:hover td {
   background: var(--surface-sunken);
   border-color: var(--border);
   color: var(--text-muted);
+}
+
+/* Bot difficulties, matching the colours the sheet dropdown uses. */
+.tag--bot-easy {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.tag--bot-medium {
+  background: #fef9c3;
+  border-color: #fde047;
+  color: #854d0e;
+}
+
+.tag--bot-hard {
+  background: #ffedd5;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.tag--bot-veryhard {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+/* Live graph check: pre-existing issues fold away. */
+.disclosure {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.disclosure > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.disclosure[open] > summary {
+  margin-bottom: 8px;
 }
 
 /* ---------- tabs ---------- */
