@@ -3,8 +3,8 @@ import { AppShell, type ShellSource, type View } from './components/AppShell';
 import { ExporterPage } from './components/ExporterPage';
 import type { ExporterDomain } from './domains/types';
 import { ARENAS_EXPORTER } from './exporters/arenas';
+import { HEROES_EXPORTER } from './exporters/heroes';
 import { ArenaExporter } from './features/ArenaExporter';
-import { HeroExporter } from './features/HeroExporter';
 import { LiveConfig } from './features/LiveConfig';
 import { ParamReference } from './features/ParamReference';
 import { SOURCE_LABELS, useWorkbookSources } from './hooks/useWorkbookSources';
@@ -55,7 +55,13 @@ export function App() {
       {view === 'arena' && (
         <ArenaExporter source={controllerFor('trophyRoad')} onNavigate={navigate} />
       )}
-      {view === 'heroes' && <HeroExporter source={controllerFor('heroes')} onNavigate={navigate} />}
+      {view === 'heroes' && (
+        <ExporterPage
+          definition={HEROES_EXPORTER}
+          source={controllerFor('heroes')}
+          onNavigate={navigate}
+        />
+      )}
       {view === 'arenas' && (
         <ExporterPage
           definition={ARENAS_EXPORTER}

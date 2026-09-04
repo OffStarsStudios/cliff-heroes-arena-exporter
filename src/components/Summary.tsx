@@ -1,5 +1,5 @@
 import { Icon } from './Icon';
-import type { HeroTransformResult, Issue, TransformResult } from '../lib/types';
+import type { Issue, TransformResult } from '../lib/types';
 
 interface StatProps {
   value: number;
@@ -25,20 +25,6 @@ export function ArenaStats({ result }: { result: TransformResult }) {
       <Stat value={stats.arenas} label="Arenas" />
       <Stat value={stats.arenaUnlockMilestones} label="Arena unlocks" />
       <Stat value={stats.rewardMilestones} label="Rewards" />
-      <Stat value={stats.errors} label="Errors" tone={stats.errors > 0 ? 'danger' : 'ok'} />
-      <Stat value={stats.warnings} label="Warnings" tone={stats.warnings > 0 ? 'warn' : undefined} />
-    </div>
-  );
-}
-
-/** Live counts for the hero exporter. */
-export function HeroStats({ result }: { result: HeroTransformResult }) {
-  const { stats } = result;
-  return (
-    <div className="stats">
-      <Stat value={stats.heroes} label="Heroes" />
-      <Stat value={stats.levels} label="Levels" />
-      <Stat value={stats.powerParams} label="Power params" />
       <Stat value={stats.errors} label="Errors" tone={stats.errors > 0 ? 'danger' : 'ok'} />
       <Stat value={stats.warnings} label="Warnings" tone={stats.warnings > 0 ? 'warn' : undefined} />
     </div>
