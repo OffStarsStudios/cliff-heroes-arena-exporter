@@ -242,6 +242,8 @@ export interface ApplyResult {
   apiVersion?: string;
   bytes?: number;
   verified?: boolean;
+  /** What was recorded in ConfigCat's audit log and in the git commit body. */
+  note?: string;
 }
 
 export interface GitCommit {

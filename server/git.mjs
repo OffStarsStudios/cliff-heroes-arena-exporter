@@ -66,7 +66,7 @@ export async function commitFile({ path, content, message }) {
     return {
       path,
       committed: false,
-      reason: 'GITHUB_TOKEN is not set, so the change was published but not recorded in git.',
+      reason: `GITHUB_TOKEN is not set, so the change is live but ${path} was not updated in ${REPO}. Add a fine-grained personal access token with Contents: read and write on that repository to the environment.`,
     };
   }
 

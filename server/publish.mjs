@@ -41,6 +41,56 @@ export function hashValue(text) {
   return createHash('sha256').update(text ?? '', 'utf8').digest('hex').slice(0, 16);
 }
 
+/**
+ * The longest note we will send to ConfigCat.
+ *
+ * The API documents no limit, so this is a self-imposed one: an audit log
+ * entry is meant to be read at a glance, and a publish that rewrites a whole
+ * config would otherwise produce hundreds of lines nobody scrolls through.
+ */
+const NOTE_LIMIT = 900;
+
+/**
+ * The note recorded with a publish - in ConfigCat's audit log, and as the body
+ * of the git commit, so the two records say the same thing.
+ *
+ * It answers the question someone asks when they find a change later: what
+ * moved, and who asked for it. The individual changes come first because they
+ * are the part worth reading; the counts frame them.
+ */
+export function buildPublishNote({ settingKey, changes = [], summary, note }) {
+  const lead = note ?? `Published ${settingKey} from the back office.`;
+
+  if (changes.length === 0) return lead;
+
+  const counts = [];
+  if (summary?.added) counts.push(`${summary.added} added`);
+  if (summary?.removed) counts.push(`${summary.removed} removed`);
+  if (summary?.changed) counts.push(`${summary.changed} changed`);
+  if (summary?.reordered) counts.push(`${summary.reordered} reordered`);
+
+  const total = summary?.total ?? changes.length;
+  const headline = `${total} change${total === 1 ? '' : 's'}${counts.length > 0 ? ` (${counts.join(', ')})` : ''}:`;
+
+  // Add descriptions until the budget runs out, then say how many were left
+  // out. Truncating mid-sentence would make the log look corrupted.
+  const described = changes.map((change) => change.description ?? describeChange(change));
+  const kept = [];
+  let used = `${lead} ${headline}`.length;
+  for (const description of described) {
+    const cost = description.length + 2;
+    const remaining = described.length - kept.length - 1;
+    const tail = remaining > 0 ? ` and ${remaining} more`.length : 0;
+    if (used + cost + tail > NOTE_LIMIT) break;
+    kept.push(description);
+    used += cost;
+  }
+
+  const omitted = described.length - kept.length;
+  const body = kept.join('; ') + (omitted > 0 ? ` and ${omitted} more` : '');
+  return `${lead} ${headline} ${body}`;
+}
+
 function findSetting(values, settingKey) {
   return values.settings.find((setting) => setting.key === settingKey) ?? null;
 }
@@ -152,17 +202,24 @@ export async function planPublish({ configId, environmentId, entries, productId 
  * The v2 and v1 shapes differ in where the value lives, and which API serves a
  * config depends on the format it was created in, so this tries v2 and falls
  * back - the same arrangement `getValues` uses.
+ *
+ * `reason` is sent on both versions. ConfigCat records it in the product's
+ * audit log, and requires it when "Config changes require a reason" is turned
+ * on, so sending it always means that preference can be enabled without
+ * breaking this console.
  */
-async function patchValue(environmentId, settingId, text) {
+async function patchValue(environmentId, settingId, text, reason) {
   const attempts = [
     { version: 'v2', body: [{ op: 'replace', path: '/defaultValue/stringValue', value: text }] },
     { version: 'v1', body: [{ op: 'replace', path: '/value', value: text }] },
   ];
+  const query =
+    typeof reason === 'string' && reason !== '' ? `?reason=${encodeURIComponent(reason)}` : '';
 
   const failures = [];
   for (const attempt of attempts) {
     const response = await tryRequest(
-      `/${attempt.version}/environments/${environmentId}/settings/${settingId}/value`,
+      `/${attempt.version}/environments/${environmentId}/settings/${settingId}/value${query}`,
       { method: 'PATCH', body: attempt.body },
     );
     if (response.ok) return { version: attempt.version };
@@ -226,14 +283,25 @@ export async function applyPublish({ configId, environmentId, entries, productId
       continue;
     }
 
+    // The note is built from the same diff the plan showed, so the audit log
+    // entry says what actually changed rather than that something did.
+    const changes = diffJson(current.json, entry.payload);
+    const note = buildPublishNote({
+      settingKey: entry.settingKey,
+      changes: changes.map((change) => ({ ...change, description: describeChange(change) })),
+      summary: summarizeDiff(changes),
+      note: entry.note,
+    });
+
     try {
-      const written = await patchValue(environmentId, current.settingId, text);
+      const written = await patchValue(environmentId, current.settingId, text, note);
       results.push({
         settingKey: entry.settingKey,
         settingId: current.settingId,
         status: 'written',
         apiVersion: written.version,
         bytes: Buffer.byteLength(text, 'utf8'),
+        note,
       });
     } catch (error) {
       results.push({
@@ -281,7 +349,9 @@ export async function applyPublish({ configId, environmentId, entries, productId
       await commitFile({
         path: entry.gitPath,
         content: toGitContent(entry.payload),
-        message: `Publish ${result.settingKey} to ${environmentId}\n\n${entry.note ?? 'Published from the back office console.'}`,
+        // The same note ConfigCat's audit log got, so the two records of one
+        // publish do not have to be reconciled by hand later.
+        message: `Publish ${result.settingKey} to ${environmentId}\n\n${result.note ?? 'Published from the back office console.'}`,
       }),
     );
   }

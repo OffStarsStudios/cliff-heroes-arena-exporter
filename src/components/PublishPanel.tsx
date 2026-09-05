@@ -89,10 +89,18 @@ function Results({ response }: { response: ApplyResponse }) {
               ? `${result.settingKey} was already identical.`
               : `${result.settingKey}: ${result.message}`;
         return (
-          <p key={result.settingKey} className={`banner banner--${tone}`}>
-            <Icon name={tone === 'ok' ? 'check' : 'alert'} size={14} className="banner__icon" />
-            <span>{text}</span>
-          </p>
+          <div key={result.settingKey} className="stack-sm">
+            <p className={`banner banner--${tone}`}>
+              <Icon name={tone === 'ok' ? 'check' : 'alert'} size={14} className="banner__icon" />
+              <span>{text}</span>
+            </p>
+            {result.note !== undefined && (
+              <div>
+                <p className="step__section-title">Recorded in the ConfigCat audit log</p>
+                <p className="field__note">{result.note}</p>
+              </div>
+            )}
+          </div>
         );
       })}
 
@@ -111,7 +119,11 @@ function Results({ response }: { response: ApplyResponse }) {
         <p className="banner banner--info">
           <Icon name="info" size={14} className="banner__icon" />
           <span>
-            GITHUB_TOKEN is not set, so this publish is live but has no entry in the config history.
+            This publish is live and ConfigCat's audit log has the note, but{' '}
+            <span className="mono">config/</span> in git was not updated:{' '}
+            <span className="mono">GITHUB_TOKEN</span> is not set. Add a fine-grained token with
+            Contents: read and write on this repository to the deployment environment to get the
+            commit as well.
           </span>
         </p>
       )}

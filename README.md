@@ -187,14 +187,57 @@ Three things stand between the button and the live game:
 Only the default value is written, as a JSON Patch, so targeting rules and
 percentage options on a setting are left alone.
 
+#### The publish note
+
+Every write carries a note describing the change, built from the same diff the
+plan showed:
+
+```
+Published arenasSettings from the arenas exporter. 2 changes (2 changed):
+~ Arenas[ID=arena.lostoasis].TrackCount: 25 -> 15;
+~ Arenas[ID=arena.mysticforest].TrackCount: 25 -> 20
+```
+
+It goes to two places, so the two records of one publish never have to be
+reconciled by hand:
+
+- **ConfigCat's audit log**, as the `reason` on the value update. It shows in
+  the product's changelog next to the change itself, which is where someone
+  looks when they find an unexpected value. Because it is always sent, the
+  product preference *Config changes require a reason* can be turned on without
+  breaking this console.
+- **The git commit body** for `config/<domain>.json`.
+
+The note is capped at 900 characters. A publish that rewrites more of a config
+than that lists as many changes as fit and ends with "and N more"; the count at
+the front is always of the whole diff.
+
 ConfigCat stores the minified form and git stores the pretty-printed one. They
 are the same config - the diff is structural - but the wire payload every client
 downloads should be small and a git history is only useful if its diffs are
 readable.
 
-Recording to git needs `GITHUB_TOKEN` (a fine-grained PAT with Contents:
-read/write on this repo). Without it the publish still happens and the result
-says the history was not written; publishing is not failed over bookkeeping.
+#### Recording the publish in git
+
+Committing `config/<domain>.json` needs `GITHUB_TOKEN`. Without it the publish
+still happens, ConfigCat still gets the note, and the result says the history
+was not written - publishing is never failed over bookkeeping.
+
+To set it up:
+
+1. GitHub, **Settings > Developer settings > Personal access tokens >
+   Fine-grained tokens > Generate new token**.
+2. Resource owner `OffStarsStudios`, **Only select repositories >
+   cliff-heroes-arena-exporter**, and under Repository permissions set
+   **Contents: Read and write**. Nothing else is needed.
+3. Add it as `GITHUB_TOKEN` in Vercel under **Project Settings > Environment
+   Variables** (Production, and Preview if you publish from previews), then
+   redeploy so the functions pick it up. For local work put it in `.env.local`.
+4. Optional: `GITHUB_REPO` and `GITHUB_BRANCH` override the defaults
+   `OffStarsStudios/cliff-heroes-arena-exporter` and `main`.
+
+A token that exists but is rejected reports the GitHub status, so an expired or
+under-scoped token reads differently from a missing one.
 
 Writes are not atomic across settings. ConfigCat’s Change Requests API exposes
 reading and updating but not creating, so a genuine multi-setting transaction is
