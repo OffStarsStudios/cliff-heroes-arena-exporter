@@ -31,6 +31,7 @@ export const SOURCE_LABELS: Record<ExporterDomain, string> = {
   bots: 'Bots Settings',
   heroUpgrade: 'Hero Upgrade Settings',
   shop: 'Shop Settings',
+  battlePass: 'Battle Pass Settings',
 };
 
 type Sources = Record<ExporterDomain, PageSource>;

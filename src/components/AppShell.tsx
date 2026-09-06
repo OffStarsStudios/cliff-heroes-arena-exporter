@@ -15,6 +15,7 @@ export type View =
   | 'bots'
   | 'heroUpgrade'
   | 'shop'
+  | 'battlePass'
   | 'reference';
 
 interface NavItem {
@@ -74,6 +75,12 @@ export const NAV_ITEMS: NavItem[] = [
     blurb: 'Products, prices and what they grant',
     icon: 'cart',
   },
+  {
+    id: 'battlePass',
+    label: 'Battle pass',
+    blurb: 'Season header and the reward ladder',
+    icon: 'ticket',
+  },
 ];
 
 export const REFERENCE_ITEM: NavItem = {
@@ -92,6 +99,7 @@ const CRUMB_LABEL: Record<View, string> = {
   bots: 'Bots',
   heroUpgrade: 'Hero upgrades',
   shop: 'Shop',
+  battlePass: 'Battle pass',
   reference: 'Power parameters',
 };
 
@@ -104,6 +112,7 @@ const CRUMB_SECTION: Record<View, string> = {
   bots: 'Exporters',
   heroUpgrade: 'Exporters',
   shop: 'Exporters',
+  battlePass: 'Exporters',
   reference: 'Reference',
 };
 

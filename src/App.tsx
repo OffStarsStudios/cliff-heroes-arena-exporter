@@ -3,6 +3,7 @@ import { AppShell, type ShellSource, type View } from './components/AppShell';
 import { ExporterPage } from './components/ExporterPage';
 import type { ExporterDomain } from './domains/types';
 import { ARENAS_EXPORTER } from './exporters/arenas';
+import { BATTLE_PASS_EXPORTER } from './exporters/battlePass';
 import { BOTS_EXPORTER } from './exporters/bots';
 import { HEROES_EXPORTER } from './exporters/heroes';
 import { HERO_UPGRADE_EXPORTER } from './exporters/heroUpgrade';
@@ -22,6 +23,7 @@ const VIEWS: View[] = [
   'bots',
   'heroUpgrade',
   'shop',
+  'battlePass',
   'reference',
 ];
 
@@ -34,6 +36,7 @@ const DOMAIN_FOR_VIEW: Partial<Record<View, ExporterDomain>> = {
   bots: 'bots',
   heroUpgrade: 'heroUpgrade',
   shop: 'shop',
+  battlePass: 'battlePass',
 };
 
 function viewFromHash(): View {
@@ -106,6 +109,13 @@ export function App() {
       )}
       {view === 'shop' && (
         <ExporterPage definition={SHOP_EXPORTER} source={controllerFor('shop')} onNavigate={navigate} />
+      )}
+      {view === 'battlePass' && (
+        <ExporterPage
+          definition={BATTLE_PASS_EXPORTER}
+          source={controllerFor('battlePass')}
+          onNavigate={navigate}
+        />
       )}
       {view === 'reference' && <ParamReference />}
     </AppShell>

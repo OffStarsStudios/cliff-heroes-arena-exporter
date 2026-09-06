@@ -1,16 +1,19 @@
 /**
  * Payload types for the eight ConfigCat settings that make up the live config.
  *
- * Seven of them are produced by the spreadsheet exporters and have their
- * types in `../lib/types`. `battlePass` is still hand-authored JSON pasted
- * into the ConfigCat dashboard; its shape is transcribed here from the live
- * value so the config graph can be checked.
+ * Every one of them is produced by a spreadsheet exporter, so the payload
+ * types themselves live in `../lib/types` beside the transformers that build
+ * them. This module re-exports them under the domain vocabulary the console
+ * and the graph checker speak.
  */
 
 import type {
   ArenaDefinition,
   ArenaProgressConfig,
   ArenasConfig,
+  BattlePassConfig,
+  BattlePassReward,
+  BattlePassTier,
   BotTuning,
   BotsConfig,
   HeroesConfig,
@@ -27,6 +30,9 @@ export type {
   ArenaDefinition,
   ArenaProgressConfig,
   ArenasConfig,
+  BattlePassConfig,
+  BattlePassReward,
+  BattlePassTier,
   BotTuning,
   BotsConfig,
   HeroesConfig,
@@ -38,34 +44,6 @@ export type {
   ShopProduct,
   ShopSoldIn,
 };
-
-/* ----------------------------------------------------------- battlePass -- */
-
-export interface BattlePassReward {
-  RewardID: string;
-  Amount: number;
-}
-
-/** One tier of the pass. Either track may be absent on a given tier. */
-export interface BattlePassTier {
-  Free?: BattlePassReward;
-  Premium?: BattlePassReward;
-}
-
-export interface BattlePassConfig {
-  SeasonID: string;
-  SeasonName: string;
-  /** `YYYY-MM-DD HH:mm`, UTC. */
-  StartUtc: string;
-  DurationDays: number;
-  TokensPerTier: number;
-  /** A `shop.*` product ID that must exist in shopSettings. */
-  PremiumProductID: string;
-  SkipTierCost: number;
-  SkipCurrencyID: string;
-  FinalRewardArt: string;
-  Tiers: BattlePassTier[];
-}
 
 /* ------------------------------------------------------------- the set -- */
 
@@ -80,7 +58,15 @@ export type DomainId =
   | 'battlePass';
 
 /** Domains that have an exporter page, and therefore their own workbook. */
-export type ExporterDomain = 'heroes' | 'trophyRoad' | 'arenas' | 'matchTrophy' | 'bots' | 'heroUpgrade' | 'shop';
+export type ExporterDomain =
+  | 'heroes'
+  | 'trophyRoad'
+  | 'arenas'
+  | 'matchTrophy'
+  | 'bots'
+  | 'heroUpgrade'
+  | 'shop'
+  | 'battlePass';
 
 export const EXPORTER_DOMAINS: ExporterDomain[] = [
   'heroes',
@@ -90,6 +76,7 @@ export const EXPORTER_DOMAINS: ExporterDomain[] = [
   'bots',
   'heroUpgrade',
   'shop',
+  'battlePass',
 ];
 
 /** The ConfigCat setting key each domain publishes to. */

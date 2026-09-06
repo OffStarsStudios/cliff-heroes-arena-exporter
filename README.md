@@ -20,13 +20,16 @@ A browser tool with one exporter per ConfigCat setting:
   per-rarity bases.
 - **Shop** - reads the Shop Settings workbook and exports `shop.json`
   (`shopSettings`): every product, how it is sold, and what it grants.
+- **Battle pass** - reads the Battle Pass Settings workbook and exports
+  `battle-pass.json` (`battlePassSettings`): the season header and the free and
+  premium reward on every tier.
 
 Each exporter is its own section in the left sidebar and **keeps its own workbook**,
 because every config lives in its own Google Sheet (one folder per config under the
 `Economy` Drive folder). A page remembers the last Google Sheet link it loaded and
 offers to reload it with one click. Sections are deep-linkable (`#/arena` is the
 trophy road, `#/heroes`, `#/arenas`, `#/matchTrophy`, `#/bots`, `#/heroUpgrade`, `#/shop`,
-`#/live`, `#/reference`).
+`#/battlePass`, `#/live`, `#/reference`).
 
 ## Requirements
 
@@ -281,7 +284,8 @@ and is worth stating out loud before touching either.
 
 The eight settings reference each other - the trophy road names arenas and
 rewards, rewards name heroes, arena bot counts have to match the number of
-scoring places - and nothing checked those edges before. `npm run check:graph`
+scoring places, the battle pass is bought as a shop product - and nothing
+checked those edges before. `npm run check:graph`
 validates them against the payloads in `config/`.
 
 ```bash
@@ -520,6 +524,68 @@ The Rewards tab also feeds the live-config check, so reward IDs named by the
 trophy road and the battle pass are checked against it when this workbook is
 loaded.
 
+## Output schema: battle pass
+
+```json
+{
+  "SeasonID": "pass.season1",
+  "SeasonName": "SEASON 1",
+  "StartUtc": "2026-09-01 00:00",
+  "DurationDays": 30,
+  "TokensPerTier": 100,
+  "PremiumProductID": "shop.pass.season1.premium",
+  "SkipTierCost": 75,
+  "SkipCurrencyID": "hardCurrency",
+  "FinalRewardArt": "",
+  "Tiers": [
+    { "Free": { "RewardID": "reward.currency.coins", "Amount": 200 },
+      "Premium": { "RewardID": "reward.currency.gems", "Amount": 25 } },
+    { "Premium": { "RewardID": "reward.currency.coins", "Amount": 300 } }
+  ]
+}
+```
+
+The season keys are written in that order, then `Tiers`. `Tiers` is positional:
+tier 1 is `Tiers[0]`, so the array is the ladder itself. A tier that grants
+nothing on a track omits that key rather than writing null, and a tier that
+grants nothing at all is `{}`.
+
+### The Battle Pass Settings sheet
+
+Three tabs. `Season` is a key/value tab - `Setting | Value` - with one row per
+season setting: Season ID, Season Name, Start (UTC), Duration Days, Tokens Per
+Tier, Premium Product ID, Skip Tier Cost, Skip Currency ID, Final Reward Art.
+Every row must be present; Final Reward Art is the only one that may be left
+empty.
+
+`Tiers` has one row per tier: `Tier | Free Reward | Free Amount | Premium Reward
+| Premium Amount`. Either track may be left blank on a tier, and the reward
+columns are dropdowns fed by the `Rewards` tab, the same lookup the shop and the
+trophy road use. Rows may be in any order - the tier numbers decide the output
+order - but they have to run 1 upwards with no gaps, because a gap would shift
+every tier above it.
+
+Start (UTC) is read as `YYYY-MM-DD HH:mm`. A cell formatted as a real date works
+too: it arrives as an ISO timestamp and is written back in the canonical form.
+
+### Battle pass validation
+
+Errors: a missing or duplicated season setting, a row with a value but no
+setting name, an unknown setting name (with a suggestion), an empty value on
+anything but Final Reward Art, a Duration Days / Tokens Per Tier that is not a
+whole number of 1 or more, a negative Skip Tier Cost, a Start (UTC) that is not
+a UTC timestamp, a missing tier or reward column, a row with values but no tier
+number, a tier that is not a whole number of 1 or more, a duplicated tier, a gap
+in the ladder, a reward name the Rewards tab does not define or defines twice,
+an amount missing or not a whole number of 1 or more, an amount with no reward
+beside it, an empty tab, and the schema gate.
+
+Warnings: a Season ID not matching `pass.<name>`, a Premium Product ID not
+matching `shop.<kind>.<name>`, and a tier that grants nothing on either track.
+
+The live-config check adds the edge to the shop: the premium product has to be a
+product `shopSettings` defines, and an existing but disabled one is a warning.
+
 ## Output schema: hero stats
 
 ```json
@@ -680,5 +746,7 @@ Each exporter page is an `ExporterDefinition` (see `src/exporters/arenas.tsx`): 
 tabs it needs, how to auto-select them, a pure `analyze` over the chosen sheets, an
 independent `validate` gate, a serializer and a preview table. `ExporterPage`
 supplies the rest - loading, tab picking, review, the live-config check and
-publishing. The one remaining setting, battle pass, is one definition plus a parser in
-`src/lib`.
+publishing. All eight ConfigCat settings now have one; a ninth would be a
+definition in `src/exporters`, a parser and a schema gate in `src/lib`, a tab
+scorer in `src/lib/sheetSelect.ts`, and entries in `src/domains/types.ts`,
+`AppShell` and `App`.

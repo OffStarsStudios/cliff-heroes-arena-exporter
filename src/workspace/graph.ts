@@ -276,6 +276,43 @@ function checkBotLevels(set: ConfigSet, issues: Issue[]): void {
 }
 
 /**
+ * battlePass.PremiumProductID -> shop.Products[].ID.
+ *
+ * The premium track is bought as a shop product, and the two configs are
+ * joined by nothing but that string. A pass whose product does not exist, or
+ * exists but is switched off, still shows its premium rewards to the player
+ * with no way to buy them.
+ */
+function checkPassProduct(set: ConfigSet, issues: Issue[]): void {
+  if (!set.battlePass || !set.shop) return;
+
+  const id = set.battlePass.PremiumProductID;
+  if (typeof id !== 'string' || id === '') return;
+
+  const products = set.shop.Products ?? [];
+  if (products.length === 0) return;
+
+  const product = products.find((candidate) => candidate?.ID === id);
+  if (product === undefined) {
+    issues.push(
+      error(
+        'graph-pass-product-undefined',
+        `battlePassSettings sells the premium track as "${id}", but shopSettings defines no product with that ID. The pass could not be bought.`,
+      ),
+    );
+    return;
+  }
+  if (product.IsEnabled === false) {
+    issues.push(
+      warning(
+        'graph-pass-product-disabled',
+        `The premium pass product "${id}" is disabled in shopSettings, so the premium track is visible but cannot be bought.`,
+      ),
+    );
+  }
+}
+
+/**
  * Reward IDs resolve, and the ones that name a hero or an arena name one that
  * exists. The lookup check is skipped when no Rewards tab has been loaded,
  * because an empty namespace means "cannot check", not "nothing is valid".
@@ -349,6 +386,7 @@ export function validateGraph(set: ConfigSet, registry: IdRegistry = emptyRegist
   checkRacerCount(set, issues);
   checkRarities(set, issues);
   checkBotLevels(set, issues);
+  checkPassProduct(set, issues);
   checkRewards(set, registry, issues);
 
   return {

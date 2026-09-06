@@ -61,6 +61,8 @@
   --heroupgrade-soft: #fefce8;
   --shop: #0f766e;
   --shop-soft: #f0fdfa;
+  --battlepass: #6d28d9;
+  --battlepass-soft: #f5f3ff;
 
   /* Density 8/10: 4px base, 8-32px working range */
   --space-1: 4px;
@@ -418,6 +420,11 @@ textarea {
 .page__badge--shop {
   background: var(--shop-soft);
   color: var(--shop);
+}
+
+.page__badge--battlepass {
+  background: var(--battlepass-soft);
+  color: var(--battlepass);
 }
 
 /* ---------- generic card ---------- */

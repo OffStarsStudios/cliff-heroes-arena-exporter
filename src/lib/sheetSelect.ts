@@ -336,10 +336,75 @@ export function autoSelectShopSheets(workbook: RawWorkbook): ShopSheetSelection 
   return { products, rewards };
 }
 
+/* ----------------------------------------------------------- Battle pass -- */
+
+export type BattlePassSheetSelection = {
+  /** The Season key/value tab. */
+  season: string | null;
+  /** The Tiers tab: one row per tier. */
+  tiers: string | null;
+  /** The Reward Name -> Reward ID lookup tab. */
+  rewards: string | null;
+};
+
+/**
+ * Scores a sheet as the season key/value tab. The setting names in the first
+ * column are the strongest signal, so a differently named tab still wins and
+ * another workbook's key/value tab (hero upgrades' `Growth`) does not.
+ */
+function scoreSeason(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  const firstColumn = sheet.rows.slice(0, 12).flatMap((row) => tokens(String(row[0] ?? '')));
+  let score = 0;
+  if (words.includes('season')) score += 30;
+  if (words.includes('pass') || words.includes('battle')) score += 10;
+  if (headers.includes('value') || headers.includes('values')) score += 20;
+  if (firstColumn.includes('tokens') && firstColumn.includes('skip')) score += 40;
+  // A tier table is the other tab of this same workbook.
+  if (headers.includes('free') || headers.includes('premium')) score -= 40;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+/** Scores a sheet as the tiers tab: a tier column beside the two tracks. */
+function scoreTiers(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  let score = 0;
+  if (words.includes('tier') || words.includes('tiers')) score += 30;
+  if (words.includes('pass') || words.includes('battle')) score += 10;
+  const hasTier = headers.includes('tier');
+  const hasTrack = headers.includes('free') || headers.includes('premium');
+  if (hasTier && hasTrack) score += 50;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+export function autoSelectBattlePassSheets(workbook: RawWorkbook): BattlePassSheetSelection {
+  const tiers = bestSheet(workbook.sheets, scoreTiers, 50);
+  const rest = workbook.sheets.filter((sheet) => sheet.name !== tiers);
+  const season = bestSheet(rest, scoreSeason, 50);
+  const rewards = bestSheet(
+    rest.filter((sheet) => sheet.name !== season),
+    (sheet) => scoreLookup(sheet, ['reward', 'rewards']),
+    30,
+  );
+  return { season, tiers, rewards };
+}
+
 /* --------------------------------------------------------------- Dataset -- */
 
 /** Which exporter a freshly loaded workbook looks like it is for. */
-export type Dataset = 'arena' | 'heroes' | 'arenas' | 'matchTrophy' | 'bots' | 'heroUpgrade' | 'shop';
+export type Dataset =
+  | 'arena'
+  | 'heroes'
+  | 'arenas'
+  | 'matchTrophy'
+  | 'bots'
+  | 'heroUpgrade'
+  | 'shop'
+  | 'battlePass';
 
 /**
  * Guesses the dataset so the right exporter opens by default. A hero workbook
@@ -362,6 +427,9 @@ export function detectDataset(workbook: RawWorkbook): Dataset {
 
   const upgrade = autoSelectHeroUpgradeSheets(workbook);
   if (upgrade.growth !== null && upgrade.costs !== null) return 'heroUpgrade';
+
+  const pass = autoSelectBattlePassSheets(workbook);
+  if (pass.season !== null && pass.tiers !== null) return 'battlePass';
 
   const shop = autoSelectShopSheets(workbook);
   if (shop.products !== null && shop.rewards !== null) return 'shop';

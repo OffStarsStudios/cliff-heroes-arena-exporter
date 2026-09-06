@@ -395,3 +395,54 @@ export interface ShopTransformResult {
     warnings: number;
   };
 }
+
+/* ----------------------------------------------------------- Battle pass -- */
+
+export interface BattlePassReward {
+  RewardID: string;
+  Amount: number;
+}
+
+/** One tier of the pass. Either track may be absent on a given tier. */
+export interface BattlePassTier {
+  Free?: BattlePassReward;
+  Premium?: BattlePassReward;
+}
+
+export interface BattlePassConfig {
+  SeasonID: string;
+  SeasonName: string;
+  /** `YYYY-MM-DD HH:mm`, UTC. */
+  StartUtc: string;
+  DurationDays: number;
+  TokensPerTier: number;
+  /** A `shop.*` product ID that must exist in shopSettings. */
+  PremiumProductID: string;
+  SkipTierCost: number;
+  SkipCurrencyID: string;
+  FinalRewardArt: string;
+  Tiers: BattlePassTier[];
+}
+
+export interface BattlePassPreviewRow {
+  /** 1-based tier number, which is also its position in `Tiers`. */
+  tier: number;
+  freeName: string | null;
+  freeAmount: number | null;
+  premiumName: string | null;
+  premiumAmount: number | null;
+  sheetRow: number;
+}
+
+export interface BattlePassTransformResult {
+  config: BattlePassConfig;
+  preview: BattlePassPreviewRow[];
+  issues: Issue[];
+  stats: {
+    tiers: number;
+    free: number;
+    premium: number;
+    errors: number;
+    warnings: number;
+  };
+}
