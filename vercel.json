@@ -5,7 +5,7 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "functions": {
-    "api/schedule/tick.js": {
+    "api/schedule/*.js": {
       "maxDuration": 60
     }
   },

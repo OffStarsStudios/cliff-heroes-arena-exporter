@@ -439,6 +439,12 @@ schedule looks like.
 `server/schedule.mjs` holds the model and the guardrails; `tests/schedule.test.ts` is
 their specification.
 
+All four `/api/schedule/<action>` routes are served by one function,
+`api/schedule/[action].js`, because Vercel's Hobby plan allows twelve serverless
+functions per deployment and this app has ten. A deployment that exceeds the limit
+*builds* successfully and then fails at the deploy step, so the count is worth
+keeping an eye on when adding a route.
+
 ## Cross-config validation
 
 The eight settings reference each other - the trophy road names arenas and
