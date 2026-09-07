@@ -287,10 +287,13 @@ export function Schedule({ onNavigate }: { onNavigate: (view: View) => void }) {
               : 'Nothing is booked, so nothing is being missed yet.'}{' '}
             The heartbeat is an external pinger calling{' '}
             <span className="mono">POST /api/schedule/tick</span> every five minutes with the{' '}
-            <span className="mono">CRON_SECRET</span> as a bearer token. Check it is still running
-            and still has the right token. The <span className="mono">Scheduler heartbeat</span>{' '}
-            workflow in GitHub Actions and Vercel's daily cron are backstops only - GitHub delays
-            frequent schedules unpredictably, so neither can be relied on for timing.
+            <span className="mono">CRON_SECRET</span> as a bearer token. Check first that the job is
+            still <strong>enabled</strong>: pingers switch a job off after a run of failures, so a
+            wrong token stops the heartbeat for good rather than until it is fixed. Then open the
+            endpoint - a refused tick now says exactly which way the token was wrong. The{' '}
+            <span className="mono">Scheduler heartbeat</span> workflow in GitHub Actions and Vercel's
+            daily cron are backstops only - GitHub delays frequent schedules unpredictably, so
+            neither can be relied on for timing.
           </span>
         </div>
       )}

@@ -69,12 +69,31 @@ function fail(res, error) {
  */
 function cronAuthorised(req) {
   const secret = process.env.CRON_SECRET;
-  if (typeof secret !== 'string' || secret === '') return { ok: true, guarded: false };
+  if (typeof secret !== 'string' || secret === '') return { ok: true, guarded: false, why: null };
 
   const header = req.headers?.authorization ?? '';
   const alternative = req.headers?.['x-cron-key'] ?? '';
   const presented = header.startsWith('Bearer ') ? header.slice(7) : alternative;
-  return { ok: presented === secret, guarded: true };
+
+  if (presented === secret) return { ok: true, guarded: true, why: null };
+
+  // A bare "401 Unauthorized" cost this project a day of scheduled changes
+  // silently not happening: a pinger sent a template placeholder instead of the
+  // token, every execution failed identically, and the response said nothing
+  // that distinguished a wrong token from a missing one.
+  //
+  // These say enough to fix it and nothing that helps an attacker: whether a
+  // header arrived at all, which scheme it used, and how long the value was.
+  // The token itself is never echoed, and a length is not a meaningful oracle
+  // for a random 64-character secret.
+  const why =
+    header === '' && alternative === ''
+      ? 'No Authorization header arrived at all. If this is cron-job.org, the header is under Advanced -> Headers, and the job has to be SAVED - a Test run uses the form you are looking at, while scheduled executions use the last saved version.'
+      : header !== '' && !header.startsWith('Bearer ')
+        ? `The Authorization header did not start with "Bearer ". It began "${header.slice(0, 8)}...". The value has to be the word Bearer, one space, then the secret.`
+        : `A bearer token arrived but did not match CRON_SECRET. It was ${presented.length} characters; the configured secret is ${secret.length}. A placeholder such as %cjo:unixtime% left in the header, a stale value after the secret was rotated, or a trailing newline from a copy-paste all look like this.`;
+
+  return { ok: false, guarded: true, why };
 }
 
 /* --------------------------------------------------------------- routes -- */
@@ -180,7 +199,11 @@ async function servePreview(req, res) {
 async function serveTick(req, res) {
   const auth = cronAuthorised(req);
   if (!auth.ok) {
-    sendError(res, 401, 'The heartbeat is guarded by CRON_SECRET and the request did not present it.');
+    sendError(
+      res,
+      401,
+      `The heartbeat is guarded by CRON_SECRET and this request did not present it. ${auth.why}`,
+    );
     return;
   }
   try {

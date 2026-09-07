@@ -416,6 +416,21 @@ UptimeRobot or Better Stack work the same way. Whichever you use, turn on its fa
 notifications - a heartbeat nobody is watching is the failure this whole section
 exists to prevent.
 
+Two things about setting one of these up have already gone wrong here and are worth
+stating:
+
+- **A test run is not proof.** cron-job.org's Test run sends the form you are looking
+  at; scheduled executions send the last *saved* version of the job. Editing the
+  header, testing it green, and not pressing Save produces a job that has never worked
+  and a test that says it does. Verify from the execution history after a real run,
+  not from the test.
+- **A wrong token is permanent, not temporary.** Pingers disable a job after a run of
+  failures - cron-job.org does it after about 25 - so the heartbeat does not resume
+  when the token is fixed. Re-enable the job as well.
+
+A refused tick says which way the token was wrong: no header at all, a scheme that is
+not `Bearer`, or a value of the wrong length. It never echoes the token.
+
 Two backstops run alongside it and neither is good enough to be the primary:
 
 - **`.github/workflows/schedule-tick.yml`**, every fifteen minutes. GitHub runs
