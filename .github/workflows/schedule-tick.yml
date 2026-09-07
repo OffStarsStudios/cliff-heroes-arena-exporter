@@ -1,17 +1,28 @@
-# The scheduler's heartbeat.
+# The scheduler's backstop heartbeat.
 #
-# Vercel's Hobby plan runs a cron job once a day, which is fine as a safety net
-# and useless as a scheduler - "the shop goes up at 18:00" has to mean 18:00,
-# not some time before tomorrow morning. GitHub Actions schedules every five
-# minutes for free, so it drives the heartbeat and the Vercel cron in
-# vercel.json stays as the backstop for when Actions is having a bad day.
+# NOT the primary. This was tried as the primary and is not good enough: GitHub
+# runs `schedule` events on a best-effort basis and deprioritises frequent ones,
+# so a `*/5` cron here arrives ten to thirty minutes late as a matter of course
+# and sometimes not at all. A window booked for 18:00 has to open at 18:00, and
+# this cannot promise that.
 #
-# The tick is idempotent: it publishes whatever should be live at this instant
-# and nothing else, so an extra run costs one API call and changes nothing.
+# The primary heartbeat is an external pinger (cron-job.org or equivalent)
+# hitting POST /api/schedule/tick every five minutes with the same bearer token.
+# See the Scheduling section of the README.
+#
+# This workflow stays because it is free, needs no third party, and catches up
+# whatever the pinger missed while it was down. Every fifteen minutes is the
+# right cadence for that: often enough to bound the damage, rare enough that its
+# unreliability is not mistaken for the real thing.
+#
+# The tick is idempotent - it publishes whatever should be live at this instant
+# and nothing else - so two heartbeats racing is not a problem, and an extra run
+# costs one API call and changes nothing.
 #
 # Setup, once:
 #   1. Repository -> Settings -> Secrets and variables -> Actions
-#   2. Add BACK_OFFICE_URL, e.g. https://cliff-heroes-back-office.vercel.app
+#   2. Add BACK_OFFICE_URL, the deployment origin with no trailing slash,
+#      e.g. https://cliff-heroes-arena-exporter.vercel.app
 #   3. Add CRON_SECRET with the same value set in the Vercel project's
 #      environment variables. Without it the endpoint is unguarded - harmless,
 #      because a tick can only apply a window whose start time has passed, but
@@ -21,9 +32,10 @@ name: Scheduler heartbeat
 
 on:
   schedule:
-    # GitHub queues scheduled workflows and can run them several minutes late
-    # under load. Five minutes is the shortest interval it accepts.
-    - cron: '*/5 * * * *'
+    # Deliberately not */5. See the note above: GitHub cannot keep that promise,
+    # and a heartbeat that is late in an unpredictable way is worse than one
+    # that is openly a backstop.
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 concurrency:

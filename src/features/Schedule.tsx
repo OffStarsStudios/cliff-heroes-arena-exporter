@@ -285,9 +285,12 @@ export function Schedule({ onNavigate }: { onNavigate: (view: View) => void }) {
             {open.length > 0
               ? `${open.length} window${open.length === 1 ? '' : 's'} will not open or close until it does.`
               : 'Nothing is booked, so nothing is being missed yet.'}{' '}
-            The heartbeat is the <span className="mono">Scheduler heartbeat</span> workflow in this
-            repository's GitHub Actions; it needs <span className="mono">BACK_OFFICE_URL</span> set as
-            an Actions secret. Vercel's own daily cron is only a backstop.
+            The heartbeat is an external pinger calling{' '}
+            <span className="mono">POST /api/schedule/tick</span> every five minutes with the{' '}
+            <span className="mono">CRON_SECRET</span> as a bearer token. Check it is still running
+            and still has the right token. The <span className="mono">Scheduler heartbeat</span>{' '}
+            workflow in GitHub Actions and Vercel's daily cron are backstops only - GitHub delays
+            frequent schedules unpredictably, so neither can be relied on for timing.
           </span>
         </div>
       )}

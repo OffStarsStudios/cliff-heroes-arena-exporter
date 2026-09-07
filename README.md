@@ -400,15 +400,36 @@ without one, where publishing merely notes that the history was not written.
 
 ### The heartbeat
 
-Nothing happens without something calling `POST /api/schedule/tick`. Two things do:
+Nothing happens without something calling `POST /api/schedule/tick`.
 
-- **`.github/workflows/schedule-tick.yml`**, every five minutes. This is the real
-  driver. It needs two Actions secrets: `BACK_OFFICE_URL` (the deployment's origin)
-  and `CRON_SECRET` (matching the Vercel variable). A non-2xx fails the workflow run,
-  so GitHub's own notifications tell you when scheduled changes have stopped going
-  live.
-- **`vercel.json`'s cron**, once a day. Vercel's Hobby plan allows no more than that,
-  which is useless as a scheduler and fine as a backstop.
+**The primary heartbeat is an external pinger**, every five minutes:
+
+| Field | Value |
+| --- | --- |
+| URL | `https://<deployment>/api/schedule/tick` |
+| Method | `POST` |
+| Header | `Authorization: Bearer <CRON_SECRET>` |
+| Interval | 5 minutes |
+
+[cron-job.org](https://cron-job.org) is free, allows custom headers, and is punctual;
+UptimeRobot or Better Stack work the same way. Whichever you use, turn on its failure
+notifications - a heartbeat nobody is watching is the failure this whole section
+exists to prevent.
+
+Two backstops run alongside it and neither is good enough to be the primary:
+
+- **`.github/workflows/schedule-tick.yml`**, every fifteen minutes. GitHub runs
+  `schedule` events on a best-effort basis and deprioritises frequent ones, so a
+  `*/5` here arrives ten to thirty minutes late as a matter of course and sometimes
+  not at all. That was tried first and did not work. It stays at fifteen minutes to
+  catch up whatever the pinger missed while it was down, and because it costs nothing
+  on a public repository. It needs two Actions secrets: `BACK_OFFICE_URL` (the
+  deployment origin, no trailing slash) and `CRON_SECRET`. A non-2xx fails the run,
+  so GitHub's notifications flag a broken endpoint.
+- **`vercel.json`'s cron**, once a day. Vercel's Hobby plan allows no more than that.
+
+Because the tick is idempotent, running all three costs nothing but a few API calls,
+and the schedule is correct whichever of them happens to arrive.
 
 The tick is idempotent - it publishes only what should be live at that instant - so an
 extra run costs one API call and changes nothing.
@@ -418,6 +439,11 @@ defensible *here and only here*: a tick can apply a window only once its start t
 has passed, so calling it early does nothing and calling it repeatedly does nothing
 twice. It cannot publish anything that was not already going to be published. Set it
 anyway; the Overview says when it is missing.
+
+Whatever calls it, **timing is only as good as the caller**. Even a punctual pinger
+leaves up to five minutes of slop, so a promotion that must be up at 18:00 sharp
+should be booked for 17:50. The scheduler is not a real-time system and does not
+pretend to be one.
 
 The Overview and the scheduling page both show when the last beat arrived, and say so
 loudly past an hour. A scheduler nobody is running is worse than no scheduler, and its
