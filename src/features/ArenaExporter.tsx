@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChangeReview } from '../components/ChangeReview';
 import { ColumnMapper } from '../components/ColumnMapper';
 import { Icon } from '../components/Icon';
+import { LiveInGame } from '../components/LiveInGame';
 import { PreviewTable } from '../components/PreviewTable';
 import { SheetPicker } from '../components/SheetPicker';
 import { SourcePanel, type SourceController } from '../components/SourcePanel';
@@ -86,6 +87,8 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
   const [showTabs, setShowTabs] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
   const [outputTab, setOutputTab] = useState<'changes' | 'preview'>('changes');
+  // Change it, or look at what it currently is. Two different visits.
+  const [pageTab, setPageTab] = useState<'update' | 'live'>('update');
   const [environmentId, setEnvironmentId] = useState(
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
@@ -266,7 +269,39 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
         </p>
       </header>
 
-      {wrongDataset && (
+      <div className="pagetabs" role="tablist" aria-label="Config view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pageTab === 'update'}
+          className={`pagetab${pageTab === 'update' ? ' pagetab--active' : ''}`}
+          onClick={() => setPageTab('update')}
+        >
+          <Icon name="upload" size={14} />
+          Update from a sheet
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pageTab === 'live'}
+          className={`pagetab${pageTab === 'live' ? ' pagetab--active' : ''}`}
+          onClick={() => setPageTab('live')}
+        >
+          <Icon name="activity" size={14} />
+          Live in game
+        </button>
+      </div>
+
+      {pageTab === 'live' && (
+        <LiveInGame
+          domain="trophyRoad"
+          environmentId={environmentId}
+          onEnvironmentChange={setEnvironmentId}
+          downloadFilename={DOWNLOAD_FILENAME}
+        />
+      )}
+
+      {pageTab === 'update' && wrongDataset && (
         <div className="banner banner--info" style={{ marginBottom: 12 }}>
           <Icon name="info" size={15} className="banner__icon" />
           <span>
@@ -278,6 +313,7 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
         </div>
       )}
 
+      {pageTab === 'update' && (
       <div className="steps">
         <Step
           index={1}
@@ -421,6 +457,7 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
           )}
         </Step>
       </div>
+      )}
     </>
   );
 }

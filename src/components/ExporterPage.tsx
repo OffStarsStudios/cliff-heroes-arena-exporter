@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { View } from './AppShell';
 import { ChangeReview } from './ChangeReview';
 import { Icon } from './Icon';
+import { LiveInGame } from './LiveInGame';
 import { SourcePanel, type SourceController } from './SourcePanel';
 import { Step, type StepStatus } from './Step';
 import { IssueList } from './Summary';
@@ -61,6 +62,10 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
   const [openStep, setOpenStep] = useState(1);
   const [showMapping, setShowMapping] = useState(false);
   const [outputTab, setOutputTab] = useState<'changes' | 'preview'>('changes');
+  // Two things a person opens a config page to do: change it, or look at what
+  // it currently is. They were the same page before, and the second one was
+  // only reachable by loading a sheet you did not want to publish.
+  const [pageTab, setPageTab] = useState<'update' | 'live'>('update');
   const [environmentId, setEnvironmentId] = useState(
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
@@ -169,7 +174,39 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
         <p className="page__lead">{definition.lead}</p>
       </header>
 
-      {wrongDataset !== null && (
+      <div className="pagetabs" role="tablist" aria-label="Config view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pageTab === 'update'}
+          className={`pagetab${pageTab === 'update' ? ' pagetab--active' : ''}`}
+          onClick={() => setPageTab('update')}
+        >
+          <Icon name="upload" size={14} />
+          Update from a sheet
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={pageTab === 'live'}
+          className={`pagetab${pageTab === 'live' ? ' pagetab--active' : ''}`}
+          onClick={() => setPageTab('live')}
+        >
+          <Icon name="activity" size={14} />
+          Live in game
+        </button>
+      </div>
+
+      {pageTab === 'live' && (
+        <LiveInGame
+          domain={definition.domain}
+          environmentId={environmentId}
+          onEnvironmentChange={setEnvironmentId}
+          downloadFilename={definition.downloadFilename}
+        />
+      )}
+
+      {pageTab === 'update' && wrongDataset !== null && (
         <div className="banner banner--info" style={{ marginBottom: 12 }}>
           <Icon name="info" size={15} className="banner__icon" />
           <span>
@@ -181,6 +218,7 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
         </div>
       )}
 
+      {pageTab === 'update' && (
       <div className="steps">
         <Step
           index={1}
@@ -330,6 +368,7 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
           )}
         </Step>
       </div>
+      )}
     </>
   );
 }

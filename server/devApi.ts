@@ -7,6 +7,8 @@ import { handleConfigCatRequest } from './configcatHandler.mjs';
 import { handlePublishRequest } from './publishHandler.mjs';
 // @ts-expect-error - plain .mjs modules shared with the production server.
 import { handleScheduleRequest } from './scheduleHandler.mjs';
+// @ts-expect-error - plain .mjs modules shared with the production server.
+import { handleLiveConfigRequest } from './liveHandler.mjs';
 
 type Handler = (req: unknown, res: unknown) => Promise<boolean>;
 
@@ -15,6 +17,7 @@ const HANDLERS: Handler[] = [
   handleConfigCatRequest,
   handlePublishRequest,
   handleScheduleRequest,
+  handleLiveConfigRequest,
 ];
 
 /**

@@ -307,6 +307,58 @@ export function fetchDrift(configId: string, from: string, to: string): Promise<
   );
 }
 
+/* ------------------------------------------------- one config, as deployed -- */
+
+export interface GitCommitRef {
+  sha: string;
+  message: string;
+  author: string | null;
+  date: string | null;
+  url: string | null;
+}
+
+/**
+ * What ConfigCat serves for one config, and how far the back office's own
+ * record has fallen behind it.
+ *
+ * `live` is always read from ConfigCat. `baseline` is `config/<domain>.json` in
+ * git - what this console last published - and `drift` is the difference. A
+ * non-empty drift means somebody edited the setting in the ConfigCat dashboard
+ * rather than through here, which is the one thing the git file alone could
+ * never tell you.
+ */
+export interface LiveConfigView {
+  domain: DomainId;
+  settingKey: string;
+  environmentId: string;
+  apiVersion: string;
+  live: {
+    present: boolean;
+    bytes: number | null;
+    json: unknown;
+    parseError: string | null;
+    settingId: number | null;
+    name: string | null;
+  };
+  baseline: { present: boolean; path: string; json: unknown; error: string | null };
+  drift: {
+    checked: boolean;
+    inSync: boolean | null;
+    summary: { added: number; removed: number; changed: number; reordered: number; total: number } | null;
+    changes: Change[];
+    truncated: number;
+    reason: string | null;
+  };
+  history: GitCommitRef[];
+  historyError: string | null;
+}
+
+export function fetchLiveConfig(domain: DomainId, environmentId: string): Promise<LiveConfigView> {
+  return get<LiveConfigView>(
+    `/api/config/${encodeURIComponent(domain)}?environmentId=${encodeURIComponent(environmentId)}`,
+  );
+}
+
 export function fetchProbe(productId: string): Promise<Probe> {
   return get<Probe>(`/api/configcat/probe?productId=${encodeURIComponent(productId)}`);
 }
