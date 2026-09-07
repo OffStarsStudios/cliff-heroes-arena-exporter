@@ -19,10 +19,9 @@ export const BATTLE_PASS_EXPORTER: ExporterDefinition<
   title: 'Battle pass',
   lead: (
     <>
-      Turns the Battle Pass Settings workbook into <span className="mono">battle-pass.json</span> -
-      the season header and every tier's free and premium reward, with reward IDs joined from the
-      Rewards lookup tab. Tier order is the ladder the player climbs, so the tier numbers have to
-      run 1 upwards with no gaps.
+      The season header and every tier's free and premium reward, joined against the Rewards
+      lookup tab and published to <span className="mono">battlePassSettings</span>. Tier order is
+      the ladder the player climbs, so the numbers have to run 1 upwards with no gaps.
     </>
   ),
   icon: 'ticket',

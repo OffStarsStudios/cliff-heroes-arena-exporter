@@ -17,9 +17,9 @@ export const MATCH_TROPHY_EXPORTER: ExporterDefinition<
   title: 'Match trophies',
   lead: (
     <>
-      Turns the Match Trophy Settings workbook into <span className="mono">match-trophy.json</span> -
-      the trophies a racer wins or loses for each finishing place. The number of places is the
-      racer count, so it has to match the bots every arena runs.
+      The trophies a racer wins or loses for each finishing place, published to{' '}
+      <span className="mono">matchTrophySettings</span>. The number of places is the racer count, so
+      it has to match the bots every arena runs.
     </>
   ),
   icon: 'medal',

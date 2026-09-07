@@ -5,10 +5,17 @@ import { handleGSheetRequest } from './gsheetHandler.mjs';
 import { handleConfigCatRequest } from './configcatHandler.mjs';
 // @ts-expect-error - plain .mjs modules shared with the production server.
 import { handlePublishRequest } from './publishHandler.mjs';
+// @ts-expect-error - plain .mjs modules shared with the production server.
+import { handleScheduleRequest } from './scheduleHandler.mjs';
 
 type Handler = (req: unknown, res: unknown) => Promise<boolean>;
 
-const HANDLERS: Handler[] = [handleGSheetRequest, handleConfigCatRequest, handlePublishRequest];
+const HANDLERS: Handler[] = [
+  handleGSheetRequest,
+  handleConfigCatRequest,
+  handlePublishRequest,
+  handleScheduleRequest,
+];
 
 /**
  * Serves the `/api/*` routes on the Vite dev and preview servers, so the app

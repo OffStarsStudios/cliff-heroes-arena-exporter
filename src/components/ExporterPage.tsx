@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActionBar } from './ActionBar';
 import type { View } from './AppShell';
+import { ChangeReview } from './ChangeReview';
 import { Icon } from './Icon';
-import { JsonOutput } from './JsonOutput';
-import { LiveGraphCheck, type LiveCheckResult } from './LiveGraphCheck';
-import { PublishPanel } from './PublishPanel';
 import { SourcePanel, type SourceController } from './SourcePanel';
 import { Step, type StepStatus } from './Step';
 import { IssueList } from './Summary';
@@ -12,6 +9,7 @@ import { TabPicker } from './TabPicker';
 import { ENVIRONMENTS, liveEnvironment } from '../domains/account';
 import { runAnalysis } from '../exporters/analysis';
 import type { ExporterDefinition, TabSelection, TabSpec } from '../exporters/types';
+import { useRelease } from '../hooks/useRelease';
 import { detectDataset, type Dataset } from '../lib/sheetSelect';
 
 interface ExporterPageProps<S extends TabSelection, TConfig, TRow> {
@@ -39,9 +37,19 @@ function emptySelection<S extends TabSelection>(tabs: TabSpec<S>[]): S {
 }
 
 /**
- * The three-step exporter page every config shares: load the workbook, pick
- * the tabs, review and publish. Everything config-specific comes from the
- * definition.
+ * One config, start to finish: load the sheet, look at what changes, publish
+ * or schedule it.
+ *
+ * There used to be a third step in the middle called "generate JSON", and it
+ * was the console admitting it thought of itself as a file converter. Nobody
+ * opening this page wants a file. They want to know what their spreadsheet
+ * edit does to the running game, and then to make it happen. So the JSON is
+ * produced silently, the diff against the live config computes itself the
+ * moment the sheet parses, and the two things left to press are Publish and
+ * Schedule.
+ *
+ * The tab mapping survives as a fold rather than a step, because it is right
+ * automatically almost every time and is only interesting when it is not.
  */
 export function ExporterPage<S extends TabSelection, TConfig, TRow>({
   definition,
@@ -50,92 +58,104 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
 }: ExporterPageProps<S, TConfig, TRow>) {
   const { workbook } = source;
   const [selection, setSelection] = useState<S>(() => emptySelection(definition.tabs));
-  const [generated, setGenerated] = useState<string | null>(null);
-  const [generatedConfig, setGeneratedConfig] = useState<TConfig | null>(null);
-  const [schemaError, setSchemaError] = useState<string | null>(null);
   const [openStep, setOpenStep] = useState(1);
-  const [outputTab, setOutputTab] = useState<'preview' | 'json'>('preview');
+  const [showMapping, setShowMapping] = useState(false);
+  const [outputTab, setOutputTab] = useState<'changes' | 'preview'>('changes');
   const [environmentId, setEnvironmentId] = useState(
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
-  const [liveCheck, setLiveCheck] = useState<LiveCheckResult | null>(null);
 
-  const invalidate = () => {
-    setGenerated(null);
-    setGeneratedConfig(null);
-  };
-
-  // A new workbook resets the tab choices and anything generated from the old one.
+  // A new workbook re-runs auto-selection from scratch.
   useEffect(() => {
     setSelection(workbook === null ? emptySelection(definition.tabs) : definition.autoSelect(workbook));
-    setGenerated(null);
-    setGeneratedConfig(null);
-    setSchemaError(null);
   }, [workbook, definition]);
 
-  // Live analysis: everything except the JSON itself updates as selections change.
   const analysis = useMemo(() => runAnalysis(definition, workbook, selection), [definition, workbook, selection]);
   const { result, issues, errors: errorCount, warnings: warningCount } = analysis;
-  const canGenerate = result !== null && errorCount === 0 && result.count > 0;
 
-  /* ---- step state ------------------------------------------------------- */
+  /**
+   * The schema gate, which used to be attached to the Generate button.
+   *
+   * It still runs before anything can be published - it just runs on its own,
+   * as part of parsing, rather than waiting to be asked.
+   */
+  const exportable = useMemo(() => {
+    if (result === null || errorCount > 0 || result.count === 0) {
+      return { config: null, json: null, schemaError: null as string | null };
+    }
+    const schemaIssues = definition.validate(result.config);
+    if (schemaIssues.length > 0) {
+      return { config: null, json: null, schemaError: schemaIssues.map((issue) => issue.message).join(' ') };
+    }
+    return { config: result.config, json: definition.serialize(result.config), schemaError: null };
+  }, [definition, result, errorCount]);
+
+  const release = useRelease({
+    domain: definition.domain,
+    payload: exportable.config,
+    environmentId,
+    extraRegistry: result?.registry,
+  });
 
   const hasWorkbook = workbook !== null;
   const chosenTabs = definition.tabs.filter((tab) => selection[tab.key] !== null).length;
   const tabsReady = chosenTabs === definition.tabs.length;
-  const firstIncomplete = !hasWorkbook ? 1 : !tabsReady ? 2 : 3;
 
-  // Advance the open step only when the furthest unfinished step actually
-  // moves, so a step the user opened by hand is not yanked shut under them.
+  // The review step opens itself as soon as there is anything to review, which
+  // is the whole point: load a sheet, see the changes.
   useEffect(() => {
-    setOpenStep(firstIncomplete);
-  }, [firstIncomplete]);
+    setOpenStep(hasWorkbook && tabsReady ? 2 : 1);
+  }, [hasWorkbook, tabsReady]);
+
+  // An auto-selection that came up short is the one case where the mapping is
+  // worth showing without being asked for.
+  useEffect(() => {
+    if (hasWorkbook && !tabsReady) setShowMapping(true);
+  }, [hasWorkbook, tabsReady]);
 
   const toggle = (index: number) => setOpenStep((current) => (current === index ? 0 : index));
 
   const sheetNames = workbook?.sheets.map((sheet) => sheet.name) ?? [];
-
-  const tabsStatus: StepStatus = !hasWorkbook ? 'pending' : tabsReady ? 'done' : 'blocked';
-  const reviewStatus: StepStatus = !tabsReady
-    ? 'pending'
-    : errorCount > 0
-      ? 'blocked'
-      : generated !== null
-        ? 'done'
-        : 'current';
-
-  const generate = () => {
-    if (result === null) return;
-    // Independent schema check before anything can be copied or downloaded.
-    const schemaIssues = definition.validate(result.config);
-    if (schemaIssues.length > 0) {
-      invalidate();
-      setSchemaError(schemaIssues.map((issue) => issue.message).join(' '));
-      return;
-    }
-    setSchemaError(null);
-    setGenerated(definition.serialize(result.config));
-    setGeneratedConfig(result.config);
-    setOutputTab('json');
-  };
-
   const dataset = workbook === null ? null : detectDataset(workbook);
   const wrongDataset = dataset !== null && dataset !== definition.dataset ? VIEW_FOR_DATASET[dataset] : null;
 
   const { singular, plural } = definition.noun;
   const countLabel = (count: number) => `${count} ${count === 1 ? singular : plural}`;
-  const introducedErrors = liveCheck?.introducedErrors ?? 0;
 
-  const barTone = errorCount > 0 ? 'danger' : generated !== null ? 'ok' : 'neutral';
-  const barMessage = !hasWorkbook
-    ? 'Load a workbook to start.'
-    : errorCount > 0
-      ? `${errorCount} error${errorCount === 1 ? '' : 's'} block the export.`
-      : generated !== null
-        ? `JSON generated from ${countLabel(result?.count ?? 0)}.`
-        : canGenerate
-          ? `Ready - ${countLabel(result?.count ?? 0)} parsed.`
-          : 'Finish the steps above to generate.';
+  const sheetBlocker =
+    !hasWorkbook
+      ? 'Load a sheet to see what would change.'
+      : !tabsReady
+        ? `Two tabs could not be matched automatically. Open the tab mapping below and pick them.`
+        : errorCount > 0
+          ? `${errorCount} error${errorCount === 1 ? '' : 's'} in the sheet stop this from being published. They are listed above.`
+          : result !== null && result.count === 0
+            ? `The chosen tabs parsed without errors but produced no ${plural}.`
+            : exportable.schemaError !== null
+              ? `The generated config failed its schema check, so nothing was produced: ${exportable.schemaError}`
+              : null;
+
+  const reviewStatus: StepStatus = !tabsReady
+    ? 'pending'
+    : sheetBlocker !== null || release.introducedErrors > 0
+      ? 'blocked'
+      : release.unchanged
+        ? 'done'
+        : release.status === 'ready'
+          ? 'current'
+          : 'pending';
+
+  const reviewChip = !tabsReady
+    ? 'Waiting'
+    : sheetBlocker !== null
+      ? 'Blocked'
+      : release.status === 'loading'
+        ? 'Checking'
+        : release.unchanged
+          ? 'Already live'
+          : release.entry?.summary !== undefined
+            ? `${release.entry.summary.total} change${release.entry.summary.total === 1 ? '' : 's'}`
+            : 'Ready';
 
   return (
     <>
@@ -164,91 +184,93 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
       <div className="steps">
         <Step
           index={1}
-          title="Load the workbook"
+          title="Load the sheet"
           hint="Excel file or a shared Google Sheet"
-          status={hasWorkbook ? 'done' : 'current'}
-          statusLabel={hasWorkbook ? 'Loaded' : 'Start here'}
+          status={hasWorkbook ? (tabsReady ? 'done' : 'blocked') : 'current'}
+          statusLabel={
+            !hasWorkbook
+              ? 'Start here'
+              : tabsReady
+                ? `${chosenTabs} tab${chosenTabs === 1 ? '' : 's'} matched`
+                : `${chosenTabs} of ${definition.tabs.length} tabs`
+          }
           open={openStep === 1}
           onToggle={() => toggle(1)}
         >
-          <SourcePanel source={source} />
+          <div className="stack-sm">
+            <SourcePanel source={source} />
+
+            {hasWorkbook && (
+              <div className="mapping">
+                <button
+                  type="button"
+                  className="mapping__toggle"
+                  aria-expanded={showMapping}
+                  onClick={() => setShowMapping((open) => !open)}
+                >
+                  <Icon name="chevron" size={14} className={showMapping ? 'mapping__chevron mapping__chevron--open' : 'mapping__chevron'} />
+                  <span>
+                    {tabsReady
+                      ? `Tab mapping - all ${definition.tabs.length} matched automatically`
+                      : `Tab mapping - ${definition.tabs.length - chosenTabs} still to pick`}
+                  </span>
+                  {tabsReady && (
+                    <span className="mapping__summary">
+                      {definition.tabs
+                        .map((tab) => selection[tab.key])
+                        .filter((name) => name !== null)
+                        .join(', ')}
+                    </span>
+                  )}
+                </button>
+                {showMapping && (
+                  <div className="mapping__body">
+                    <TabPicker
+                      hint={definition.tabsHint}
+                      tabs={definition.tabs}
+                      sheetNames={sheetNames}
+                      selection={selection}
+                      onChange={setSelection}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </Step>
 
         <Step
           index={2}
-          title="Pick the tabs"
-          hint={definition.tabs.map((tab) => tab.label).join(', ')}
-          status={tabsStatus}
-          statusLabel={hasWorkbook ? `${chosenTabs} of ${definition.tabs.length} tabs` : 'Waiting'}
+          title="Review and ship"
+          hint="What this sheet changes in the live game"
+          status={reviewStatus}
+          statusLabel={reviewChip}
           open={openStep === 2}
           onToggle={() => toggle(2)}
           locked={!hasWorkbook}
         >
-          <TabPicker
-            hint={definition.tabsHint}
-            tabs={definition.tabs}
-            sheetNames={sheetNames}
-            selection={selection}
-            onChange={(next) => {
-              setSelection(next);
-              invalidate();
-            }}
-          />
-        </Step>
-
-        <Step
-          index={3}
-          title="Review and export"
-          hint={`Check the parsed ${plural}, then generate and publish`}
-          status={reviewStatus}
-          statusLabel={
-            !tabsReady
-              ? 'Waiting'
-              : errorCount > 0
-                ? `${errorCount} error${errorCount === 1 ? '' : 's'}`
-                : generated !== null
-                  ? 'Generated'
-                  : 'Ready'
-          }
-          open={openStep === 3}
-          onToggle={() => toggle(3)}
-          locked={!tabsReady}
-        >
           {result === null ? (
             <div className="stack-sm">
-              <p className="empty">Finish step 2 to see the parsed {plural}.</p>
+              <p className="empty">Pick the remaining tabs above to see what changes.</p>
               {issues.length > 0 && <IssueList issues={issues} severity="error" />}
             </div>
           ) : (
             <div className="stack-md">
-              <div className="stats">
+              <div className="stats stats--tight">
                 {result.stats.map((stat) => (
                   <div key={stat.label} className="stat">
                     <div className="stat__value">{stat.value.toLocaleString()}</div>
                     <div className="stat__label">{stat.label}</div>
                   </div>
                 ))}
-                <div className={errorCount > 0 ? 'stat stat--danger' : 'stat stat--ok'}>
-                  <div className="stat__value">{errorCount}</div>
-                  <div className="stat__label">Errors</div>
-                </div>
-                <div className={warningCount > 0 ? 'stat stat--warn' : 'stat'}>
-                  <div className="stat__value">{warningCount}</div>
-                  <div className="stat__label">Warnings</div>
-                </div>
+                {errorCount > 0 && <div className="stat stat--danger"><div className="stat__value">{errorCount}</div><div className="stat__label">Sheet errors</div></div>}
+                {warningCount > 0 && <div className="stat stat--warn"><div className="stat__value">{warningCount}</div><div className="stat__label">Warnings</div></div>}
               </div>
-
-              {schemaError !== null && (
-                <div className="banner banner--error" role="alert">
-                  <Icon name="alert" size={15} className="banner__icon" />
-                  <span>{schemaError}</span>
-                </div>
-              )}
 
               {errorCount > 0 && (
                 <div>
-                  <p className="step__section-title">
-                    {errorCount} error{errorCount === 1 ? '' : 's'} - nothing is exported while{' '}
+                  <p className="step__section-title step__section-title--danger">
+                    {errorCount} error{errorCount === 1 ? '' : 's'} - nothing is published while{' '}
                     {definition.errorContext}
                   </p>
                   <IssueList issues={issues} severity="error" />
@@ -261,83 +283,53 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
               )}
 
               {warningCount > 0 && (
-                <div>
-                  <p className="step__section-title">
-                    {warningCount} warning{warningCount === 1 ? '' : 's'} - exported as-is
-                  </p>
+                <details className="disclosure">
+                  <summary>
+                    {warningCount} warning{warningCount === 1 ? '' : 's'} - published as-is
+                  </summary>
                   <IssueList issues={issues} severity="warning" />
-                </div>
+                </details>
               )}
 
-              <div>
-                <div className="tabs" role="tablist" aria-label="Output">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={outputTab === 'preview'}
-                    className={`tab${outputTab === 'preview' ? ' tab--active' : ''}`}
-                    onClick={() => setOutputTab('preview')}
-                  >
-                    Parsed {plural} ({result.preview.length})
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={outputTab === 'json'}
-                    className={`tab${outputTab === 'json' ? ' tab--active' : ''}`}
-                    onClick={() => setOutputTab('json')}
-                  >
-                    JSON {generated === null ? '(not generated)' : ''}
-                  </button>
-                </div>
-
-                {outputTab === 'preview' ? (
-                  <definition.PreviewTable rows={result.preview} />
-                ) : generated === null ? (
-                  <p className="empty">
-                    Press <strong>Generate JSON</strong> below. The output is schema-checked first, so a
-                    partial file is never produced.
-                  </p>
-                ) : (
-                  <JsonOutput json={generated} filename={definition.downloadFilename} />
-                )}
+              <div className="tabs" role="tablist" aria-label="Review">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={outputTab === 'changes'}
+                  className={`tab${outputTab === 'changes' ? ' tab--active' : ''}`}
+                  onClick={() => setOutputTab('changes')}
+                >
+                  What changes live
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={outputTab === 'preview'}
+                  className={`tab${outputTab === 'preview' ? ' tab--active' : ''}`}
+                  onClick={() => setOutputTab('preview')}
+                >
+                  Parsed {plural} ({countLabel(result.count)})
+                </button>
               </div>
 
-              <LiveGraphCheck
-                domain={definition.domain}
-                payload={generatedConfig}
-                environmentId={environmentId}
-                extraRegistry={result.registry}
-                onResult={setLiveCheck}
-              />
-
-              <PublishPanel
-                domain={definition.domain}
-                payload={generatedConfig ?? result.config}
-                blocked={!canGenerate || generated === null || introducedErrors > 0}
-                blockedReason={
-                  errorCount > 0
-                    ? `${errorCount} error${errorCount === 1 ? '' : 's'} block publishing, the same way they block the download.`
-                    : introducedErrors > 0
-                      ? `The check against the live config found ${introducedErrors} error${introducedErrors === 1 ? '' : 's'} this change would introduce. Fix the sheet and regenerate.`
-                      : generated === null
-                        ? 'Generate the JSON first - publishing sends exactly what was generated and checked.'
-                        : 'There is nothing to publish yet.'
-                }
-                environmentId={environmentId}
-                onEnvironmentChange={setEnvironmentId}
-              />
+              {outputTab === 'preview' ? (
+                <definition.PreviewTable rows={result.preview} />
+              ) : (
+                <ChangeReview
+                  domain={definition.domain}
+                  payload={exportable.config}
+                  json={exportable.json}
+                  downloadFilename={definition.downloadFilename}
+                  release={release}
+                  environmentId={environmentId}
+                  onEnvironmentChange={setEnvironmentId}
+                  sheetBlocker={sheetBlocker}
+                />
+              )}
             </div>
           )}
         </Step>
       </div>
-
-      <ActionBar tone={barTone} message={barMessage}>
-        <button type="button" className="btn btn--primary" onClick={generate} disabled={!canGenerate}>
-          <Icon name="code" size={14} />
-          {generated === null ? 'Generate JSON' : 'Regenerate'}
-        </button>
-      </ActionBar>
     </>
   );
 }

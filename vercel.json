@@ -3,5 +3,16 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "functions": {
+    "api/schedule/tick.js": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/schedule/tick",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }

@@ -17,9 +17,8 @@ export const HERO_UPGRADE_EXPORTER: ExporterDefinition<
   title: 'Hero upgrades',
   lead: (
     <>
-      Turns the Hero Upgrade Settings workbook into <span className="mono">hero-upgrade.json</span> -
-      the growth factors the game rolls the upgrade cost curve out of, and the coin and card bases per
-      rarity.
+      The growth factors the game rolls the upgrade cost curve out of, and the coin and card bases
+      per rarity, published to <span className="mono">heroUpgradeSettings</span>.
     </>
   ),
   icon: 'coins',

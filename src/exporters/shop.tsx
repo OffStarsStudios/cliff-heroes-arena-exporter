@@ -15,9 +15,8 @@ export const SHOP_EXPORTER: ExporterDefinition<ShopSheetSelection, ShopConfig, S
   title: 'Shop',
   lead: (
     <>
-      Turns the Shop Settings workbook into <span className="mono">shop.json</span> - every product,
-      how it is sold, its price or limits, and the rewards it grants, with reward IDs joined from
-      the Rewards lookup tab.
+      Every product, how it is sold, its price or limits, and the rewards it grants, joined against
+      the Rewards lookup tab and published to <span className="mono">shopSettings</span>.
     </>
   ),
   icon: 'cart',

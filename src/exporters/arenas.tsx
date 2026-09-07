@@ -14,8 +14,8 @@ export const ARENAS_EXPORTER: ExporterDefinition<ArenaSheetSelection, ArenasConf
   title: 'Arenas',
   lead: (
     <>
-      Turns the Arenas Settings workbook into <span className="mono">arenas.json</span> - the track
-      count and bot line-up of every arena, with IDs joined from the Arenas lookup tab.
+      The track count and bot line-up of every arena, joined against the Arenas lookup tab and
+      published to <span className="mono">arenasSettings</span>.
     </>
   ),
   icon: 'table',

@@ -1,35 +1,47 @@
-# Cliff Heroes JSON Exporter
+# Cliff Heroes Back Office
 
-Convert Cliff Heroes design sheets into game-ready JSON.
+The live-ops console for Cliff Heroes: what the game is serving, what is about to
+change, and the two ways to change it - now, or on a schedule.
 
-A browser tool with one exporter per ConfigCat setting:
+It used to be a JSON exporter with a publish button bolted on, and it still parses
+the same design sheets. But nobody working on a live game wants a file. They want to
+know what a spreadsheet edit does to the running game and then to make it happen, so
+that is what the console is built around now:
 
-- **Trophy road** - reads an arena progression sheet, joins arena and reward names
-  against the workbook's own lookup tabs, and exports `arena-progress.json`
-  (`trophyRoadSettings`).
-- **Hero stats** - reads base stats, level factors and power settings, rolls the level
-  curves out, and exports `heroes.json` (`heroesSettings`).
-- **Arenas** - reads the Arenas Settings workbook and exports `arenas.json`
-  (`arenasSettings`): track count and bot line-up per arena.
-- **Match trophies** - reads the Match Trophy Settings workbook and exports
-  `match-trophy.json` (`matchTrophySettings`): the trophy delta per finishing place.
-- **Bots** - reads the Bots Settings workbook and exports `bots.json`
-  (`botsSettings`): the tuning of every bot difficulty level.
-- **Hero upgrades** - reads the Hero Upgrade Settings workbook and exports
-  `hero-upgrade.json` (`heroUpgradeSettings`): the upgrade cost curve and the
-  per-rarity bases.
-- **Shop** - reads the Shop Settings workbook and exports `shop.json`
-  (`shopSettings`): every product, how it is sold, and what it grants.
-- **Battle pass** - reads the Battle Pass Settings workbook and exports
-  `battle-pass.json` (`battlePassSettings`): the season header and the free and
-  premium reward on every tier.
+**Load the sheet, look at the diff, publish it.** The JSON is produced and
+schema-checked silently, the diff against the live config computes itself the moment
+the sheet parses, and there is no Generate step in between.
 
-Each exporter is its own section in the left sidebar and **keeps its own workbook**,
-because every config lives in its own Google Sheet (one folder per config under the
-`Economy` Drive folder). A page remembers the last Google Sheet link it loaded and
-offers to reload it with one click. Sections are deep-linkable (`#/arena` is the
-trophy road, `#/heroes`, `#/arenas`, `#/matchTrophy`, `#/bots`, `#/heroUpgrade`, `#/shop`,
-`#/battlePass`, `#/live`, `#/reference`).
+## What is in it
+
+**Overview** (`#/dashboard`, the front door) - every config with its live size, how
+far the two environments have drifted apart, what is scheduled, and whether the three
+things this all depends on are actually working: ConfigCat, the GitHub token, and the
+scheduler's heartbeat.
+
+**Scheduling** (`#/schedule`) - windows the back office opens and closes on its own,
+the fallback each config returns to, and proof the heartbeat is arriving. See
+[Scheduling](#scheduling).
+
+**Live config** (`#/live`) - every setting as deployed, byte for byte. Read-only.
+
+**One page per config**, each with its own workbook, because every config lives in its
+own Google Sheet (one folder per config under the `Economy` Drive folder):
+
+| Page | Route | Setting | What it controls |
+| --- | --- | --- | --- |
+| Trophy road | `#/arena` | `trophyRoadSettings` | Trophy milestones, arena unlocks, rewards |
+| Hero stats | `#/heroes` | `heroesSettings` | Base stats, level curves, power |
+| Arenas | `#/arenas` | `arenasSettings` | Track count and bot line-up per arena |
+| Match trophies | `#/matchTrophy` | `matchTrophySettings` | Trophy delta per finishing place |
+| Bots | `#/bots` | `botsSettings` | Tuning per bot difficulty level |
+| Hero upgrades | `#/heroUpgrade` | `heroUpgradeSettings` | Upgrade cost curve, per-rarity bases |
+| Shop | `#/shop` | `shopSettings` | Products, prices, what they grant |
+| Battle pass | `#/battlePass` | `battlePassSettings` | Season header and the reward ladder |
+
+A page remembers the last Google Sheet link it loaded and offers to reload it with one
+click. **Power parameters** (`#/reference`) lists every accepted special parameter
+name, and a failing hero export links straight to it.
 
 ## Requirements
 
@@ -64,39 +76,34 @@ npm run build && npm start
 
 ## Using it
 
-Pick a section in the sidebar - **Trophy road**, **Hero stats**, **Arenas**,
-**Match trophies**, **Bots**, **Hero upgrades** or **Shop** - then work down the
-numbered steps. Each step shows its own status, and the step you still
-have to finish opens on its own.
+Pick a config in the sidebar. There are two steps.
 
-1. **Load the workbook.** Drop an `.xlsx` file, or paste a Google Sheets link. Each
-   exporter has its own workbook; a page that has loaded a sheet before offers to
-   reload it.
-2. **Pick the tabs.** Sensible defaults are picked automatically; every field says what
-   the tab has to contain.
-   - Trophy road: **Progression**, **Arenas lookup**, **Rewards lookup**
-   - Hero stats: **Heroes lookup**, **Base stats**, **Stats level factors**, **Power settings**
-   - Arenas: **Arenas lookup**, **Arena settings**
-   - Match trophies: **Trophies by place**
-   - Bots: **Bots**
-   - Hero upgrades: **Growth**, **Costs**
-   - Shop: **Products**, **Rewards lookup**
-3. **Map the columns** (trophy road only). Detected columns are pre-filled; anything
-   detection was unsure about is called out.
-4. **Review and export.** Live counts, then the errors and warnings, then a tab switch
-   between the parsed rows and the JSON. Press **Generate JSON** in the bar pinned to
-   the bottom of the page, then copy or download. Generating also runs the
-   **Check against live config** (below), and the publish panel only ever sends
-   exactly what was generated and checked.
+1. **Load the sheet.** Drop an `.xlsx` file, or paste a Google Sheets link.
+   Tab selection happens automatically and is folded away as a one-line summary;
+   the fold opens itself only when a tab could not be matched. The trophy road also
+   maps columns, folded the same way, and it opens itself when detection was unsure.
+2. **Review and ship.** Parse counts, then the errors and warnings, then the diff
+   against the live config - added, removed, changed and reordered, line by line -
+   and the cross-config check with this payload substituted in. Underneath, two
+   buttons: **Publish to Test** and **Schedule it**.
 
-The bottom bar always says why the export is or is not available, so the reason a
-button is disabled never has to be hunted for.
+Nothing has to be pressed to get there. The JSON is generated and schema-checked as
+part of parsing, and the diff is fetched as soon as the config is valid. If you want
+the file anyway it is still there, under *The JSON itself*, with copy and download.
 
-The **Power parameters** section lists every accepted special parameter name, and a
-failing hero export links straight to it.
+Publishing is refused, with the reason stated, while any of these is true:
 
-Export is blocked while any validation error is outstanding, so a failed name join or a
-mistyped power parameter can never produce partial JSON.
+- the sheet has validation errors, or parsed to nothing
+- the generated config fails its schema check
+- the change would introduce a cross-config error (a trophy road naming an arena that
+  the arenas config does not define, say)
+- somebody has unpublished work staged in the ConfigCat dashboard
+- the live value moved after the diff was computed - you get a conflict, not a
+  silent overwrite
+
+Publishing to the environment the shipped game reads needs one extra confirmation on
+top, keyed off which environment that actually is rather than off its name. See
+[Which environment is live](#which-environment-is-live).
 
 ### Google Sheets
 
@@ -120,11 +127,32 @@ cloud, so Node 14 on your machine is not a blocker:
 3. Leave every build setting on its detected default (Framework `Vite`, Build
    `npm run build`, Output `dist`) and press **Deploy**.
 
-No environment variables are needed - the app has no secrets and no Google
-credentials.
-
 If the build complains about the Node version, set **Project Settings > General >
 Node.js Version** to 22.x.
+
+### Environment variables
+
+Set these under **Project Settings > Environment Variables**, then **redeploy** -
+changing a variable does not affect the deployment already running, which is the
+single most common reason a fix appears not to have worked.
+
+| Variable | Needed for | If it is missing |
+| --- | --- | --- |
+| `CONFIGCAT_API_USER` | reading and publishing | the console can read nothing |
+| `CONFIGCAT_API_PASS` | reading and publishing | the console can read nothing |
+| `GITHUB_TOKEN` | git history, and all scheduling | publishes still work but are not recorded; scheduling is unavailable |
+| `CRON_SECRET` | guarding the heartbeat | the heartbeat endpoint is open (harmless, see [Scheduling](#scheduling)) |
+| `GITHUB_REPO` | optional | defaults to `OffStarsStudios/cliff-heroes-arena-exporter` |
+| `GITHUB_BRANCH` | optional | defaults to `main` |
+| `CONFIGCAT_CONFIG_ID` | optional | defaults to the `CliffHeroes` config |
+| `CONFIGCAT_PRODUCT_ID` | optional | defaults to the `Cliff Heroes` product |
+
+None of them may be `VITE_`-prefixed. Vite copies every `VITE_` variable into the
+public browser bundle, which for these would publish write access to the live game
+config to anyone who opens the page.
+
+The **Overview** page shows the state of all three dependencies, so a variable that
+was set but never redeployed is visible rather than discovered during a publish.
 
 ### Sharing it with teammates
 
@@ -239,8 +267,39 @@ To set it up:
 4. Optional: `GITHUB_REPO` and `GITHUB_BRANCH` override the defaults
    `OffStarsStudios/cliff-heroes-arena-exporter` and `main`.
 
-A token that exists but is rejected reports the GitHub status, so an expired or
-under-scoped token reads differently from a missing one.
+#### When GitHub answers 403
+
+`GET /api/git/status` reports exactly what the token can do, and the **Overview**
+page renders it. A refusal is never reported as a bare status code: the four causes
+of a 403 on this endpoint are indistinguishable from the number alone, so the console
+lists them.
+
+- **The token's resource owner is not the organisation.** A fine-grained token
+  created under a personal account cannot reach an organisation repository however
+  its permissions are set. It has to be created with `OffStarsStudios` selected as
+  the resource owner.
+- **The organisation has not approved it.** A fine-grained token against an
+  organisation repository starts as a request; an owner approves it under the
+  organisation's **Settings > Personal access tokens > Pending requests**. Until
+  then every call is refused.
+- **Contents is not set to Read and write**, or the repository is not in the token's
+  repository selection.
+- **The organisation has fine-grained tokens disabled** under **Settings > Personal
+  access tokens > Settings**.
+
+Two more things that look like a 403 and are not:
+
+- **404 on a private repository.** GitHub answers 404 rather than 403 when a token
+  cannot see a repository at all, so a 404 here can still be a permissions problem.
+  The message says so.
+- **A stale deployment.** Setting `GITHUB_TOKEN` in Vercel does nothing until the
+  next deploy. Redeploy after changing it.
+
+One historical cause has been fixed rather than documented: the Contents API path was
+being encoded with `encodeURIComponent`, which turns the `/` in `config/heroes.json`
+into `%2F`. GitHub then looks for one oddly named file at the repository root, so
+every read 404s and every write would have created junk. Paths are now encoded
+segment by segment (`server/git.mjs`, covered by `tests/git.test.ts`).
 
 Writes are not atomic across settings. ConfigCat’s Change Requests API exposes
 reading and updating but not creating, so a genuine multi-setting transaction is
@@ -248,10 +307,10 @@ not available yet.
 
 ### Check against live config
 
-Every exporter runs the cross-config rules *before* publishing. When the JSON is
-generated, the page fetches every setting of the target environment, substitutes
-the generated payload for its own setting, and runs the same graph checks the Live
-config page runs. The report is split against the live baseline:
+Every config page runs the cross-config rules *before* publishing, automatically,
+as soon as the sheet parses. The page fetches every setting of the target
+environment, substitutes the parsed payload for its own setting, and runs the same
+graph checks the Live config page runs. The report is split against the live baseline:
 
 - **Introduced** issues are ones this change causes. Introduced *errors* block
   publishing; introduced warnings do not.
@@ -260,8 +319,7 @@ config page runs. The report is split against the live baseline:
 - **Fixed** issues are live problems the change makes go away.
 
 If the live config cannot be read (no credentials, no network) the check says so
-and does not block - the publish step needs the same connection and fails on its
-own. Download and copy are never gated by the graph.
+rather than pretending to pass. Download and copy are never gated by the graph.
 
 ### The Live config page
 
@@ -279,6 +337,107 @@ The game currently reads the **Test** environment, not Production. Test is
 therefore the environment where a mistake reaches players, and Production is the
 safe place to rehearse a change. This is the reverse of the usual arrangement
 and is worth stating out loud before touching either.
+
+## Scheduling
+
+Book a config to go live at a time, and to come down at another. The back office does
+both without anybody being awake for either.
+
+A window is created from a config page, not from the scheduling page: load the sheet,
+read the diff, then press **Schedule it** instead of **Publish**. There is deliberately
+no create form on `#/schedule`, because a window booked without looking at what it
+publishes is the exact mistake this console exists to prevent.
+
+### The guardrails, and why each one is there
+
+**A window that ends needs somewhere to go back to.** Each config has a *default* -
+the payload it returns to when a window closes and nothing else is due. Scheduling a
+window with an end time is refused until one is recorded. The dialog offers the fix
+inline: the value that is live right now is almost always the right default, and one
+press records it. Open-ended windows need no default, because nothing has to be
+restored.
+
+**Windows for one config and environment may not overlap.** Two schedules fighting
+over one setting is not something anyone means to configure, so it is refused at
+creation with the clashing window named.
+
+**A start time in the past is refused**, with about fifteen minutes of grace for a
+slow form submit. A window longer than 180 days is refused too - that is nearly
+always a mistyped year.
+
+**Nothing is reverted that does not still look like what the schedule put there.**
+When a window ends, the live value is compared against what that window published. If
+somebody has published over it by hand, the revert is skipped and recorded. A
+deliberate fix is never undone by a promotion expiring.
+
+**A missed window is closed, not applied late.** Activation is written as "what should
+be live right now", never as "what changed since the last run", so a heartbeat that is
+late, early or skipped entirely still produces the right answer. A window whose whole
+span went by unnoticed is marked *missed* rather than dropping a finished promotion
+onto players.
+
+**Failures retry before they give up.** A ConfigCat blip or a colleague's open change
+request delays a window by one tick rather than cancelling it; after six failed
+attempts it is marked failed and shown on the Overview.
+
+**Every scheduled write is a real publish**: read back and verified, noted in
+ConfigCat's audit log with the window's name, committed to `config/`, and refused
+while there is unpublished work staged in the ConfigCat dashboard. The one difference
+from a person pressing the button is that there is no baseline hash - the window was
+planned days ago and the live value is expected to have moved since.
+
+### Where the schedule lives
+
+In this repository, through the Contents API: `schedules/schedules.json` for the
+windows and `config/defaults/<domain>.json` for the fallbacks. There is no database,
+and adding one for eight configs and a handful of windows a week would be the wrong
+trade - the repo already gives durability, an audit trail, and a diff for every change
+to the schedule itself. It is one file on purpose: one file is one sha, so two people
+editing the schedule at once conflict loudly instead of interleaving.
+
+This is why **scheduling needs `GITHUB_TOKEN`** and reports itself unavailable
+without one, where publishing merely notes that the history was not written.
+
+### The heartbeat
+
+Nothing happens without something calling `POST /api/schedule/tick`. Two things do:
+
+- **`.github/workflows/schedule-tick.yml`**, every five minutes. This is the real
+  driver. It needs two Actions secrets: `BACK_OFFICE_URL` (the deployment's origin)
+  and `CRON_SECRET` (matching the Vercel variable). A non-2xx fails the workflow run,
+  so GitHub's own notifications tell you when scheduled changes have stopped going
+  live.
+- **`vercel.json`'s cron**, once a day. Vercel's Hobby plan allows no more than that,
+  which is useless as a scheduler and fine as a backstop.
+
+The tick is idempotent - it publishes only what should be live at that instant - so an
+extra run costs one API call and changes nothing.
+
+`CRON_SECRET` guards the endpoint when set and leaves it open when not. Open is
+defensible *here and only here*: a tick can apply a window only once its start time
+has passed, so calling it early does nothing and calling it repeatedly does nothing
+twice. It cannot publish anything that was not already going to be published. Set it
+anyway; the Overview says when it is missing.
+
+The Overview and the scheduling page both show when the last beat arrived, and say so
+loudly past an hour. A scheduler nobody is running is worse than no scheduler, and its
+failure mode is silence - nothing happens, and nothing is exactly what an empty
+schedule looks like.
+
+### Routes
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/schedule` | Every window, the fallbacks, and the heartbeat's health |
+| `POST /api/schedule` | Book a window. Refused with the full list of failed guardrails. |
+| `POST /api/schedule/cancel` | Stop a window; if it is live, put the config back first |
+| `GET|POST /api/schedule/default` | Read or record a config's fallback |
+| `GET /api/schedule/preview?id=` | What one window would change if it ran now |
+| `GET|POST /api/schedule/tick` | The heartbeat. GET as well, because Vercel Cron issues one. |
+| `GET /api/git/status` | Whether the token can read and write the repo, and why not |
+
+`server/schedule.mjs` holds the model and the guardrails; `tests/schedule.test.ts` is
+their specification.
 
 ## Cross-config validation
 
@@ -725,13 +884,23 @@ src/lib/columns.ts        header-driven column resolution shared by the tabular 
 src/lib/nameResolve.ts    fuzzy name resolution against a constant list
 src/lib/recentSources.ts  remembered Google Sheet link per exporter
 src/lib/googleSheets.ts   sheet URL   -> workbook
-src/exporters/            one ExporterDefinition per config (heroes, arenas, matchTrophy, bots, heroUpgrade, shop) + the pure analysis runner
-src/hooks/                per-page workbook sources
-src/features/             the hand-written pages (trophy road, heroes, live config, reference)
-src/components/           app shell, stepper, ExporterPage, LiveGraphCheck, and the shared UI primitives
-src/styles.css            design tokens + all component styling
-server/                   Google Sheets proxy (dev plugin + prod server)
-tests/                    transformation tests, including both real workbooks
+src/lib/schedule.ts        client side of the scheduling routes + time formatting
+src/exporters/            one ExporterDefinition per config + the pure analysis runner
+src/hooks/useWorkbookSources.ts  per-page workbook sources
+src/hooks/useRelease.ts   parsed config -> diff against live + cross-config check, automatically
+src/features/Dashboard.tsx       the overview: what is live, what is booked, what is broken
+src/features/Schedule.tsx        windows, fallbacks, heartbeat health
+src/features/             the hand-written config pages (trophy road, live config, reference)
+src/components/ChangeReview.tsx  the diff, the cross-config check and the two ship buttons
+src/components/ScheduleDialog.tsx  booking a window, with the fallback guardrail inline
+src/components/           app shell, stepper, ExporterPage, and the shared UI primitives
+src/styles.css            design tokens + component styling
+src/liveops.css           the live-ops surfaces (overview, schedule, diff, modal)
+server/git.mjs            GitHub Contents API: publish history, schedule store, diagnostics
+server/schedule.mjs       the scheduling model, its guardrails, and the tick
+server/                   Google Sheets proxy, ConfigCat client, publish + schedule routes
+.github/workflows/schedule-tick.yml   the scheduler's five-minute heartbeat
+tests/                    transformation tests, the scheduler guardrails, the GitHub client
 ```
 
 The parsing logic is entirely independent of React, so it is directly testable.

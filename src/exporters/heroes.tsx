@@ -14,8 +14,8 @@ export const HEROES_EXPORTER: ExporterDefinition<HeroSheetSelection, HeroesConfi
   title: 'Hero stats',
   lead: (
     <>
-      Joins four tabs into <span className="mono">heroes.json</span> - base stats, the per-level
-      curve, and each hero&apos;s power cooldown and special parameters.
+      Base stats, the per-level curve, and each hero&apos;s power cooldown and special parameters,
+      joined from four tabs and published to <span className="mono">heroesSettings</span>.
     </>
   ),
   icon: 'spark',

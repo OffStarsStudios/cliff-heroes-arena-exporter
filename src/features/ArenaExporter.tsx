@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActionBar } from '../components/ActionBar';
+import { ChangeReview } from '../components/ChangeReview';
 import { ColumnMapper } from '../components/ColumnMapper';
 import { Icon } from '../components/Icon';
-import { JsonOutput } from '../components/JsonOutput';
-import { LiveGraphCheck, type LiveCheckResult } from '../components/LiveGraphCheck';
 import { PreviewTable } from '../components/PreviewTable';
-import { PublishPanel } from '../components/PublishPanel';
 import { SheetPicker } from '../components/SheetPicker';
 import { SourcePanel, type SourceController } from '../components/SourcePanel';
 import { Step, type StepStatus } from '../components/Step';
@@ -25,6 +22,7 @@ import type {
 } from '../lib/types';
 import type { View } from '../components/AppShell';
 import { ENVIRONMENTS, liveEnvironment } from '../domains/account';
+import { useRelease } from '../hooks/useRelease';
 
 const DOWNLOAD_FILENAME = 'arena-progress.json';
 
@@ -40,6 +38,43 @@ function findSheet(workbook: RawWorkbook | null, name: string | null): RawSheet 
 
 const EMPTY_SELECTION: SheetSelection = { progression: null, arenas: null, rewards: null };
 
+/** A fold that opens itself when the thing inside needs a human. */
+function Fold({
+  title,
+  summary,
+  open,
+  needsAttention,
+  onToggle,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  open: boolean;
+  needsAttention?: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={needsAttention === true ? 'mapping mapping--attention' : 'mapping'}>
+      <button type="button" className="mapping__toggle" aria-expanded={open} onClick={onToggle}>
+        <Icon name="chevron" size={14} className={open ? 'mapping__chevron mapping__chevron--open' : 'mapping__chevron'} />
+        <span>{title}</span>
+        {summary !== undefined && <span className="mapping__summary">{summary}</span>}
+      </button>
+      {open && <div className="mapping__body">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * The trophy road, which is the one config whose sheet needs column mapping as
+ * well as tab selection.
+ *
+ * Same shape as every other exporter now: load, look at the diff, ship it.
+ * The two mapping controls are folds rather than steps, and they open
+ * themselves only when detection came up short - which is the only time they
+ * are worth a person's attention.
+ */
 export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
   const { workbook } = source;
   const [selection, setSelection] = useState<SheetSelection>(EMPTY_SELECTION);
@@ -47,20 +82,16 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
   const [uncertain, setUncertain] = useState<ColumnRole[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [headerRowIndex, setHeaderRowIndex] = useState(0);
-  const [generated, setGenerated] = useState<string | null>(null);
-  const [schemaError, setSchemaError] = useState<string | null>(null);
   const [openStep, setOpenStep] = useState(1);
-  const [outputTab, setOutputTab] = useState<'preview' | 'json'>('preview');
+  const [showTabs, setShowTabs] = useState(false);
+  const [showColumns, setShowColumns] = useState(false);
+  const [outputTab, setOutputTab] = useState<'changes' | 'preview'>('changes');
   const [environmentId, setEnvironmentId] = useState(
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
-  const [liveCheck, setLiveCheck] = useState<LiveCheckResult | null>(null);
 
-  // A new workbook resets the tab choices.
   useEffect(() => {
     setSelection(workbook === null ? EMPTY_SELECTION : autoSelectSheets(workbook));
-    setGenerated(null);
-    setSchemaError(null);
   }, [workbook]);
 
   /** Re-runs automatic column detection for the currently selected progression sheet. */
@@ -79,13 +110,10 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
     setHeaderRowIndex(detection.headerRowIndex);
   }, []);
 
-  // Re-detect whenever the progression sheet changes.
   useEffect(() => {
     redetect(findSheet(workbook, selection.progression));
-    setGenerated(null);
   }, [workbook, selection.progression, redetect]);
 
-  // Live analysis: everything except the JSON itself updates as selections change.
   const analysis: { result: TransformResult | null; issues: Issue[] } = useMemo(() => {
     if (workbook === null || mapping === null) return { result: null, issues: [] };
 
@@ -98,7 +126,7 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
       issues.push({
         severity: 'error',
         code: 'missing-progression-tab',
-        message: 'Select the progression tab in step 2 to continue.',
+        message: 'Select the progression tab in the tab mapping to continue.',
       });
     }
     if (arenaSheet === null) {
@@ -106,7 +134,7 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
         severity: 'error',
         code: 'missing-lookup-tab',
         message:
-          'No Arenas lookup tab is selected. Pick the tab that maps arena names to ArenaIDs in step 2.',
+          'No Arenas lookup tab is selected. Pick the tab that maps arena names to ArenaIDs in the tab mapping.',
       });
     }
     if (rewardSheet === null) {
@@ -114,7 +142,7 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
         severity: 'error',
         code: 'missing-lookup-tab',
         message:
-          'No Rewards lookup tab is selected. Pick the tab that maps reward names to RewardIDs in step 2.',
+          'No Rewards lookup tab is selected. Pick the tab that maps reward names to RewardIDs in the tab mapping.',
       });
     }
     if (progression === null || arenaSheet === null || rewardSheet === null) {
@@ -146,74 +174,82 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
 
   const errorCount = analysis.issues.filter((issue) => issue.severity === 'error').length;
   const warningCount = analysis.issues.length - errorCount;
-  const canGenerate =
-    analysis.result !== null && errorCount === 0 && analysis.result.stats.milestones > 0;
 
-  /* ---- step state ------------------------------------------------------- */
+  /** The schema gate, run as part of parsing rather than on a button. */
+  const exportable = useMemo(() => {
+    const result = analysis.result;
+    if (result === null || errorCount > 0 || result.stats.milestones === 0) {
+      return { config: null, json: null, schemaError: null as string | null };
+    }
+    const schemaIssues = validateConfig(result.config);
+    if (schemaIssues.length > 0) {
+      return { config: null, json: null, schemaError: schemaIssues.map((issue) => issue.message).join(' ') };
+    }
+    return { config: result.config, json: serializeConfig(result.config), schemaError: null };
+  }, [analysis.result, errorCount]);
+
+  const release = useRelease({ domain: 'trophyRoad', payload: exportable.config, environmentId });
 
   const hasWorkbook = workbook !== null;
   const chosenTabs = [selection.progression, selection.arenas, selection.rewards].filter(
     (name) => name !== null,
   ).length;
   const tabsReady = chosenTabs === 3;
-  const mappingReady =
-    mapping !== null && mapping.trophiesIndex !== null && mapping.arenaIndex !== null;
+  const mappingReady = mapping !== null && mapping.trophiesIndex !== null && mapping.arenaIndex !== null;
+  const setupReady = tabsReady && mappingReady && uncertain.length === 0;
 
-  const firstIncomplete = !hasWorkbook ? 1 : !tabsReady ? 2 : !mappingReady ? 3 : 4;
-
-  // Advance the open step only when the furthest unfinished step actually
-  // moves, so a step the user opened by hand is not yanked shut under them.
   useEffect(() => {
-    setOpenStep(firstIncomplete);
-  }, [firstIncomplete]);
+    setOpenStep(hasWorkbook && tabsReady && mappingReady ? 2 : 1);
+  }, [hasWorkbook, tabsReady, mappingReady]);
+
+  // Only unfold what actually needs looking at.
+  useEffect(() => {
+    if (hasWorkbook && !tabsReady) setShowTabs(true);
+  }, [hasWorkbook, tabsReady]);
+  useEffect(() => {
+    if (hasWorkbook && tabsReady && (!mappingReady || uncertain.length > 0)) setShowColumns(true);
+  }, [hasWorkbook, tabsReady, mappingReady, uncertain.length]);
 
   const toggle = (index: number) => setOpenStep((current) => (current === index ? 0 : index));
 
   const sheetNames = workbook?.sheets.map((sheet) => sheet.name) ?? [];
-
-  const tabsStatus: StepStatus = !hasWorkbook ? 'pending' : tabsReady ? 'done' : 'blocked';
-  const mapStatus: StepStatus = !tabsReady
-    ? 'pending'
-    : !mappingReady
-      ? 'blocked'
-      : uncertain.length > 0
-        ? 'blocked'
-        : 'done';
-  const reviewStatus: StepStatus = !mappingReady
-    ? 'pending'
-    : errorCount > 0
-      ? 'blocked'
-      : generated !== null
-        ? 'done'
-        : 'current';
-
-  const generate = () => {
-    if (analysis.result === null) return;
-    // Independent schema check before anything can be copied or downloaded.
-    const schemaIssues = validateConfig(analysis.result.config);
-    if (schemaIssues.length > 0) {
-      setGenerated(null);
-      setSchemaError(schemaIssues.map((issue) => issue.message).join(' '));
-      return;
-    }
-    setSchemaError(null);
-    setGenerated(serializeConfig(analysis.result.config));
-    setOutputTab('json');
-  };
-
   const wrongDataset = workbook !== null && detectDataset(workbook) === 'heroes';
 
-  const barTone = errorCount > 0 ? 'danger' : generated !== null ? 'ok' : 'neutral';
-  const barMessage =
-    !hasWorkbook
-      ? 'Load a workbook to start.'
-      : errorCount > 0
-        ? `${errorCount} error${errorCount === 1 ? '' : 's'} block the export.`
-        : generated !== null
-          ? `JSON generated from ${analysis.result?.stats.milestones ?? 0} milestones.`
-          : canGenerate
-            ? `Ready - ${analysis.result?.stats.milestones ?? 0} milestones parsed.`
-            : 'Finish the steps above to generate.';
+  const sheetBlocker = !hasWorkbook
+    ? 'Load a sheet to see what would change.'
+    : !tabsReady
+      ? 'Pick the remaining tabs in the tab mapping above.'
+      : !mappingReady
+        ? 'The trophies and arena columns have to be mapped before anything can be published.'
+        : errorCount > 0
+          ? `${errorCount} error${errorCount === 1 ? '' : 's'} in the sheet stop this from being published. They are listed above.`
+          : analysis.result !== null && analysis.result.stats.milestones === 0
+            ? 'The chosen tabs parsed without errors but produced no milestones.'
+            : exportable.schemaError !== null
+              ? `The generated config failed its schema check, so nothing was produced: ${exportable.schemaError}`
+              : null;
+
+  const reviewStatus: StepStatus = !mappingReady
+    ? 'pending'
+    : sheetBlocker !== null || release.introducedErrors > 0
+      ? 'blocked'
+      : release.unchanged
+        ? 'done'
+        : release.status === 'ready'
+          ? 'current'
+          : 'pending';
+
+  const reviewChip = !mappingReady
+    ? 'Waiting'
+    : sheetBlocker !== null
+      ? 'Blocked'
+      : release.status === 'loading'
+        ? 'Checking'
+        : release.unchanged
+          ? 'Already live'
+          : release.entry?.summary !== undefined
+            ? `${release.entry.summary.total} change${release.entry.summary.total === 1 ? '' : 's'}`
+            : 'Ready';
 
   return (
     <>
@@ -225,8 +261,8 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
           Trophy road
         </h1>
         <p className="page__lead">
-          Turns the progression sheet into <span className="mono">arena-progress.json</span> - trophy
-          milestones with their arenas, arena unlocks and rewards, joined against the ID lookups.
+          Trophy milestones with their arenas, arena unlocks and rewards, joined against the ID
+          lookups and published to <span className="mono">trophyRoadSettings</span>.
         </p>
       </header>
 
@@ -245,105 +281,92 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
       <div className="steps">
         <Step
           index={1}
-          title="Load the workbook"
+          title="Load the sheet"
           hint="Excel file or a shared Google Sheet"
-          status={hasWorkbook ? 'done' : 'current'}
-          statusLabel={hasWorkbook ? 'Loaded' : 'Start here'}
+          status={hasWorkbook ? (setupReady ? 'done' : 'blocked') : 'current'}
+          statusLabel={
+            !hasWorkbook
+              ? 'Start here'
+              : setupReady
+                ? 'Mapped automatically'
+                : !tabsReady
+                  ? `${chosenTabs} of 3 tabs`
+                  : `${uncertain.length} column${uncertain.length === 1 ? '' : 's'} to confirm`
+          }
           open={openStep === 1}
           onToggle={() => toggle(1)}
         >
-          <SourcePanel source={source} />
+          <div className="stack-sm">
+            <SourcePanel source={source} />
+
+            {hasWorkbook && (
+              <>
+                <Fold
+                  title={tabsReady ? 'Tab mapping - all 3 matched automatically' : `Tab mapping - ${3 - chosenTabs} still to pick`}
+                  summary={
+                    tabsReady
+                      ? [selection.progression, selection.arenas, selection.rewards].filter(Boolean).join(', ')
+                      : undefined
+                  }
+                  open={showTabs}
+                  needsAttention={!tabsReady}
+                  onToggle={() => setShowTabs((open) => !open)}
+                >
+                  <SheetPicker sheetNames={sheetNames} selection={selection} onChange={setSelection} />
+                </Fold>
+
+                <Fold
+                  title={
+                    mapping === null
+                      ? 'Column mapping - no header row found'
+                      : uncertain.length > 0
+                        ? `Column mapping - ${uncertain.length} to confirm`
+                        : `Column mapping - ${mapping.rewardSlots.length} reward slot${mapping.rewardSlots.length === 1 ? '' : 's'} detected`
+                  }
+                  open={showColumns}
+                  needsAttention={mapping === null || uncertain.length > 0 || !mappingReady}
+                  onToggle={() => setShowColumns((open) => !open)}
+                >
+                  {mapping === null ? (
+                    <p className="empty">No header row was found in the progression tab.</p>
+                  ) : (
+                    <ColumnMapper
+                      headers={headers}
+                      mapping={mapping}
+                      uncertain={uncertain}
+                      onChange={setMapping}
+                      onRedetect={() => redetect(findSheet(workbook, selection.progression))}
+                    />
+                  )}
+                </Fold>
+              </>
+            )}
+          </div>
         </Step>
 
         <Step
           index={2}
-          title="Pick the tabs"
-          hint="Progression plus the two ID lookups"
-          status={tabsStatus}
-          statusLabel={hasWorkbook ? `${chosenTabs} of 3 tabs` : 'Waiting'}
+          title="Review and ship"
+          hint="What this sheet changes in the live game"
+          status={reviewStatus}
+          statusLabel={reviewChip}
           open={openStep === 2}
           onToggle={() => toggle(2)}
           locked={!hasWorkbook}
         >
-          <SheetPicker
-            sheetNames={sheetNames}
-            selection={selection}
-            onChange={(next) => {
-              setSelection(next);
-              setGenerated(null);
-            }}
-          />
-        </Step>
-
-        <Step
-          index={3}
-          title="Map the columns"
-          hint="Trophies, arena and the reward slots"
-          status={mapStatus}
-          statusLabel={
-            !tabsReady
-              ? 'Waiting'
-              : uncertain.length > 0
-                ? `${uncertain.length} to confirm`
-                : mapping === null
-                  ? 'No columns'
-                  : `${mapping.rewardSlots.length} reward slot${mapping.rewardSlots.length === 1 ? '' : 's'}`
-          }
-          open={openStep === 3}
-          onToggle={() => toggle(3)}
-          locked={!tabsReady}
-        >
-          {mapping === null ? (
-            <p className="empty">No header row was found in the progression tab.</p>
-          ) : (
-            <ColumnMapper
-              headers={headers}
-              mapping={mapping}
-              uncertain={uncertain}
-              onChange={(next) => {
-                setMapping(next);
-                setGenerated(null);
-              }}
-              onRedetect={() => redetect(findSheet(workbook, selection.progression))}
-            />
-          )}
-        </Step>
-
-        <Step
-          index={4}
-          title="Review and export"
-          hint="Check the parsed rows, then generate the JSON"
-          status={reviewStatus}
-          statusLabel={
-            !mappingReady
-              ? 'Waiting'
-              : errorCount > 0
-                ? `${errorCount} error${errorCount === 1 ? '' : 's'}`
-                : generated !== null
-                  ? 'Generated'
-                  : 'Ready'
-          }
-          open={openStep === 4}
-          onToggle={() => toggle(4)}
-          locked={!mappingReady}
-        >
           {analysis.result === null ? (
-            <p className="empty">Finish steps 2 and 3 to see the parsed data.</p>
+            <div className="stack-sm">
+              <p className="empty">Finish the tab and column mapping above to see what changes.</p>
+              {analysis.issues.length > 0 && <IssueList issues={analysis.issues} severity="error" />}
+            </div>
           ) : (
             <div className="stack-md">
               <ArenaStats result={analysis.result} />
 
-              {schemaError !== null && (
-                <div className="banner banner--error" role="alert">
-                  <Icon name="alert" size={15} className="banner__icon" />
-                  <span>{schemaError}</span>
-                </div>
-              )}
-
               {errorCount > 0 && (
                 <div>
-                  <p className="step__section-title">
-                    {errorCount} error{errorCount === 1 ? '' : 's'} - nothing is exported while a join
+                  <p className="step__section-title step__section-title--danger">
+                    {errorCount} error{errorCount === 1 ? '' : 's'} - nothing is published while a join
                     is failing
                   </p>
                   <IssueList issues={analysis.issues} severity="error" />
@@ -351,87 +374,53 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
               )}
 
               {warningCount > 0 && (
-                <div>
-                  <p className="step__section-title">
-                    {warningCount} warning{warningCount === 1 ? '' : 's'} - exported as-is
-                  </p>
+                <details className="disclosure">
+                  <summary>
+                    {warningCount} warning{warningCount === 1 ? '' : 's'} - published as-is
+                  </summary>
                   <IssueList issues={analysis.issues} severity="warning" />
-                </div>
+                </details>
               )}
 
-              <div>
-                <div className="tabs" role="tablist" aria-label="Output">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={outputTab === 'preview'}
-                    className={`tab${outputTab === 'preview' ? ' tab--active' : ''}`}
-                    onClick={() => setOutputTab('preview')}
-                  >
-                    Parsed milestones ({analysis.result.preview.length})
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={outputTab === 'json'}
-                    className={`tab${outputTab === 'json' ? ' tab--active' : ''}`}
-                    onClick={() => setOutputTab('json')}
-                  >
-                    JSON {generated === null ? '(not generated)' : ''}
-                  </button>
-                </div>
-
-                {outputTab === 'preview' ? (
-                  <PreviewTable rows={analysis.result.preview} />
-                ) : generated === null ? (
-                  <p className="empty">
-                    Press <strong>Generate JSON</strong> below. The output is schema-checked first, so
-                    a partial file is never produced.
-                  </p>
-                ) : (
-                  <JsonOutput json={generated} filename={DOWNLOAD_FILENAME} />
-                )}
+              <div className="tabs" role="tablist" aria-label="Review">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={outputTab === 'changes'}
+                  className={`tab${outputTab === 'changes' ? ' tab--active' : ''}`}
+                  onClick={() => setOutputTab('changes')}
+                >
+                  What changes live
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={outputTab === 'preview'}
+                  className={`tab${outputTab === 'preview' ? ' tab--active' : ''}`}
+                  onClick={() => setOutputTab('preview')}
+                >
+                  Parsed milestones ({analysis.result.preview.length})
+                </button>
               </div>
 
-              <LiveGraphCheck
-                domain="trophyRoad"
-                payload={generated === null ? null : analysis.result.config}
-                environmentId={environmentId}
-                onResult={setLiveCheck}
-              />
-
-              <PublishPanel
-                domain="trophyRoad"
-                payload={analysis.result.config}
-                blocked={!canGenerate || generated === null || (liveCheck?.introducedErrors ?? 0) > 0}
-                blockedReason={
-                  errorCount > 0
-                    ? `${errorCount} error${errorCount === 1 ? '' : 's'} block publishing, the same way they block the download.`
-                    : (liveCheck?.introducedErrors ?? 0) > 0
-                      ? `The check against the live config found ${liveCheck?.introducedErrors} error${liveCheck?.introducedErrors === 1 ? '' : 's'} this change would introduce. Fix the sheet and regenerate.`
-                      : generated === null
-                        ? 'Generate the JSON first - publishing sends exactly what was generated and checked.'
-                        : 'There is nothing to publish yet.'
-                }
-                environmentId={environmentId}
-                onEnvironmentChange={setEnvironmentId}
-              />
+              {outputTab === 'preview' ? (
+                <PreviewTable rows={analysis.result.preview} />
+              ) : (
+                <ChangeReview
+                  domain="trophyRoad"
+                  payload={exportable.config}
+                  json={exportable.json}
+                  downloadFilename={DOWNLOAD_FILENAME}
+                  release={release}
+                  environmentId={environmentId}
+                  onEnvironmentChange={setEnvironmentId}
+                  sheetBlocker={sheetBlocker}
+                />
+              )}
             </div>
           )}
         </Step>
       </div>
-
-      <ActionBar tone={barTone} message={barMessage}>
-        <button
-          type="button"
-          className="btn btn--primary"
-          onClick={generate}
-          disabled={!canGenerate}
-        >
-          <Icon name="code" size={14} />
-          {generated === null ? 'Generate JSON' : 'Regenerate'}
-        </button>
-      </ActionBar>
     </>
   );
 }

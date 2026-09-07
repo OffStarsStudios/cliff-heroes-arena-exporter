@@ -1,9 +1,9 @@
 {
-  "name": "cliff-heroes-json-exporter",
+  "name": "cliff-heroes-back-office",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Convert Cliff Heroes arena progression and hero stat spreadsheets into game-ready JSON.",
+  "description": "Live-ops back office for Cliff Heroes: publish and schedule the game config from its design sheets.",
   "engines": {
     "node": ">=18"
   },

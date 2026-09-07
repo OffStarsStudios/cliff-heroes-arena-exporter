@@ -7,6 +7,8 @@ import type { RawWorkbook } from '../lib/types';
  * `#/arena`, is documented and kept) while `'arenas'` is the arenas config.
  */
 export type View =
+  | 'dashboard'
+  | 'schedule'
   | 'live'
   | 'arena'
   | 'heroes'
@@ -25,12 +27,27 @@ interface NavItem {
   icon: IconName;
 }
 
-export const LIVE_ITEM: NavItem = {
-  id: 'live',
-  label: 'Live config',
-  blurb: 'What the game is serving now',
-  icon: 'link',
-};
+/** The live-ops group: the state of the game, not the sheets that feed it. */
+export const OPS_ITEMS: NavItem[] = [
+  {
+    id: 'dashboard',
+    label: 'Overview',
+    blurb: 'What is live and what is booked',
+    icon: 'grid',
+  },
+  {
+    id: 'schedule',
+    label: 'Scheduling',
+    blurb: 'Windows that open and close themselves',
+    icon: 'calendar',
+  },
+  {
+    id: 'live',
+    label: 'Live config',
+    blurb: 'Every setting, byte for byte',
+    icon: 'link',
+  },
+];
 
 export const NAV_ITEMS: NavItem[] = [
   {
@@ -91,6 +108,8 @@ export const REFERENCE_ITEM: NavItem = {
 };
 
 const CRUMB_LABEL: Record<View, string> = {
+  dashboard: 'Overview',
+  schedule: 'Scheduling',
   live: 'Live config',
   arena: 'Trophy road',
   heroes: 'Hero stats',
@@ -104,15 +123,17 @@ const CRUMB_LABEL: Record<View, string> = {
 };
 
 const CRUMB_SECTION: Record<View, string> = {
+  dashboard: 'Live ops',
+  schedule: 'Live ops',
   live: 'Live ops',
-  arena: 'Exporters',
-  heroes: 'Exporters',
-  arenas: 'Exporters',
-  matchTrophy: 'Exporters',
-  bots: 'Exporters',
-  heroUpgrade: 'Exporters',
-  shop: 'Exporters',
-  battlePass: 'Exporters',
+  arena: 'Configs',
+  heroes: 'Configs',
+  arenas: 'Configs',
+  matchTrophy: 'Configs',
+  bots: 'Configs',
+  heroUpgrade: 'Configs',
+  shop: 'Configs',
+  battlePass: 'Configs',
   reference: 'Reference',
 };
 
@@ -165,11 +186,11 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
 
           <div className="rail__group">
             <p className="rail__group-title">Live ops</p>
-            {renderLink(LIVE_ITEM)}
+            {OPS_ITEMS.map(renderLink)}
           </div>
 
           <div className="rail__group">
-            <p className="rail__group-title">Exporters</p>
+            <p className="rail__group-title">Configs</p>
             {NAV_ITEMS.map(renderLink)}
           </div>
         </div>

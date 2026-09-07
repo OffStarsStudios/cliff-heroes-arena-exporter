@@ -10,11 +10,15 @@ import { HERO_UPGRADE_EXPORTER } from './exporters/heroUpgrade';
 import { MATCH_TROPHY_EXPORTER } from './exporters/matchTrophy';
 import { SHOP_EXPORTER } from './exporters/shop';
 import { ArenaExporter } from './features/ArenaExporter';
+import { Dashboard } from './features/Dashboard';
 import { LiveConfig } from './features/LiveConfig';
+import { Schedule } from './features/Schedule';
 import { ParamReference } from './features/ParamReference';
 import { SOURCE_LABELS, useWorkbookSources } from './hooks/useWorkbookSources';
 
 const VIEWS: View[] = [
+  'dashboard',
+  'schedule',
   'live',
   'arena',
   'heroes',
@@ -41,7 +45,9 @@ const DOMAIN_FOR_VIEW: Partial<Record<View, ExporterDomain>> = {
 
 function viewFromHash(): View {
   const hash = window.location.hash.replace(/^#\/?/, '');
-  return (VIEWS as string[]).includes(hash) ? (hash as View) : 'arena';
+  // The overview is the front door: the first question is always what the game
+  // is serving, not which spreadsheet somebody wants to convert.
+  return (VIEWS as string[]).includes(hash) ? (hash as View) : 'dashboard';
 }
 
 export function App() {
@@ -72,6 +78,8 @@ export function App() {
 
   return (
     <AppShell view={view} onNavigate={navigate} source={shellSource}>
+      {view === 'dashboard' && <Dashboard onNavigate={navigate} />}
+      {view === 'schedule' && <Schedule onNavigate={navigate} />}
       {view === 'live' && <LiveConfig />}
       {view === 'arena' && (
         <ArenaExporter source={controllerFor('trophyRoad')} onNavigate={navigate} />

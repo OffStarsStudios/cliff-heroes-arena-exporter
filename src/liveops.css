@@ -1,0 +1,828 @@
+/* ============================================================================
+   Live ops surfaces.
+
+   A second sheet rather than more of the first, because these classes arrived
+   with a change of purpose: the console stopped being a converter with a
+   publish button and became a back office. The overview, the schedule and a
+   review step where the diff is the page rather than something you ask for.
+
+   Same tokens, same density (8/10) and motion (3/10) as styles.css.
+   ========================================================================== */
+
+:root {
+  --live: #0369a1;
+  --live-soft: #f0f9ff;
+  --schedule: #0f766e;
+  --schedule-soft: #f0fdfa;
+}
+
+.page__badge--live {
+  background: var(--live-soft);
+  color: var(--live);
+}
+
+.page__badge--schedule {
+  background: var(--schedule-soft);
+  color: var(--schedule);
+}
+
+/* The config cards build their badge class from the domain id, which spells
+   the trophy road differently from its historical route. */
+.page__badge--trophyroad {
+  background: var(--arena-soft);
+  color: var(--arena);
+}
+
+/* ---------- health strip ---------- */
+
+.healthrow {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-bottom: var(--space-4);
+}
+
+.health {
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  display: flex;
+  gap: 10px;
+  padding: 11px 13px;
+}
+
+.health__icon {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  display: inline-flex;
+  flex: none;
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+
+.health__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.health__label {
+  color: var(--text-faint);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.health__value {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.health__detail {
+  color: var(--text-faint);
+  font-size: 11.5px;
+  /* The GitHub 403 explanation is four sentences long on purpose. Clamping it
+     keeps the strip a strip; the full text is still in the DOM for a screen
+     reader and for anyone who selects it. */
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  overflow: hidden;
+}
+
+.health--ok {
+  border-left-color: var(--ok);
+}
+
+.health--ok .health__icon {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.health--warn {
+  border-left-color: var(--warn);
+}
+
+.health--warn .health__icon {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.health--danger {
+  border-left-color: var(--danger);
+}
+
+.health--danger .health__icon {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.health--danger .health__detail {
+  color: var(--danger);
+}
+
+.health--loading .health__icon {
+  background: var(--surface-sunken);
+}
+
+/* ---------- panel ---------- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+}
+
+.panel__head {
+  align-items: center;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.panel__title {
+  align-items: center;
+  display: flex;
+  font-size: 14px;
+  font-weight: 650;
+  gap: 8px;
+  margin: 0;
+}
+
+.panel__title svg {
+  color: var(--text-faint);
+}
+
+/* ---------- timeline ---------- */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline__row {
+  display: flex;
+  gap: 12px;
+  padding: 9px 0;
+}
+
+.timeline__row + .timeline__row {
+  border-top: 1px solid var(--border);
+}
+
+.timeline__marker {
+  align-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-faint);
+  display: inline-flex;
+  flex: none;
+  height: 24px;
+  justify-content: center;
+  margin-top: 1px;
+  width: 24px;
+}
+
+.timeline__row--active .timeline__marker {
+  background: var(--ok-soft);
+  border-color: var(--ok-border);
+  color: var(--ok);
+}
+
+.timeline__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.timeline__title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-weight: 600;
+  gap: 8px;
+}
+
+.timeline__meta {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* ---------- config cards ---------- */
+
+.cardgrid {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.configcard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.configcard:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.configcard:active {
+  transform: translateY(1px);
+}
+
+.configcard__head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.configcard__badge {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  flex: none;
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+
+.configcard__name {
+  font-weight: 600;
+  margin-right: auto;
+}
+
+.configcard__stats {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.configcard__stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.configcard__value {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.configcard__key {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.configcard__foot {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.configcard__flag {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 11.5px;
+  gap: 5px;
+}
+
+.configcard__flag--info {
+  color: var(--accent);
+}
+
+.configcard__flag--danger {
+  color: var(--danger);
+}
+
+.configcard__flag--muted {
+  color: var(--text-faint);
+  opacity: 0.75;
+}
+
+/* ---------- scheduled windows ---------- */
+
+.windows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.window {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.window--active {
+  background: var(--ok-soft);
+  border-color: var(--ok-border);
+  border-left-color: var(--ok);
+}
+
+.window--scheduled {
+  border-left-color: var(--accent);
+}
+
+.window--failed,
+.window--missed {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  border-left-color: var(--danger);
+}
+
+.window--superseded {
+  border-left-color: var(--warn);
+}
+
+.window__head {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.window__expand {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  font-size: 13.5px;
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.window__name {
+  font-weight: 600;
+}
+
+.window__meta {
+  color: var(--text-faint);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 4px 14px;
+  margin-top: 6px;
+  padding-left: 22px;
+}
+
+.window__meta > span {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.window__body {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-left: 22px;
+  padding-top: 10px;
+}
+
+/* ---------- fallbacks ---------- */
+
+.defaults {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.defaults__row {
+  align-items: center;
+  background: var(--surface);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(140px, 1fr) minmax(120px, 1fr) auto;
+  padding: 9px 12px;
+}
+
+.defaults__row + .defaults__row {
+  border-top: 1px solid var(--border);
+}
+
+.defaults__row--missing {
+  background: var(--warn-soft);
+}
+
+.defaults__name {
+  align-items: center;
+  display: flex;
+  font-weight: 600;
+  gap: 8px;
+}
+
+.defaults__row--missing .defaults__name svg {
+  color: var(--warn);
+}
+
+.defaults__row:not(.defaults__row--missing) .defaults__name svg {
+  color: var(--ok);
+}
+
+.defaults__state {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.defaults__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* ---------- mapping folds ---------- */
+
+.mapping {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.mapping--attention {
+  border-color: var(--warn-border);
+}
+
+.mapping__toggle {
+  align-items: center;
+  background: var(--surface-sunken);
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 12.5px;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.mapping--attention .mapping__toggle {
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.mapping__toggle:hover {
+  background: var(--surface-hover);
+}
+
+.mapping__chevron {
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.mapping__chevron--open {
+  transform: rotate(0deg);
+}
+
+.mapping__summary {
+  color: var(--text-faint);
+  margin-left: auto;
+  overflow: hidden;
+  padding-left: var(--space-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping__body {
+  border-top: 1px solid var(--border);
+  padding: var(--space-3);
+}
+
+/* ---------- the diff, which is now the point of the page ---------- */
+
+.difflist__items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.difflist__item {
+  align-items: baseline;
+  background: var(--surface-sunken);
+  border-left: 3px solid var(--border-strong);
+  display: flex;
+  gap: 10px;
+  padding: 5px 10px;
+}
+
+.difflist__kind {
+  color: var(--text-faint);
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  width: 68px;
+}
+
+.difflist__text {
+  font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Kind is carried by the label as well as the colour, so the list still reads
+   correctly to anyone who cannot separate the four hues. */
+.difflist__item--added {
+  background: var(--ok-soft);
+  border-left-color: var(--ok);
+}
+
+.difflist__item--added .difflist__kind {
+  color: var(--ok);
+}
+
+.difflist__item--removed {
+  background: var(--danger-soft);
+  border-left-color: var(--danger);
+}
+
+.difflist__item--removed .difflist__kind {
+  color: var(--danger);
+}
+
+.difflist__item--changed {
+  background: var(--warn-soft);
+  border-left-color: var(--warn);
+}
+
+.difflist__item--changed .difflist__kind {
+  color: var(--warn);
+}
+
+.difflist__item--reordered {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.difflist__item--reordered .difflist__kind {
+  color: var(--accent);
+}
+
+/* ---------- review header and actions ---------- */
+
+.review__bar {
+  align-items: center;
+}
+
+.review__loading {
+  align-items: center;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  display: flex;
+  gap: 10px;
+  padding: 14px;
+}
+
+/* The publish control follows the reader down a long diff, so the decision and
+   the evidence for it are never on different screens. */
+.review__actions {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 var(--space-2);
+  position: sticky;
+  z-index: 5;
+}
+
+.review__buttons {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.segmented__flag {
+  background: var(--danger-soft);
+  border-radius: 999px;
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-left: 6px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+}
+
+.stats--tight {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+
+.stats--tight .stat__value {
+  font-size: 18px;
+}
+
+.stat__delta {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ---------- assorted controls ---------- */
+
+.btn--lg {
+  font-size: 14px;
+  min-height: 42px;
+  padding: 9px 18px;
+}
+
+.btn--icon {
+  padding: 6px;
+  width: 34px;
+}
+
+.btn--danger {
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.checkline {
+  align-items: flex-start;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 12.5px;
+  gap: 8px;
+  line-height: 1.45;
+  min-height: 28px;
+  padding: 6px 0;
+}
+
+.checkline input {
+  height: 16px;
+  margin-top: 2px;
+  width: 16px;
+}
+
+.checkline--warn {
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-sm);
+  color: var(--warn);
+  font-weight: 500;
+  padding: 9px 11px;
+}
+
+.step__section-title--danger {
+  color: var(--danger);
+}
+
+.banner__list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.banner__list li + li {
+  margin-top: 4px;
+}
+
+.param--danger {
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.grid-2 {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* ---------- modal ---------- */
+
+.modal {
+  align-items: center;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: var(--space-4);
+  position: fixed;
+  z-index: 50;
+}
+
+.modal__scrim {
+  background: rgba(15, 23, 42, 0.45);
+  inset: 0;
+  position: absolute;
+}
+
+.modal__panel {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: min(88vh, 760px);
+  max-width: 560px;
+  position: relative;
+  width: 100%;
+}
+
+.modal__head {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+  padding: var(--space-4);
+}
+
+.modal__title {
+  align-items: center;
+  display: flex;
+  font-size: 15px;
+  font-weight: 650;
+  gap: 8px;
+  margin: 0;
+}
+
+.modal__body {
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.modal__foot {
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 900px) {
+  .defaults__row {
+    gap: var(--space-2);
+    grid-template-columns: 1fr;
+  }
+
+  .defaults__actions {
+    justify-content: flex-start;
+  }
+
+  .review__buttons {
+    flex-direction: column-reverse;
+  }
+
+  .review__buttons .btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapping__chevron,
+  .configcard {
+    transition: none;
+  }
+}
+
+.window__retry {
+  color: var(--warn);
+  font-weight: 600;
+}

@@ -13,8 +13,8 @@ export const BOTS_EXPORTER: ExporterDefinition<BotsSheetSelection, BotsConfig, B
   title: 'Bots',
   lead: (
     <>
-      Turns the Bots Settings workbook into <span className="mono">bots.json</span> - the jump, dodge,
-      raycast and fire tuning of every bot difficulty level. The highest level becomes{' '}
+      The jump, dodge, raycast and fire tuning of every bot difficulty level, published to{' '}
+      <span className="mono">botsSettings</span>. The highest level becomes{' '}
       <span className="mono">BotLevel</span> automatically.
     </>
   ),

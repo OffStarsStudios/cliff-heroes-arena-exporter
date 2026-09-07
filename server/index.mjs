@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { handleGSheetRequest } from './gsheetHandler.mjs';
 import { handleConfigCatRequest } from './configcatHandler.mjs';
 import { handlePublishRequest } from './publishHandler.mjs';
+import { handleScheduleRequest } from './scheduleHandler.mjs';
 
 const root = resolve(fileURLToPath(new URL('../dist', import.meta.url)));
 const port = Number(process.env.PORT ?? 4173);
@@ -42,6 +43,7 @@ const server = createServer(async (req, res) => {
   if (await handleGSheetRequest(req, res)) return;
   if (await handleConfigCatRequest(req, res)) return;
   if (await handlePublishRequest(req, res)) return;
+  if (await handleScheduleRequest(req, res)) return;
 
   const url = new URL(req.url ?? '/', `http://localhost:${port}`);
   const requested = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
