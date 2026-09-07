@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-07T11:30:32.273Z",
+  "updatedAt": "2026-09-07T11:58:32.016Z",
   "entries": [
     {
       "id": "sch_mtqvbx125twygr",
@@ -992,7 +992,7 @@
       "payloadHash": "3d57f377923ecac7",
       "startsAt": "2026-09-07T11:35:00.000Z",
       "endsAt": null,
-      "state": "scheduled",
+      "state": "active",
       "createdAt": "2026-09-07T11:30:32.272Z",
       "createdBy": "back office",
       "history": [
@@ -1001,9 +1001,16 @@
           "action": "created",
           "ok": true,
           "message": "Scheduled for 2026-09-07T11:35:00.000Z."
+        },
+        {
+          "at": "2026-09-07T11:58:32.016Z",
+          "action": "started",
+          "ok": true,
+          "message": "Published to Test Environment."
         }
-      ]
+      ],
+      "activatedAt": "2026-09-07T11:58:29.373Z"
     }
   ],
-  "lastTickAt": "2026-09-07T11:29:36.039Z"
+  "lastTickAt": "2026-09-07T11:58:29.373Z"
 }
