@@ -1,0 +1,60 @@
+{
+  "BotLevel": 4,
+  "Bots": [
+    {
+      "Level": 0,
+      "MinJumpInterval": 4,
+      "MaxJumpInterval": 6,
+      "MinDodgeChance": 0.1,
+      "MaxDodgeChance": 0.2,
+      "RaycastDistance": 8,
+      "RaycastInterval": 0.3,
+      "MinFireInterval": 2,
+      "MaxFireInterval": 4
+    },
+    {
+      "Level": 1,
+      "MinJumpInterval": 3,
+      "MaxJumpInterval": 5,
+      "MinDodgeChance": 0.2,
+      "MaxDodgeChance": 0.3,
+      "RaycastDistance": 8,
+      "RaycastInterval": 0.3,
+      "MinFireInterval": 1,
+      "MaxFireInterval": 3
+    },
+    {
+      "Level": 2,
+      "MinJumpInterval": 2,
+      "MaxJumpInterval": 4,
+      "MinDodgeChance": 0.3,
+      "MaxDodgeChance": 0.5,
+      "RaycastDistance": 8,
+      "RaycastInterval": 0.3,
+      "MinFireInterval": 1,
+      "MaxFireInterval": 2
+    },
+    {
+      "Level": 3,
+      "MinJumpInterval": 2,
+      "MaxJumpInterval": 4,
+      "MinDodgeChance": 0.6,
+      "MaxDodgeChance": 0.8,
+      "RaycastDistance": 10,
+      "RaycastInterval": 0.2,
+      "MinFireInterval": 0.7,
+      "MaxFireInterval": 1.4
+    },
+    {
+      "Level": 4,
+      "MinJumpInterval": 2,
+      "MaxJumpInterval": 4,
+      "MinDodgeChance": 0.9,
+      "MaxDodgeChance": 1,
+      "RaycastDistance": 10,
+      "RaycastInterval": 0.2,
+      "MinFireInterval": 0.1,
+      "MaxFireInterval": 0.5
+    }
+  ]
+}
