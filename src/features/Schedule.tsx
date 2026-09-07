@@ -187,8 +187,10 @@ export function Schedule({ onNavigate }: { onNavigate: (view: View) => void }) {
   }, [load]);
 
   const cancel = async (entry: ScheduleEntry) => {
-    const live = entry.state === 'active';
-    const message = live
+    // Cancelling a window that is already up has to put the config back, or
+    // "cancel" would quietly mean "leave the promotion running for ever".
+    const isUp = entry.state === 'active';
+    const message = isUp
       ? `Take "${entry.label || entry.id}" down now? ${DOMAIN_LABELS[entry.domain]} goes back to its default immediately.`
       : `Cancel "${entry.label || entry.id}"? It will not run.`;
     if (!window.confirm(message)) return;
@@ -197,7 +199,7 @@ export function Schedule({ onNavigate }: { onNavigate: (view: View) => void }) {
     setNotice(null);
     try {
       await cancelWindow(entry.id, 'Cancelled from the scheduling page.');
-      setNotice(live ? `${DOMAIN_LABELS[entry.domain]} is back on its default.` : 'That window was cancelled.');
+      setNotice(isUp ? `${DOMAIN_LABELS[entry.domain]} is back on its default.` : 'That window was cancelled.');
       await load();
     } catch (reason) {
       setError((reason as Error).message);
