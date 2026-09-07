@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-07T06:37:22.551Z",
+  "updatedAt": "2026-09-07T11:26:03.146Z",
   "entries": [
     {
       "id": "sch_mtqvbx125twygr",
@@ -488,7 +488,7 @@
       "payloadHash": "3d57f377923ecac7",
       "startsAt": "2026-09-07T06:38:00.000Z",
       "endsAt": null,
-      "state": "scheduled",
+      "state": "cancelled",
       "createdAt": "2026-09-07T06:37:22.550Z",
       "createdBy": "back office",
       "history": [
@@ -497,6 +497,12 @@
           "action": "created",
           "ok": true,
           "message": "Scheduled for 2026-09-07T06:38:00.000Z."
+        },
+        {
+          "at": "2026-09-07T11:26:03.145Z",
+          "action": "cancelled",
+          "ok": true,
+          "message": "Cancelled from the scheduling page."
         }
       ]
     }
