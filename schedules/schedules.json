@@ -1,0 +1,504 @@
+{
+  "version": 1,
+  "updatedAt": "2026-09-07T06:37:22.551Z",
+  "entries": [
+    {
+      "id": "sch_mtqvbx125twygr",
+      "domain": "heroes",
+      "settingKey": "heroesSettings",
+      "gitPath": "config/heroes.json",
+      "environmentId": "08ded206-347f-4a76-8b9d-e895d64f72f2",
+      "environmentName": "Test Environment",
+      "label": "",
+      "note": null,
+      "payload": {
+        "Heroes": [
+          {
+            "ID": "heroes.cliff",
+            "MaxSpeed": 24.8,
+            "SpeedIncreasePerSecond": 0.05,
+            "Rarity": "Rare",
+            "PowerCooldown": 8,
+            "Levels": [
+              {
+                "Health": 2.8,
+                "Speed": 10,
+                "Grip": 6.4
+              },
+              {
+                "Health": 2.9,
+                "Speed": 10.5,
+                "Grip": 6.7
+              },
+              {
+                "Health": 3.1,
+                "Speed": 11,
+                "Grip": 7
+              },
+              {
+                "Health": 3.2,
+                "Speed": 11.5,
+                "Grip": 7.4
+              },
+              {
+                "Health": 3.4,
+                "Speed": 12,
+                "Grip": 7.7
+              },
+              {
+                "Health": 3.5,
+                "Speed": 12.5,
+                "Grip": 8
+              },
+              {
+                "Health": 3.6,
+                "Speed": 13,
+                "Grip": 8.3
+              },
+              {
+                "Health": 3.8,
+                "Speed": 13.5,
+                "Grip": 8.6
+              },
+              {
+                "Health": 3.9,
+                "Speed": 14,
+                "Grip": 9
+              },
+              {
+                "Health": 4.2,
+                "Speed": 15,
+                "Grip": 9.6
+              }
+            ],
+            "Power": {
+              "ActivationDelay": 0,
+              "Duration": 2,
+              "SpeedMultiplier": 1.15,
+              "EvasionExtension": 1.5,
+              "MaxDuration": 5,
+              "EvasionCheckDistance": 8,
+              "EndsOnObstacleHit": true
+            }
+          },
+          {
+            "ID": "heroes.flick",
+            "MaxSpeed": 25,
+            "SpeedIncreasePerSecond": 0.05,
+            "Rarity": "Epic",
+            "PowerCooldown": 8,
+            "Levels": [
+              {
+                "Health": 3,
+                "Speed": 10.1,
+                "Grip": 6.8
+              },
+              {
+                "Health": 3.2,
+                "Speed": 10.6,
+                "Grip": 7.1
+              },
+              {
+                "Health": 3.3,
+                "Speed": 11.1,
+                "Grip": 7.5
+              },
+              {
+                "Health": 3.5,
+                "Speed": 11.6,
+                "Grip": 7.8
+              },
+              {
+                "Health": 3.6,
+                "Speed": 12.1,
+                "Grip": 8.2
+              },
+              {
+                "Health": 3.8,
+                "Speed": 12.6,
+                "Grip": 8.5
+              },
+              {
+                "Health": 3.9,
+                "Speed": 13.1,
+                "Grip": 8.8
+              },
+              {
+                "Health": 4.1,
+                "Speed": 13.6,
+                "Grip": 9.2
+              },
+              {
+                "Health": 4.2,
+                "Speed": 14.1,
+                "Grip": 9.5
+              },
+              {
+                "Health": 4.5,
+                "Speed": 15.2,
+                "Grip": 10.2
+              }
+            ],
+            "Power": {
+              "ActivationDelay": 0,
+              "Duration": 3,
+              "SpeedMultiplier": 1.2,
+              "EvasionExtension": 0,
+              "MaxDuration": 3,
+              "EvasionCheckDistance": 8,
+              "EndsOnObstacleHit": false
+            }
+          },
+          {
+            "ID": "heroes.guy",
+            "MaxSpeed": 24.6,
+            "SpeedIncreasePerSecond": 0.05,
+            "Rarity": "Rare",
+            "PowerCooldown": 5,
+            "Levels": [
+              {
+                "Health": 3.2,
+                "Speed": 9.9,
+                "Grip": 7
+              },
+              {
+                "Health": 3.4,
+                "Speed": 10.4,
+                "Grip": 7.4
+              },
+              {
+                "Health": 3.5,
+                "Speed": 10.9,
+                "Grip": 7.7
+              },
+              {
+                "Health": 3.7,
+                "Speed": 11.4,
+                "Grip": 8.1
+              },
+              {
+                "Health": 3.8,
+                "Speed": 11.9,
+                "Grip": 8.4
+              },
+              {
+                "Health": 4,
+                "Speed": 12.4,
+                "Grip": 8.8
+              },
+              {
+                "Health": 4.2,
+                "Speed": 12.9,
+                "Grip": 9.1
+              },
+              {
+                "Health": 4.3,
+                "Speed": 13.4,
+                "Grip": 9.5
+              },
+              {
+                "Health": 4.5,
+                "Speed": 13.9,
+                "Grip": 9.8
+              },
+              {
+                "Health": 4.8,
+                "Speed": 14.9,
+                "Grip": 10.5
+              }
+            ],
+            "Power": {
+              "ActivationDelay": 0,
+              "Duration": 0
+            }
+          },
+          {
+            "ID": "heroes.pedro",
+            "MaxSpeed": 25,
+            "SpeedIncreasePerSecond": 0.05,
+            "Rarity": "Legendary",
+            "PowerCooldown": 5,
+            "Levels": [
+              {
+                "Health": 3.5,
+                "Speed": 10.1,
+                "Grip": 7.7
+              },
+              {
+                "Health": 3.7,
+                "Speed": 10.6,
+                "Grip": 8.1
+              },
+              {
+                "Health": 3.9,
+                "Speed": 11.1,
+                "Grip": 8.5
+              },
+              {
+                "Health": 4,
+                "Speed": 11.6,
+                "Grip": 8.9
+              },
+              {
+                "Health": 4.2,
+                "Speed": 12.1,
+                "Grip": 9.2
+              },
+              {
+                "Health": 4.4,
+                "Speed": 12.6,
+                "Grip": 9.6
+              },
+              {
+                "Health": 4.6,
+                "Speed": 13.1,
+                "Grip": 10
+              },
+              {
+                "Health": 4.7,
+                "Speed": 13.6,
+                "Grip": 10.4
+              },
+              {
+                "Health": 4.9,
+                "Speed": 14.1,
+                "Grip": 10.8
+              },
+              {
+                "Health": 5.3,
+                "Speed": 15.2,
+                "Grip": 11.6
+              }
+            ],
+            "Power": {
+              "ActivationDelay": 1,
+              "Duration": 6,
+              "DropDistance": 15,
+              "FloatDistance": 2,
+              "SlowdownDuration": 2,
+              "SlowdownStrength": 0.7,
+              "Damage": 0.5,
+              "DamageInterval": 2
+            }
+          },
+          {
+            "ID": "heroes.tank",
+            "MaxSpeed": 24.4,
+            "SpeedIncreasePerSecond": 0.05,
+            "Rarity": "Rare",
+            "PowerCooldown": 5,
+            "Levels": [
+              {
+                "Health": 5,
+                "Speed": 9.7,
+                "Grip": 8.5
+              },
+              {
+                "Health": 5.3,
+                "Speed": 10.2,
+                "Grip": 8.9
+              },
+              {
+                "Health": 5.5,
+                "Speed": 10.7,
+                "Grip": 9.4
+              },
+              {
+                "Health": 5.8,
+                "Speed": 11.2,
+                "Grip": 9.8
+              },
+              {
+                "Health": 6,
+                "Speed": 11.6,
+                "Grip": 10.2
+              },
+              {
+                "Health": 6.3,
+                "Speed": 12.1,
+                "Grip": 10.6
+              },
+              {
+                "Health": 6.5,
+                "Speed": 12.6,
+                "Grip": 11.1
+              },
+              {
+                "Health": 6.8,
+                "Speed": 13.1,
+                "Grip": 11.5
+              },
+              {
+                "Health": 7,
+                "Speed": 13.6,
+                "Grip": 11.9
+              },
+              {
+                "Health": 7.5,
+                "Speed": 14.6,
+                "Grip": 12.8
+              }
+            ],
+            "Power": {
+              "ActivationDelay": 0,
+              "Duration": 6,
+              "Radius": 1.5,
+              "AbsorbedHits": 1,
+              "HitPenaltyMultiplier": 0.5
+            }
+          },
+          {
+            "ID": "heroes.glint",
+            "MaxSpeed": 24.8,
+            "SpeedIncreasePerSecond": 0.05,
+            "Rarity": "Epic",
+            "PowerCooldown": 5,
+            "Levels": [
+              {
+                "Health": 3.2,
+                "Speed": 10,
+                "Grip": 7.2
+              },
+              {
+                "Health": 3.4,
+                "Speed": 10.5,
+                "Grip": 7.6
+              },
+              {
+                "Health": 3.5,
+                "Speed": 11,
+                "Grip": 7.9
+              },
+              {
+                "Health": 3.7,
+                "Speed": 11.5,
+                "Grip": 8.3
+              },
+              {
+                "Health": 3.8,
+                "Speed": 12,
+                "Grip": 8.6
+              },
+              {
+                "Health": 4,
+                "Speed": 12.5,
+                "Grip": 9
+              },
+              {
+                "Health": 4.2,
+                "Speed": 13,
+                "Grip": 9.4
+              },
+              {
+                "Health": 4.3,
+                "Speed": 13.5,
+                "Grip": 9.7
+              },
+              {
+                "Health": 4.5,
+                "Speed": 14,
+                "Grip": 10.1
+              },
+              {
+                "Health": 4.8,
+                "Speed": 15,
+                "Grip": 10.8
+              }
+            ],
+            "Power": {
+              "ActivationDelay": 0,
+              "Duration": 5,
+              "DropDistance": 4,
+              "FloatDistance": 1,
+              "WeightDuration": 4,
+              "SpeedMultiplier": 0.6,
+              "AccelerationMultiplier": 0.25,
+              "NextHitPenaltyMultiplier": 2
+            }
+          },
+          {
+            "ID": "heroes.cinder",
+            "MaxSpeed": 24.8,
+            "SpeedIncreasePerSecond": 0.05,
+            "Rarity": "Legendary",
+            "PowerCooldown": 5,
+            "Levels": [
+              {
+                "Health": 6,
+                "Speed": 10.2,
+                "Grip": 9
+              },
+              {
+                "Health": 6.3,
+                "Speed": 10.7,
+                "Grip": 9.5
+              },
+              {
+                "Health": 6.6,
+                "Speed": 11.2,
+                "Grip": 9.9
+              },
+              {
+                "Health": 6.9,
+                "Speed": 11.7,
+                "Grip": 10.4
+              },
+              {
+                "Health": 7.2,
+                "Speed": 12.2,
+                "Grip": 10.8
+              },
+              {
+                "Health": 7.5,
+                "Speed": 12.8,
+                "Grip": 11.3
+              },
+              {
+                "Health": 7.8,
+                "Speed": 13.3,
+                "Grip": 11.7
+              },
+              {
+                "Health": 8.1,
+                "Speed": 13.8,
+                "Grip": 12.2
+              },
+              {
+                "Health": 8.4,
+                "Speed": 14.3,
+                "Grip": 12.6
+              },
+              {
+                "Health": 9,
+                "Speed": 15.3,
+                "Grip": 13.5
+              }
+            ],
+            "Power": {
+              "ActivationDelay": 0,
+              "Duration": 5,
+              "DropDistance": 5,
+              "FloatDistance": 1.74,
+              "Damage": 1,
+              "DamageInterval": 1.5
+            }
+          }
+        ]
+      },
+      "payloadHash": "3d57f377923ecac7",
+      "startsAt": "2026-09-07T06:38:00.000Z",
+      "endsAt": null,
+      "state": "scheduled",
+      "createdAt": "2026-09-07T06:37:22.550Z",
+      "createdBy": "back office",
+      "history": [
+        {
+          "at": "2026-09-07T06:37:22.550Z",
+          "action": "created",
+          "ok": true,
+          "message": "Scheduled for 2026-09-07T06:38:00.000Z."
+        }
+      ]
+    }
+  ]
+}
