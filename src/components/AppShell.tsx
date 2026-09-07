@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import type { RawWorkbook } from '../lib/types';
 
@@ -23,119 +23,167 @@ export type View =
 interface NavItem {
   id: View;
   label: string;
-  blurb: string;
   icon: IconName;
 }
 
-/** The live-ops group: the state of the game, not the sheets that feed it. */
-export const OPS_ITEMS: NavItem[] = [
+interface NavSection {
+  /** Stable key for the collapsed-state memory; never derived from the title. */
+  id: string;
+  title: string;
+  items: NavItem[];
+}
+
+/**
+ * The rail, in reading order. Sections are the only grouping in the app, so
+ * the breadcrumb section is read off them rather than kept in a second table
+ * that could drift.
+ */
+export const NAV_SECTIONS: NavSection[] = [
   {
-    id: 'dashboard',
-    label: 'Overview',
-    blurb: 'What is live and what is booked',
-    icon: 'grid',
+    id: 'operations',
+    title: 'Operations',
+    items: [
+      { id: 'dashboard', label: 'Overview', icon: 'grid' },
+      { id: 'schedule', label: 'Scheduling', icon: 'calendar' },
+      { id: 'live', label: 'Live config', icon: 'link' },
+    ],
   },
   {
-    id: 'schedule',
-    label: 'Scheduling',
-    blurb: 'Windows that open and close themselves',
-    icon: 'calendar',
+    id: 'core',
+    title: 'Core',
+    items: [
+      { id: 'arena', label: 'Trophy road', icon: 'trophy' },
+      { id: 'heroes', label: 'Hero stats', icon: 'spark' },
+      { id: 'arenas', label: 'Arenas', icon: 'table' },
+      { id: 'matchTrophy', label: 'Match trophies', icon: 'medal' },
+      { id: 'bots', label: 'Bots', icon: 'bot' },
+      { id: 'heroUpgrade', label: 'Hero upgrades', icon: 'coins' },
+    ],
   },
   {
-    id: 'live',
-    label: 'Live config',
-    blurb: 'Every setting, byte for byte',
-    icon: 'link',
+    id: 'monetization',
+    title: 'Monetization',
+    items: [{ id: 'shop', label: 'Shop', icon: 'cart' }],
+  },
+  {
+    id: 'liveops',
+    title: 'Live ops',
+    items: [{ id: 'battlePass', label: 'Battle pass', icon: 'ticket' }],
+  },
+  {
+    id: 'reference',
+    title: 'Reference',
+    items: [{ id: 'reference', label: 'Power parameters', icon: 'book' }],
   },
 ];
 
-export const NAV_ITEMS: NavItem[] = [
-  {
-    id: 'arena',
-    label: 'Trophy road',
-    blurb: 'Trophy milestones, arena unlocks, rewards',
-    icon: 'trophy',
-  },
-  {
-    id: 'heroes',
-    label: 'Hero stats',
-    blurb: 'Base stats, level curves, power',
-    icon: 'spark',
-  },
-  {
-    id: 'arenas',
-    label: 'Arenas',
-    blurb: 'Track counts and bot line-ups',
-    icon: 'table',
-  },
-  {
-    id: 'matchTrophy',
-    label: 'Match trophies',
-    blurb: 'Trophies won or lost per finishing place',
-    icon: 'medal',
-  },
-  {
-    id: 'bots',
-    label: 'Bots',
-    blurb: 'Tuning per bot difficulty level',
-    icon: 'bot',
-  },
-  {
-    id: 'heroUpgrade',
-    label: 'Hero upgrades',
-    blurb: 'Upgrade cost curve per rarity',
-    icon: 'coins',
-  },
-  {
-    id: 'shop',
-    label: 'Shop',
-    blurb: 'Products, prices and what they grant',
-    icon: 'cart',
-  },
-  {
-    id: 'battlePass',
-    label: 'Battle pass',
-    blurb: 'Season header and the reward ladder',
-    icon: 'ticket',
-  },
-];
+function sectionOf(view: View): NavSection {
+  return NAV_SECTIONS.find((section) => section.items.some((item) => item.id === view)) ?? NAV_SECTIONS[0];
+}
 
-export const REFERENCE_ITEM: NavItem = {
-  id: 'reference',
-  label: 'Power parameters',
-  blurb: 'Accepted parameter names',
-  icon: 'book',
-};
+function labelOf(view: View): string {
+  for (const section of NAV_SECTIONS) {
+    const item = section.items.find((candidate) => candidate.id === view);
+    if (item !== undefined) return item.label;
+  }
+  return view;
+}
 
-const CRUMB_LABEL: Record<View, string> = {
-  dashboard: 'Overview',
-  schedule: 'Scheduling',
-  live: 'Live config',
-  arena: 'Trophy road',
-  heroes: 'Hero stats',
-  arenas: 'Arenas',
-  matchTrophy: 'Match trophies',
-  bots: 'Bots',
-  heroUpgrade: 'Hero upgrades',
-  shop: 'Shop',
-  battlePass: 'Battle pass',
-  reference: 'Power parameters',
-};
+/* ---------- collapsed-section memory ---------- */
 
-const CRUMB_SECTION: Record<View, string> = {
-  dashboard: 'Live ops',
-  schedule: 'Live ops',
-  live: 'Live ops',
-  arena: 'Configs',
-  heroes: 'Configs',
-  arenas: 'Configs',
-  matchTrophy: 'Configs',
-  bots: 'Configs',
-  heroUpgrade: 'Configs',
-  shop: 'Configs',
-  battlePass: 'Configs',
-  reference: 'Reference',
-};
+const COLLAPSED_KEY = 'cliffheroes.rail.collapsed';
+
+function storage(): Storage | null {
+  try {
+    return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
+  } catch {
+    // Some browsers throw on access when site data is blocked.
+    return null;
+  }
+}
+
+/** Sections start open; only the ones a user closed are remembered. */
+function recallCollapsed(): string[] {
+  try {
+    const raw = storage()?.getItem(COLLAPSED_KEY);
+    if (raw === null || raw === undefined) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberCollapsed(ids: string[]): void {
+  try {
+    storage()?.setItem(COLLAPSED_KEY, JSON.stringify(ids));
+  } catch {
+    // A rail that forgets is fine; a rail that throws is not.
+  }
+}
+
+interface RailGroupProps {
+  section: NavSection;
+  open: boolean;
+  /** True when the current page lives in this section. */
+  holdsActive: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}
+
+/**
+ * One collapsible category. The panel animates between 0 and its measured
+ * height - browsers still refuse to interpolate to `auto`, and the measurement
+ * is re-taken whenever the list reflows, which it does when the rail turns
+ * horizontal on a narrow screen.
+ */
+function RailGroup({ section, open, holdsActive, onToggle, children }: RailGroupProps) {
+  const panelId = `rail-section-${section.id}`;
+  const itemsRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const items = itemsRef.current;
+    if (items === null) return;
+
+    const measure = () => setHeight(items.scrollHeight);
+    measure();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(items);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className={`rail__group${open ? '' : ' rail__group--closed'}`}>
+      <button
+        type="button"
+        className="rail__group-toggle"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+      >
+        <Icon name="chevron" size={12} className="rail__group-chevron" />
+        <span className="rail__group-title">{section.title}</span>
+        {!open && holdsActive && <span className="rail__group-dot" aria-hidden="true" />}
+        {!open && <span className="rail__group-count">{section.items.length}</span>}
+      </button>
+
+      {/* `visibility` keeps a closed group off the tab order and out of the
+          accessibility tree, and waits for the fold to finish. */}
+      <div
+        id={panelId}
+        className="rail__group-panel"
+        style={{ height: open ? (height ?? undefined) : 0 }}
+      >
+        <div className="rail__group-items" ref={itemsRef}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** The current page's workbook, for the rail and the top bar. Null on pages without one. */
 export interface ShellSource {
@@ -153,6 +201,28 @@ interface AppShellProps {
 
 export function AppShell({ view, onNavigate, source, children }: AppShellProps) {
   const workbook = source?.workbook ?? null;
+  const [collapsed, setCollapsed] = useState<string[]>(recallCollapsed);
+
+  const activeSectionId = sectionOf(view).id;
+
+  // Landing on a page inside a closed section opens it, so the rail always
+  // shows where you are.
+  useEffect(() => {
+    setCollapsed((current) => {
+      if (!current.includes(activeSectionId)) return current;
+      const next = current.filter((id) => id !== activeSectionId);
+      rememberCollapsed(next);
+      return next;
+    });
+  }, [activeSectionId]);
+
+  const toggleSection = useCallback((id: string) => {
+    setCollapsed((current) => {
+      const next = current.includes(id) ? current.filter((other) => other !== id) : [...current, id];
+      rememberCollapsed(next);
+      return next;
+    });
+  }, []);
 
   const renderLink = (item: NavItem) => (
     <button
@@ -163,17 +233,26 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
       onClick={() => onNavigate(item.id)}
     >
       <Icon name={item.icon} size={17} className="navlink__icon" />
-      <span>
-        <span className="navlink__text">{item.label}</span>
-        <span className="navlink__sub">{item.blurb}</span>
-      </span>
+      <span className="navlink__text">{item.label}</span>
     </button>
+  );
+
+  const renderSection = (section: NavSection) => (
+    <RailGroup
+      key={section.id}
+      section={section}
+      open={!collapsed.includes(section.id)}
+      holdsActive={section.id === activeSectionId}
+      onToggle={() => toggleSection(section.id)}
+    >
+      {section.items.map(renderLink)}
+    </RailGroup>
   );
 
   return (
     <div className="shell">
       <nav className="rail" aria-label="Sections">
-        <div>
+        <div className="rail__nav">
           <div className="rail__brand">
             <span className="rail__mark" aria-hidden="true">
               <Icon name="braces" size={18} />
@@ -184,20 +263,7 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
             </span>
           </div>
 
-          <div className="rail__group">
-            <p className="rail__group-title">Live ops</p>
-            {OPS_ITEMS.map(renderLink)}
-          </div>
-
-          <div className="rail__group">
-            <p className="rail__group-title">Configs</p>
-            {NAV_ITEMS.map(renderLink)}
-          </div>
-        </div>
-
-        <div className="rail__group">
-          <p className="rail__group-title">Reference</p>
-          {renderLink(REFERENCE_ITEM)}
+          {NAV_SECTIONS.map(renderSection)}
         </div>
 
         {source !== null && workbook !== null && (
@@ -224,11 +290,11 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
             <span className="crumbs__sep" aria-hidden="true">
               /
             </span>
-            <span>{CRUMB_SECTION[view]}</span>
+            <span>{sectionOf(view).title}</span>
             <span className="crumbs__sep" aria-hidden="true">
               /
             </span>
-            <span className="crumbs__current">{CRUMB_LABEL[view]}</span>
+            <span className="crumbs__current">{labelOf(view)}</span>
           </nav>
 
           {workbook !== null && (
@@ -241,7 +307,10 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
           )}
         </header>
 
-        <main className="page">{children}</main>
+        {/* Keyed on the view so each page fades in rather than snapping. */}
+        <main className="page" key={view}>
+          {children}
+        </main>
       </div>
     </div>
   );

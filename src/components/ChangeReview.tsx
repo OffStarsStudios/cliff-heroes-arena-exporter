@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from './Icon';
 import { JsonOutput } from './JsonOutput';
 import { ScheduleDialog } from './ScheduleDialog';
+import { Segmented } from './Segmented';
 import { IssueList } from './Summary';
 import { ACCOUNT, ENVIRONMENTS, environmentName, isLiveEnvironment } from '../domains/account';
 import { DOMAIN_LABELS, GIT_PATHS, SETTING_KEYS, type DomainId } from '../domains/types';
@@ -154,23 +155,24 @@ export function ChangeReview({
   return (
     <div className="stack-md">
       <div className="row-between review__bar">
-        <div className="segmented" role="group" aria-label="Target environment">
-          {ENVIRONMENTS.map((environment) => (
-            <button
-              key={environment.environmentId}
-              type="button"
-              aria-pressed={environmentId === environment.environmentId}
-              onClick={() => {
-                onEnvironmentChange(environment.environmentId);
-                setResponse(null);
-                setConfirmed(false);
-              }}
-            >
-              {environment.name.replace(' Environment', '')}
-              {environment.readByLiveGame && <span className="segmented__flag">live</span>}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Target environment"
+          value={environmentId}
+          options={ENVIRONMENTS.map((environment) => ({
+            value: environment.environmentId,
+            label: (
+              <>
+                {environment.name.replace(' Environment', '')}
+                {environment.readByLiveGame && <span className="segmented__flag">live</span>}
+              </>
+            ),
+          }))}
+          onChange={(next) => {
+            onEnvironmentChange(next);
+            setResponse(null);
+            setConfirmed(false);
+          }}
+        />
         <button type="button" className="btn btn--sm" onClick={release.reload} disabled={release.status === 'loading'}>
           {release.status === 'loading' ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" size={13} />}
           Re-check

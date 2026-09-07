@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { Chip } from '../components/Step';
+import { Segmented } from '../components/Segmented';
 import { IssueList } from '../components/Summary';
 import {
   ACCOUNT,
@@ -43,20 +44,16 @@ function EnvironmentPicker({
   busy: boolean;
 }) {
   return (
-    <div className="segmented" role="group" aria-label="Environment">
-      {ENVIRONMENTS.map((environment) => (
-        <button
-          key={environment.environmentId}
-          type="button"
-          aria-pressed={selected === environment.environmentId}
-          disabled={busy}
-          onClick={() => onSelect(environment.environmentId)}
-        >
-          {environment.name}
-          {environment.readByLiveGame && ' (live)'}
-        </button>
-      ))}
-    </div>
+    <Segmented
+      label="Environment"
+      value={selected}
+      disabled={busy}
+      options={ENVIRONMENTS.map((environment) => ({
+        value: environment.environmentId,
+        label: `${environment.name}${environment.readByLiveGame ? ' (live)' : ''}`,
+      }))}
+      onChange={onSelect}
+    />
   );
 }
 

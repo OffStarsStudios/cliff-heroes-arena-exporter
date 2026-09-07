@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import type { View } from './AppShell';
 import { ChangeReview } from './ChangeReview';
 import { Icon } from './Icon';
@@ -66,6 +66,7 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
   // it currently is. They were the same page before, and the second one was
   // only reachable by loading a sheet you did not want to publish.
   const [pageTab, setPageTab] = useState<'update' | 'live'>('update');
+  const tabsId = useId();
   const [environmentId, setEnvironmentId] = useState(
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
@@ -178,7 +179,9 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
         <button
           type="button"
           role="tab"
+          id={`${tabsId}-update`}
           aria-selected={pageTab === 'update'}
+          aria-controls={`${tabsId}-panel`}
           className={`pagetab${pageTab === 'update' ? ' pagetab--active' : ''}`}
           onClick={() => setPageTab('update')}
         >
@@ -188,7 +191,9 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
         <button
           type="button"
           role="tab"
+          id={`${tabsId}-live`}
           aria-selected={pageTab === 'live'}
+          aria-controls={`${tabsId}-panel`}
           className={`pagetab${pageTab === 'live' ? ' pagetab--active' : ''}`}
           onClick={() => setPageTab('live')}
         >
@@ -196,6 +201,15 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
           Live in game
         </button>
       </div>
+
+      {/* Keyed so switching tabs replays the panel's entrance. */}
+      <div
+        className="tabpanel"
+        key={pageTab}
+        id={`${tabsId}-panel`}
+        role="tabpanel"
+        aria-labelledby={`${tabsId}-${pageTab}`}
+      >
 
       {pageTab === 'live' && (
         <LiveInGame
@@ -350,25 +364,28 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
                 </button>
               </div>
 
-              {outputTab === 'preview' ? (
-                <definition.PreviewTable rows={result.preview} />
-              ) : (
-                <ChangeReview
-                  domain={definition.domain}
-                  payload={exportable.config}
-                  json={exportable.json}
-                  downloadFilename={definition.downloadFilename}
-                  release={release}
-                  environmentId={environmentId}
-                  onEnvironmentChange={setEnvironmentId}
-                  sheetBlocker={sheetBlocker}
-                />
-              )}
+              <div className="tabpanel tabpanel--inner" key={outputTab}>
+                {outputTab === 'preview' ? (
+                  <definition.PreviewTable rows={result.preview} />
+                ) : (
+                  <ChangeReview
+                    domain={definition.domain}
+                    payload={exportable.config}
+                    json={exportable.json}
+                    downloadFilename={definition.downloadFilename}
+                    release={release}
+                    environmentId={environmentId}
+                    onEnvironmentChange={setEnvironmentId}
+                    sheetBlocker={sheetBlocker}
+                  />
+                )}
+              </div>
             </div>
           )}
         </Step>
       </div>
       )}
+      </div>
     </>
   );
 }

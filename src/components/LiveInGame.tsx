@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ConfigTable } from './ConfigTable';
 import { Icon } from './Icon';
 import { JsonOutput } from './JsonOutput';
+import { Segmented } from './Segmented';
 import { ENVIRONMENTS, environmentName, isLiveEnvironment } from '../domains/account';
 import { DOMAIN_LABELS, type DomainId } from '../domains/types';
 import { fetchLiveConfig, type LiveConfigView } from '../lib/liveConfig';
@@ -64,19 +65,20 @@ export function LiveInGame({ domain, environmentId, onEnvironmentChange, downloa
   return (
     <div className="stack-md">
       <div className="row-between review__bar">
-        <div className="segmented" role="group" aria-label="Environment">
-          {ENVIRONMENTS.map((environment) => (
-            <button
-              key={environment.environmentId}
-              type="button"
-              aria-pressed={environmentId === environment.environmentId}
-              onClick={() => onEnvironmentChange(environment.environmentId)}
-            >
-              {environment.name.replace(' Environment', '')}
-              {environment.readByLiveGame && <span className="segmented__flag">live</span>}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Environment"
+          value={environmentId}
+          options={ENVIRONMENTS.map((environment) => ({
+            value: environment.environmentId,
+            label: (
+              <>
+                {environment.name.replace(' Environment', '')}
+                {environment.readByLiveGame && <span className="segmented__flag">live</span>}
+              </>
+            ),
+          }))}
+          onChange={onEnvironmentChange}
+        />
         <div className="row-gap">
           {fetchedAt !== null && !loading && (
             <span className="field__note">Read {relativeTime(fetchedAt - Date.now())}</span>

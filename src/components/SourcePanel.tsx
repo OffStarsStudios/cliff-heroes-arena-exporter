@@ -1,5 +1,6 @@
 import { useCallback, useId, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { Segmented } from './Segmented';
 import type { RawWorkbook } from '../lib/types';
 
 export type SourceMode = 'file' | 'url';
@@ -89,28 +90,18 @@ export function SourcePanel({ source }: { source: SourceController }) {
         <p className="step__note" style={{ margin: 0 }}>
           Load the <strong>{label}</strong> workbook. Each exporter keeps its own.
         </p>
-        <div className="segmented" role="group" aria-label="Spreadsheet source">
-          <button
-            type="button"
-            aria-pressed={mode === 'file'}
-            onClick={() => {
-              setMode('file');
-              onClearError();
-            }}
-          >
-            Excel file
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === 'url'}
-            onClick={() => {
-              setMode('url');
-              onClearError();
-            }}
-          >
-            Google Sheet
-          </button>
-        </div>
+        <Segmented
+          label="Spreadsheet source"
+          value={mode}
+          options={[
+            { value: 'file', label: 'Excel file' },
+            { value: 'url', label: 'Google Sheet' },
+          ]}
+          onChange={(next) => {
+            setMode(next);
+            onClearError();
+          }}
+        />
       </div>
 
       {lastUrl !== null && (
@@ -126,71 +117,73 @@ export function SourcePanel({ source }: { source: SourceController }) {
         </div>
       )}
 
-      {mode === 'file' ? (
-        <>
-          <button
-            type="button"
-            className={dragging ? 'dropzone dropzone--active' : 'dropzone'}
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-            disabled={busy}
-          >
-            <span className="dropzone__icon">
-              {busy ? <span className="spinner" /> : <Icon name="upload" size={24} />}
-            </span>
-            <span className="dropzone__title">
-              {busy ? 'Reading workbook...' : 'Drop a workbook here'}
-            </span>
-            <span className="dropzone__hint">or click to browse - {ACCEPT}</span>
-          </button>
-          <input
-            ref={inputRef}
-            type="file"
-            className="sr-only"
-            accept={ACCEPT}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onFile(file);
-              event.target.value = '';
-            }}
-          />
-        </>
-      ) : (
-        <form
-          className="url-row"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (url.trim() !== '') onUrl(url.trim());
-          }}
-        >
-          <div className="field">
-            <label className="field__label" htmlFor={urlId}>
-              Google Sheets link
-            </label>
-            <input
-              id={urlId}
-              type="url"
-              placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-              value={url}
-              onChange={(event) => setUrl(event.target.value)}
+      <div className="swap" key={mode}>
+        {mode === 'file' ? (
+          <>
+            <button
+              type="button"
+              className={dragging ? 'dropzone dropzone--active' : 'dropzone'}
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
               disabled={busy}
-              aria-describedby={`${urlId}-note`}
+            >
+              <span className="dropzone__icon">
+                {busy ? <span className="spinner" /> : <Icon name="upload" size={24} />}
+              </span>
+              <span className="dropzone__title">
+                {busy ? 'Reading workbook...' : 'Drop a workbook here'}
+              </span>
+              <span className="dropzone__hint">or click to browse - {ACCEPT}</span>
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              className="sr-only"
+              accept={ACCEPT}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onFile(file);
+                event.target.value = '';
+              }}
             />
-            <span className="field__note" id={`${urlId}-note`}>
-              The sheet must be shared with <strong>Anyone with the link</strong>. No sign-in needed.
-            </span>
-          </div>
-          <button type="submit" className="btn btn--primary" disabled={busy || url.trim() === ''}>
-            {busy ? <span className="spinner spinner--on-accent" /> : <Icon name="link" size={14} />}
-            {busy ? 'Loading' : 'Load sheet'}
-          </button>
-        </form>
-      )}
+          </>
+        ) : (
+          <form
+            className="url-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (url.trim() !== '') onUrl(url.trim());
+            }}
+          >
+            <div className="field">
+              <label className="field__label" htmlFor={urlId}>
+                Google Sheets link
+              </label>
+              <input
+                id={urlId}
+                type="url"
+                placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                disabled={busy}
+                aria-describedby={`${urlId}-note`}
+              />
+              <span className="field__note" id={`${urlId}-note`}>
+                The sheet must be shared with <strong>Anyone with the link</strong>. No sign-in needed.
+              </span>
+            </div>
+            <button type="submit" className="btn btn--primary" disabled={busy || url.trim() === ''}>
+              {busy ? <span className="spinner spinner--on-accent" /> : <Icon name="link" size={14} />}
+              {busy ? 'Loading' : 'Load sheet'}
+            </button>
+          </form>
+        )}
+      </div>
 
       {error !== null && (
         <div className="banner banner--error" role="alert">

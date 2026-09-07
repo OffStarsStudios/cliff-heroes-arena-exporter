@@ -843,7 +843,6 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-bottom: 2px solid transparent;
   color: var(--text-muted);
   cursor: pointer;
   display: inline-flex;
@@ -852,8 +851,23 @@
   gap: 7px;
   margin-bottom: -1px;
   min-height: 40px;
-  padding: 8px 14px;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  padding: 8px 14px 10px;
+  position: relative;
+  transition: color var(--dur-1) ease;
+}
+
+/* Same growing underline as the inner tabs, one size up. */
+.pagetab::after {
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  bottom: 0;
+  content: '';
+  height: 2px;
+  left: 10px;
+  position: absolute;
+  right: 10px;
+  transform: scaleX(0);
+  transition: transform var(--dur-2) var(--ease);
 }
 
 .pagetab:hover {
@@ -861,10 +875,14 @@
 }
 
 .pagetab--active {
-  border-bottom-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
 }
+
+.pagetab--active::after {
+  transform: scaleX(1);
+}
+
 
 .row-gap {
   align-items: center;

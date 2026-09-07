@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { ChangeReview } from '../components/ChangeReview';
 import { ColumnMapper } from '../components/ColumnMapper';
 import { Icon } from '../components/Icon';
@@ -89,6 +89,7 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
   const [outputTab, setOutputTab] = useState<'changes' | 'preview'>('changes');
   // Change it, or look at what it currently is. Two different visits.
   const [pageTab, setPageTab] = useState<'update' | 'live'>('update');
+  const tabsId = useId();
   const [environmentId, setEnvironmentId] = useState(
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
@@ -273,7 +274,9 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
         <button
           type="button"
           role="tab"
+          id={`${tabsId}-update`}
           aria-selected={pageTab === 'update'}
+          aria-controls={`${tabsId}-panel`}
           className={`pagetab${pageTab === 'update' ? ' pagetab--active' : ''}`}
           onClick={() => setPageTab('update')}
         >
@@ -283,7 +286,9 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
         <button
           type="button"
           role="tab"
+          id={`${tabsId}-live`}
           aria-selected={pageTab === 'live'}
+          aria-controls={`${tabsId}-panel`}
           className={`pagetab${pageTab === 'live' ? ' pagetab--active' : ''}`}
           onClick={() => setPageTab('live')}
         >
@@ -291,6 +296,15 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
           Live in game
         </button>
       </div>
+
+      {/* Keyed so switching tabs replays the panel's entrance. */}
+      <div
+        className="tabpanel"
+        key={pageTab}
+        id={`${tabsId}-panel`}
+        role="tabpanel"
+        aria-labelledby={`${tabsId}-${pageTab}`}
+      >
 
       {pageTab === 'live' && (
         <LiveInGame
@@ -439,25 +453,28 @@ export function ArenaExporter({ source, onNavigate }: ArenaExporterProps) {
                 </button>
               </div>
 
-              {outputTab === 'preview' ? (
-                <PreviewTable rows={analysis.result.preview} />
-              ) : (
-                <ChangeReview
-                  domain="trophyRoad"
-                  payload={exportable.config}
-                  json={exportable.json}
-                  downloadFilename={DOWNLOAD_FILENAME}
-                  release={release}
-                  environmentId={environmentId}
-                  onEnvironmentChange={setEnvironmentId}
-                  sheetBlocker={sheetBlocker}
-                />
-              )}
+              <div className="tabpanel tabpanel--inner" key={outputTab}>
+                {outputTab === 'preview' ? (
+                  <PreviewTable rows={analysis.result.preview} />
+                ) : (
+                  <ChangeReview
+                    domain="trophyRoad"
+                    payload={exportable.config}
+                    json={exportable.json}
+                    downloadFilename={DOWNLOAD_FILENAME}
+                    release={release}
+                    environmentId={environmentId}
+                    onEnvironmentChange={setEnvironmentId}
+                    sheetBlocker={sheetBlocker}
+                  />
+                )}
+              </div>
             </div>
           )}
         </Step>
       </div>
       )}
+      </div>
     </>
   );
 }
