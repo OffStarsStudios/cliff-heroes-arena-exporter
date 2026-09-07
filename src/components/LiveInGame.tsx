@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ConfigTable } from './ConfigTable';
 import { Icon } from './Icon';
 import { JsonOutput } from './JsonOutput';
 import { ENVIRONMENTS, environmentName, isLiveEnvironment } from '../domains/account';
@@ -219,9 +220,13 @@ export function LiveInGame({ domain, environmentId, onEnvironmentChange, downloa
           )}
 
           {view.live.json !== null && (
-            <div>
-              <p className="step__section-title">The live value</p>
-              <JsonOutput json={JSON.stringify(view.live.json, null, 2)} filename={downloadFilename} />
+            <div className="stack-md">
+              <p className="step__section-title">What the game is serving</p>
+              <ConfigTable value={view.live.json} nameHint={DOMAIN_LABELS[domain]} />
+              <details className="disclosure">
+                <summary>The same thing as JSON</summary>
+                <JsonOutput json={JSON.stringify(view.live.json, null, 2)} filename={downloadFilename} />
+              </details>
             </div>
           )}
 
