@@ -130,6 +130,25 @@ cloud, so Node 14 on your machine is not a blocker:
 If the build complains about the Node version, set **Project Settings > General >
 Node.js Version** to 22.x.
 
+### Why most commits do not deploy
+
+`vercel.json` sets an `ignoreCommand` that skips the build when a commit touches
+nothing outside `schedules/`.
+
+This is not an optimisation. The heartbeat writes `lastTickAt` to
+`schedules/schedules.json` on every tick, quiet ones included, because "the
+scheduler has not run since Tuesday" is the failure the whole feature exists to
+make visible - see [The heartbeat](#the-heartbeat). At a tick every five minutes
+that is close to three hundred commits a day, and without this every one of them
+would queue a production build. Vercel's free plan allows a hundred a day, so the
+budget was gone by mid-afternoon and real deploys were refused for the rest of it.
+
+The command builds whenever it cannot tell - an unresolvable parent commit means
+a shallow clone, not a heartbeat - so the failure mode is a redundant build
+rather than a missed one. A commit that changes any real file still deploys. To
+force a deploy from a schedules-only commit, use **Redeploy** in the Vercel
+dashboard.
+
 ### Environment variables
 
 Set these under **Project Settings > Environment Variables**, then **redeploy** -
