@@ -23,12 +23,25 @@ const API = 'https://api.github.com';
 const REPO = process.env.GITHUB_REPO ?? 'OffStarsStudios/cliff-heroes-arena-exporter';
 const BRANCH = process.env.GITHUB_BRANCH ?? 'main';
 
-export function repoName() {
-  return REPO;
+/**
+ * Where a read or write lands.
+ *
+ * Everything defaults to the deployed branch, which is what the publish
+ * records want: `config/heroes.json` beside the code it describes. The
+ * scheduler passes something else, for a reason that has nothing to do with
+ * git and everything to do with Vercel - see `SCHEDULE_TARGET` in
+ * `schedule.mjs`.
+ */
+function targetOf(target) {
+  return { repo: target?.repo ?? REPO, branch: target?.branch ?? BRANCH };
 }
 
-export function branchName() {
-  return BRANCH;
+export function repoName(target) {
+  return targetOf(target).repo;
+}
+
+export function branchName(target) {
+  return targetOf(target).branch;
 }
 
 export function gitAvailable() {
@@ -148,13 +161,14 @@ function missingTokenReason(path) {
  * Reads one file. A missing file comes back as `exists: false` rather than an
  * error, because "no schedule file yet" is the normal first-run state.
  */
-export async function readFile(path) {
+export async function readFile(path, target) {
   if (!gitAvailable()) {
     return { exists: false, sha: null, content: null, error: missingTokenReason(path) };
   }
 
+  const { repo, branch } = targetOf(target);
   const response = await github(
-    `/repos/${REPO}/contents/${encodePath(path)}?ref=${encodeURIComponent(BRANCH)}`,
+    `/repos/${repo}/contents/${encodePath(path)}?ref=${encodeURIComponent(branch)}`,
   );
 
   if (response.status === 404) return { exists: false, sha: null, content: null, error: null };
@@ -176,8 +190,8 @@ export async function readFile(path) {
 }
 
 /** Reads and parses a JSON file, falling back to `fallback` when absent. */
-export async function readJson(path, fallback) {
-  const file = await readFile(path);
+export async function readJson(path, fallback, target) {
+  const file = await readFile(path, target);
   if (file.error) throw new Error(file.error);
   if (!file.exists) return { value: fallback, sha: null, existed: false };
   try {
@@ -188,8 +202,8 @@ export async function readJson(path, fallback) {
 }
 
 /** The blob sha of an existing file, or null when it does not exist yet. */
-async function currentSha(path) {
-  const file = await readFile(path);
+async function currentSha(path, target) {
+  const file = await readFile(path, target);
   if (file.error) throw new Error(file.error);
   return file.sha ?? null;
 }
@@ -240,19 +254,25 @@ export async function readFileAt(path, ref) {
  * record of the publishes that did succeed. Callers that genuinely need the
  * write - the scheduler - check `committed` and escalate themselves.
  */
-export async function commitFile({ path, content, message, sha: knownSha }) {
+export async function commitFile({ path, content, message, sha: knownSha, target }) {
   if (!gitAvailable()) {
     return { path, committed: false, reason: missingTokenReason(path) };
   }
 
   try {
-    const sha = knownSha === undefined ? await currentSha(path) : knownSha;
-    const response = await github(`/repos/${REPO}/contents/${encodePath(path)}`, {
+    const { repo, branch } = targetOf(target);
+    // A branch the console writes to but nobody has created yet is a setup
+    // step, not a failure worth waking somebody for.
+    const ready = await ensureBranch({ repo, branch });
+    if (!ready.ok) return { path, committed: false, reason: ready.reason };
+
+    const sha = knownSha === undefined ? await currentSha(path, { repo, branch }) : knownSha;
+    const response = await github(`/repos/${repo}/contents/${encodePath(path)}`, {
       method: 'PUT',
       body: {
         message,
         content: Buffer.from(content, 'utf8').toString('base64'),
-        branch: BRANCH,
+        branch,
         ...(sha === null ? {} : { sha }),
       },
     });
@@ -274,8 +294,41 @@ export async function commitFile({ path, content, message, sha: knownSha }) {
 }
 
 /** Writes a JSON file, pretty-printed so the history stays readable. */
-export function commitJson({ path, value, message, sha }) {
-  return commitFile({ path, content: `${JSON.stringify(value, null, 2)}\n`, message, sha });
+export function commitJson({ path, value, message, sha, target }) {
+  return commitFile({ path, content: `${JSON.stringify(value, null, 2)}\n`, message, sha, target });
+}
+
+/**
+ * Makes sure a branch exists, creating it from the deployed branch's head if
+ * not. Called before every write rather than once at boot, because a
+ * serverless function has no boot: every invocation is the first one.
+ *
+ * One cheap GET against a ref that almost always exists; the create only ever
+ * happens once in the life of the repository.
+ */
+async function ensureBranch({ repo, branch }) {
+  if (branch === BRANCH) return { ok: true };
+
+  const ref = `heads/${branch}`;
+  const existing = await github(`/repos/${repo}/git/ref/${ref}`);
+  if (existing.ok) return { ok: true };
+  if (existing.status !== 404) {
+    return { ok: false, reason: explainFailure(existing, { path: `branch ${branch}` }) };
+  }
+
+  const base = await github(`/repos/${repo}/git/ref/heads/${BRANCH}`);
+  if (!base.ok) {
+    return { ok: false, reason: `Cannot create "${branch}": ${explainFailure(base, { path: BRANCH })}` };
+  }
+
+  const created = await github(`/repos/${repo}/git/refs`, {
+    method: 'POST',
+    body: { ref: `refs/${ref}`, sha: base.data?.object?.sha },
+  });
+  // A 422 is almost always a race with another invocation that just created
+  // it, which is a success as far as the caller is concerned.
+  if (created.ok || created.status === 422) return { ok: true };
+  return { ok: false, reason: `Cannot create "${branch}": ${explainFailure(created, { path: branch })}` };
 }
 
 /* ---------------------------------------------------------- diagnostics -- */

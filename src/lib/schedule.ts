@@ -75,6 +75,8 @@ export interface ScheduleView {
   /** True when the heartbeat has not been heard from in over an hour. */
   heartbeatStale: boolean;
   repo: string;
+  /** Which branch the schedule is stored on. Not the deployed one - see the README. */
+  branch?: string;
   now: string;
   /**
    * Set when the scheduler cannot work at all - no GitHub token, or a repo it

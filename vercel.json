@@ -5,6 +5,11 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "ignoreCommand": "git rev-parse HEAD^ >/dev/null 2>&1 || exit 1; git diff --quiet HEAD^ HEAD -- . ':(exclude)schedules'",
+  "git": {
+    "deploymentEnabled": {
+      "schedules": false
+    }
+  },
   "functions": {
     "api/schedule/*.js": {
       "maxDuration": 60

@@ -38,7 +38,7 @@
 
 import { getValues } from './configcat.mjs';
 import { diffJson, describeChange, summarizeDiff } from './diff.mjs';
-import { commitJson, gitAvailable, readJson, repoName } from './git.mjs';
+import { branchName, commitJson, gitAvailable, readJson, repoName } from './git.mjs';
 import {
   LIVEOPS_DOMAINS,
   checkEvent,
@@ -50,6 +50,30 @@ import {
 import { applyPublish, hashValue, toStoredValue } from './publish.mjs';
 
 export const SCHEDULE_PATH = 'schedules/schedules.json';
+
+/**
+ * The schedule lives on its own branch, and the reason is not a git one.
+ *
+ * The heartbeat writes `lastTickAt` on every tick, quiet ones included,
+ * because "the scheduler has not run since Tuesday" is the failure this whole
+ * feature exists to make visible. At a tick every five minutes that is ~288
+ * commits a day - and every commit to the deployed branch queues a Vercel
+ * deployment, against a plan that allows a hundred a day. The allowance was
+ * gone by mid-afternoon and real deploys were refused for the rest of it.
+ *
+ * A `vercel.json` ignoreCommand does not fix that: the Ignored Build Step runs
+ * after a deployment slot is claimed, so a skipped build still counts. The
+ * only thing that works is for these commits never to reach a branch Vercel
+ * watches. So they do not.
+ *
+ * Set `GITHUB_SCHEDULE_REPO` as well if the branch ever turns out not to be
+ * enough - the schedule is happy in another repository, and nothing else here
+ * has to change.
+ */
+export const SCHEDULE_TARGET = {
+  repo: process.env.GITHUB_SCHEDULE_REPO ?? undefined,
+  branch: process.env.GITHUB_SCHEDULE_BRANCH ?? 'schedules',
+};
 
 /** Publish target per domain. Mirrors `src/domains/types.ts`; kept here so the server has no build step. */
 export const SETTING_KEYS = {
@@ -99,7 +123,7 @@ function emptyStore() {
  * get a conflict rather than one of them quietly winning.
  */
 export async function loadSchedule() {
-  const { value, sha } = await readJson(SCHEDULE_PATH, emptyStore());
+  const { value, sha } = await readJson(SCHEDULE_PATH, emptyStore(), SCHEDULE_TARGET);
   const entries = Array.isArray(value?.entries) ? value.entries : [];
   return { store: { ...emptyStore(), ...value, entries }, sha };
 }
@@ -110,6 +134,7 @@ export async function saveSchedule(store, sha, message) {
     value: { ...store, updatedAt: new Date().toISOString() },
     message,
     sha: sha ?? undefined,
+    target: SCHEDULE_TARGET,
   });
   if (!result.committed) {
     throw new Error(`The schedule could not be saved to ${repoName()}: ${result.reason}`);
@@ -609,7 +634,8 @@ export async function describeSchedule({ now = Date.now() } = {}) {
       off: {},
       lastTickAt: null,
       heartbeatStale: true,
-      repo: repoName(),
+      repo: repoName(SCHEDULE_TARGET),
+      branch: branchName(SCHEDULE_TARGET),
       now: new Date(now).toISOString(),
       unavailable:
         'GITHUB_TOKEN is not set in this environment, so the scheduler has nowhere to keep its schedules. Nothing is scheduled and nothing can be.',
@@ -626,7 +652,8 @@ export async function describeSchedule({ now = Date.now() } = {}) {
       off: {},
       lastTickAt: null,
       heartbeatStale: true,
-      repo: repoName(),
+      repo: repoName(SCHEDULE_TARGET),
+      branch: branchName(SCHEDULE_TARGET),
       now: new Date(now).toISOString(),
       unavailable: error?.message ?? String(error),
     };
@@ -704,7 +731,10 @@ export async function describeSchedule({ now = Date.now() } = {}) {
     // Anything past an hour means the heartbeat is not arriving, and a
     // schedule nobody is running is worse than no schedule at all.
     heartbeatStale: staleMs === null || staleMs > 3600000,
-    repo: repoName(),
+    repo: repoName(SCHEDULE_TARGET),
+    // Worth surfacing: "why is my schedule not in main" is a question this
+    // answers before anybody has to go looking for it.
+    branch: branchName(SCHEDULE_TARGET),
     now: new Date(now).toISOString(),
   };
 }
