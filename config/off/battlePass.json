@@ -1,0 +1,12 @@
+{
+  "SeasonID": "",
+  "SeasonName": "",
+  "StartUtc": "",
+  "DurationDays": 0,
+  "TokensPerTier": 0,
+  "PremiumProductID": "",
+  "SkipTierCost": 0,
+  "SkipCurrencyID": "",
+  "FinalRewardArt": "",
+  "Tiers": []
+}

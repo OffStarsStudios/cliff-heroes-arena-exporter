@@ -8,6 +8,7 @@
  */
 
 import { ConfigCatError } from './configcat.mjs';
+import { LIVEOPS_DOMAINS, OFF_MEANS, OFF_SEEDS, loadOff, saveOff } from './liveops.mjs';
 import { gitStatus } from './git.mjs';
 import {
   DOMAINS,
@@ -121,6 +122,7 @@ async function serveCreate(req, res) {
       startsAt: body.startsAt,
       endsAt: body.endsAt ?? null,
       createdBy: body.createdBy,
+      liveops: body.liveops ?? null,
     });
     if (!result.ok) {
       sendJson(res, 422, { error: 'This window was not scheduled.', problems: result.problems });
@@ -154,6 +156,43 @@ async function serveCancel(req, res) {
  * The fallback is what a config returns to when nothing is scheduled, so
  * recording one is the precondition for any window that ends.
  */
+/**
+ * The off state of a live ops feature: what the game receives when no event of
+ * that feature is running.
+ *
+ * A GET on a feature that has never had one returns the seed rather than
+ * nothing, so the page can show what would be recorded and ask for a look
+ * before it is. What "not running" means is a contract with the client, and
+ * the console should never guess it silently.
+ */
+async function serveOff(req, res) {
+  try {
+    if (req.method === 'GET') {
+      const domain = new URL(req.url ?? '/', 'http://localhost').searchParams.get('domain');
+      if (domain === null || !LIVEOPS_DOMAINS.includes(domain)) {
+        throw new Error(`"${domain}" is not a live ops feature. The calendar schedules ${LIVEOPS_DOMAINS.join(', ')}.`);
+      }
+      const value = await loadOff(domain);
+      sendJson(res, 200, {
+        domain,
+        present: value !== null,
+        payload: value ?? OFF_SEEDS[domain] ?? null,
+        suggested: value === null,
+        means: OFF_MEANS[domain] ?? null,
+      });
+      return;
+    }
+
+    const body = await readJsonBody(req);
+    if (!LIVEOPS_DOMAINS.includes(body.domain)) throw new Error('A known live ops feature is required.');
+    if (body.payload === undefined || body.payload === null) throw new Error('"payload" is required.');
+    const commit = await saveOff(body.domain, body.payload, body.note);
+    sendJson(res, 200, { domain: body.domain, committed: true, commit });
+  } catch (error) {
+    fail(res, error);
+  }
+}
+
 async function serveDefault(req, res) {
   try {
     if (req.method === 'GET') {
@@ -230,6 +269,7 @@ const ROUTES = {
     req.method === 'POST' ? serveCreate(req, res) : serveList(req, res),
   '/api/schedule/cancel': serveCancel,
   '/api/schedule/default': serveDefault,
+  '/api/schedule/off': serveOff,
   '/api/schedule/preview': servePreview,
   '/api/schedule/tick': serveTick,
   '/api/git/status': serveGitStatus,
@@ -243,4 +283,4 @@ export async function handleScheduleRequest(req, res) {
   return true;
 }
 
-export { serveCancel, serveCreate, serveDefault, serveGitStatus, serveList, servePreview, serveTick };
+export { serveCancel, serveCreate, serveDefault, serveGitStatus, serveList, serveOff, servePreview, serveTick };

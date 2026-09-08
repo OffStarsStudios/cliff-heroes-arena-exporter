@@ -8,6 +8,7 @@ import type { RawWorkbook } from '../lib/types';
  */
 export type View =
   | 'dashboard'
+  | 'liveops'
   | 'schedule'
   | 'live'
   | 'arena'
@@ -44,7 +45,8 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'Operations',
     items: [
       { id: 'dashboard', label: 'Overview', icon: 'grid' },
-      { id: 'schedule', label: 'Scheduling', icon: 'calendar' },
+      { id: 'liveops', label: 'Live ops', icon: 'calendar' },
+      { id: 'schedule', label: 'Scheduling', icon: 'clock' },
       { id: 'live', label: 'Live config', icon: 'link' },
     ],
   },

@@ -39,6 +39,14 @@
 import { getValues } from './configcat.mjs';
 import { diffJson, describeChange, summarizeDiff } from './diff.mjs';
 import { commitJson, gitAvailable, readJson, repoName } from './git.mjs';
+import {
+  LIVEOPS_DOMAINS,
+  checkEvent,
+  isLiveOpsEntry,
+  loadOff,
+  phaseOf,
+  windowForEvent,
+} from './liveops.mjs';
 import { applyPublish, hashValue, toStoredValue } from './publish.mjs';
 
 export const SCHEDULE_PATH = 'schedules/schedules.json';
@@ -168,8 +176,9 @@ function record(entry, action, ok, message) {
  * Returned as a list rather than thrown one at a time, so the form can show
  * every problem at once instead of the user fixing them in sequence.
  */
-export function checkEntry(candidate, { entries, hasDefault, now = Date.now() }) {
+export function checkEntry(candidate, { entries, hasDefault, hasOff, now = Date.now() }) {
   const problems = [];
+  const liveOps = isLiveOpsEntry(candidate);
 
   if (!DOMAINS.includes(candidate.domain)) {
     problems.push(`"${candidate.domain}" is not a config this console publishes.`);
@@ -205,10 +214,15 @@ export function checkEntry(candidate, { entries, hasDefault, now = Date.now() })
   }
 
   // The one guardrail that is really a design decision: a window that comes
-  // down has to have something to come down to.
-  if (end !== null && !Number.isNaN(end) && !hasDefault) {
+  // down has to have something to come down to. Where that is depends on what
+  // kind of window it is - a core config goes back to its last known-good
+  // version, a live ops feature goes away entirely - so the question is the
+  // same one and the answer is not.
+  if (end !== null && !Number.isNaN(end) && !(liveOps ? hasOff : hasDefault)) {
     problems.push(
-      'This config has no default recorded, so there is nothing to fall back to when the window ends. Set the default first - the current live value is usually the right one.',
+      liveOps
+        ? 'This feature has no off state recorded, so there would be nothing to publish when the event ends and the feature would stay in the game after it was over. Record the off state first.'
+        : 'This config has no default recorded, so there is nothing to fall back to when the window ends. Set the default first - the current live value is usually the right one.',
     );
   }
 
@@ -233,7 +247,17 @@ export function checkEntry(candidate, { entries, hasDefault, now = Date.now() })
 
 export async function createEntry(input) {
   const { store, sha } = await loadSchedule();
+  const liveops = input.liveops ?? null;
   const hasDefault = (await loadDefault(input.domain)) !== null;
+  const hasOff = liveops === null ? false : (await loadOff(input.domain)) !== null;
+
+  // A live ops event names the moment players see it, not the moment the
+  // config is written. Publishing early is what lets the client advertise a
+  // pass before it opens, so the window starts `previewHours` earlier and the
+  // event keeps its own opening time for everything that reads the calendar.
+  const window = liveops === null
+    ? { startsAt: input.startsAt, endsAt: input.endsAt ?? null }
+    : windowForEvent(liveops, input.endsAt ?? null);
 
   const entry = {
     id: input.id ?? newId(),
@@ -246,15 +270,19 @@ export async function createEntry(input) {
     note: input.note ?? null,
     payload: input.payload,
     payloadHash: hashValue(toStoredValue(input.payload)),
-    startsAt: input.startsAt,
-    endsAt: input.endsAt ?? null,
+    startsAt: window.startsAt,
+    endsAt: window.endsAt,
+    liveops,
     state: 'scheduled',
     createdAt: new Date().toISOString(),
     createdBy: input.createdBy ?? 'back office',
     history: [],
   };
 
-  const problems = checkEntry(entry, { entries: store.entries, hasDefault });
+  const problems = [
+    ...checkEntry(entry, { entries: store.entries, hasDefault, hasOff }),
+    ...(liveops === null ? [] : checkEvent(liveops, { startsAt: entry.startsAt, endsAt: entry.endsAt })),
+  ];
   if (problems.length > 0) return { ok: false, problems };
 
   record(entry, 'created', true, `Scheduled for ${entry.startsAt}.`);
@@ -358,16 +386,28 @@ async function endWindow(entry, store, becauseOf) {
     now,
   ).winner;
 
-  const fallback = successor !== null ? successor.payload : await loadDefault(entry.domain);
+  // A core config goes back to its last known-good version. A live ops
+  // feature has no previous version to want - the season is over - so it goes
+  // back to the payload that means "not running". Getting this wrong would
+  // restart last season the moment this one ended.
+  const liveOps = isLiveOpsEntry(entry);
+  const fallback =
+    successor !== null
+      ? successor.payload
+      : liveOps
+        ? await loadOff(entry.domain)
+        : await loadDefault(entry.domain);
 
   if (fallback === null || fallback === undefined) {
     record(
       entry,
       'end-skipped',
       false,
-      'The window ended but no default config is recorded, so the config was left as it is rather than removed from a running game. Record a default for this config.',
+      liveOps
+        ? 'The event ended but no off state is recorded, so the feature was left live rather than removed from a running game. Record the off state for this feature.'
+        : 'The window ended but no default config is recorded, so the config was left as it is rather than removed from a running game. Record a default for this config.',
     );
-    return { reverted: false, reason: 'no-default' };
+    return { reverted: false, reason: liveOps ? 'no-off-state' : 'no-default' };
   }
 
   // Is the live value still ours to take back?
@@ -384,7 +424,12 @@ async function endWindow(entry, store, becauseOf) {
     return { reverted: false, reason: 'changed-by-hand' };
   }
 
-  const target = successor !== null ? `the "${successor.label || successor.id}" window` : 'the default config';
+  const target =
+    successor !== null
+      ? `the "${successor.label || successor.id}" window`
+      : liveOps
+        ? 'the off state, so the feature is no longer in the game'
+        : 'the default config';
   const { result } = await publishPayload({
     entry,
     environmentId: entry.environmentId,
@@ -561,6 +606,7 @@ export async function describeSchedule({ now = Date.now() } = {}) {
     return {
       entries: [],
       defaults: {},
+      off: {},
       lastTickAt: null,
       heartbeatStale: true,
       repo: repoName(),
@@ -577,6 +623,7 @@ export async function describeSchedule({ now = Date.now() } = {}) {
     return {
       entries: [],
       defaults: {},
+      off: {},
       lastTickAt: null,
       heartbeatStale: true,
       repo: repoName(),
@@ -593,6 +640,21 @@ export async function describeSchedule({ now = Date.now() } = {}) {
         defaults[domain] = { present: value !== null, hash: value === null ? null : hashValue(toStoredValue(value)) };
       } catch (error) {
         defaults[domain] = { present: false, hash: null, error: error?.message ?? String(error) };
+      }
+    }),
+  );
+
+  // The off states get the same treatment as the defaults: the calendar has
+  // to be able to say "this feature cannot be scheduled yet, and here is why"
+  // before anyone fills in a form.
+  const off = {};
+  await Promise.all(
+    LIVEOPS_DOMAINS.map(async (domain) => {
+      try {
+        const value = await loadOff(domain);
+        off[domain] = { present: value !== null, hash: value === null ? null : hashValue(toStoredValue(value)) };
+      } catch (error) {
+        off[domain] = { present: false, hash: null, error: error?.message ?? String(error) };
       }
     }),
   );
@@ -622,6 +684,10 @@ export async function describeSchedule({ now = Date.now() } = {}) {
       // differently from a window that has simply not started yet.
       attempts: (entry.startAttempts ?? 0) + (entry.endAttempts ?? 0),
       history: entry.history ?? [],
+      // Present only on windows booked from the live ops calendar. Its absence
+      // is what tells every reader this is an ordinary config window.
+      liveops: entry.liveops ?? null,
+      phase: entry.liveops ? phaseOf(entry, now) : null,
       startsInMs: start - now,
       endsInMs: end === null ? null : end - now,
     };
@@ -633,6 +699,7 @@ export async function describeSchedule({ now = Date.now() } = {}) {
   return {
     entries,
     defaults,
+    off,
     lastTickAt: lastTick,
     // Anything past an hour means the heartbeat is not arriving, and a
     // schedule nobody is running is worse than no schedule at all.
