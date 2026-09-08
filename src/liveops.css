@@ -1047,3 +1047,313 @@
   margin: 0;
   text-align: right;
 }
+
+/* ============================================================================
+   Live ops calendar.
+
+   A gantt rather than a month grid: the questions asked of this page are about
+   overlap and gaps - "is anything running that week", "do these two collide" -
+   and a month grid answers those badly the moment an event crosses a Sunday.
+
+   Colour carries the category, because "what monetisation is up this week" is
+   what the page is opened for. State is carried by the fill instead: solid
+   while it is live, faded while it is only booked, hatched over the head of
+   the bar for the stretch where the config is published but the event has not
+   opened yet.
+   ========================================================================== */
+
+.gantt {
+  --gantt-head: 148px;
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.gantt__ruler,
+.gantt__lane {
+  display: grid;
+  grid-template-columns: var(--gantt-head) 1fr;
+  align-items: stretch;
+}
+
+.gantt__ruler {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+  height: 30px;
+}
+
+.gantt__lane-head {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.gantt__track {
+  position: relative;
+  min-height: 30px;
+}
+
+.gantt__tick {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gantt__tick--major {
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gantt__lane + .gantt__lane {
+  border-top: 1px solid var(--border);
+}
+
+.gantt__lane .gantt__track {
+  min-height: calc(var(--rows, 1) * 40px + 8px);
+  padding: 8px 0;
+}
+
+.gantt__gridline {
+  position: absolute;
+  inset-block: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.5;
+}
+
+.gantt__gridline--major {
+  opacity: 1;
+  background: var(--border-strong);
+}
+
+.gantt__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.gantt__bar {
+  position: absolute;
+  top: 8px;
+  height: 32px;
+  min-width: 4px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--event-colour) 70%, black);
+  border-radius: 6px;
+  background: var(--event-colour);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: filter 120ms ease, box-shadow 120ms ease;
+}
+
+.gantt__bar:hover {
+  filter: brightness(1.08);
+}
+
+/* The preview slice: the config is live but players cannot see the event yet.
+   Drawn over the head of the bar rather than as a separate bar, because it is
+   the same event and splitting it would read as two. */
+.gantt__bar::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: var(--preview, 0%);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.45) 0 4px,
+    rgba(255, 255, 255, 0) 4px 8px
+  );
+  border-right: 1px solid rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+
+.gantt__bar-label {
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Booked but not yet published reads as lighter: nothing has happened yet. */
+.gantt__bar--scheduled {
+  background: color-mix(in srgb, var(--event-colour) 22%, white);
+  color: color-mix(in srgb, var(--event-colour) 80%, black);
+  border-style: dashed;
+}
+
+.gantt__bar--ended,
+.gantt__bar--off {
+  background: color-mix(in srgb, var(--event-colour) 12%, white);
+  color: var(--text-muted);
+  border-color: var(--border-strong);
+}
+
+.gantt__bar--off .gantt__bar-label {
+  text-decoration: line-through;
+}
+
+.gantt__bar--ending {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
+.gantt__bar--selected {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--event-colour);
+}
+
+/* An event running past the edge of the range is squared off on that side, so
+   a clipped bar never reads as one that happens to end there. */
+.gantt__bar--open-start {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left-style: dotted;
+}
+
+.gantt__bar--open-end {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right-style: dotted;
+}
+
+.gantt__now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--danger, #dc2626);
+  pointer-events: none;
+}
+
+.gantt__now-label {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--danger, #dc2626);
+  background: var(--surface);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.legend__swatch--preview {
+  background-color: var(--text-muted);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.6) 0 3px,
+    rgba(255, 255, 255, 0) 3px 6px
+  );
+}
+
+/* ------------------------------------------------------- the events table -- */
+
+.table__strong {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.table__sub {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tag-colour);
+  background: color-mix(in srgb, var(--tag-colour) 12%, white);
+  border: 1px solid color-mix(in srgb, var(--tag-colour) 30%, white);
+}
+
+/* A button that is really a link: used where a cell points at the page where
+   that config is actually edited. */
+.linklike {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent, #0369a1);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.linklike:hover {
+  text-decoration-thickness: 2px;
+}
+
+.field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.field--inline .field__label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.banner__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.json-view--sm {
+  max-height: 180px;
+  font-size: 11px;
+}

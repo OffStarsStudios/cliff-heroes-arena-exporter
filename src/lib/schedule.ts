@@ -8,6 +8,7 @@
 
 import type { DomainId } from '../domains/types';
 import type { Change } from './liveConfig';
+import type { EventPhase, LiveOpsBlock } from './liveops';
 
 export type ScheduleState =
   | 'scheduled'
@@ -48,6 +49,13 @@ export interface ScheduleEntry {
   /** Failed tick attempts so far. Non-zero means it is being retried, not stuck. */
   attempts: number;
   history: ScheduleHistoryLine[];
+  /**
+   * Present only on windows booked from the live ops calendar. Its absence is
+   * what tells every reader this is an ordinary config window, so the two
+   * kinds never have to be told apart by their domain.
+   */
+  liveops: LiveOpsBlock | null;
+  phase: EventPhase | null;
   startsInMs: number;
   endsInMs: number | null;
 }
@@ -61,6 +69,8 @@ export interface DefaultStatus {
 export interface ScheduleView {
   entries: ScheduleEntry[];
   defaults: Record<DomainId, DefaultStatus>;
+  /** Off states, per live ops feature. Empty for a non-live-ops domain. */
+  off: Partial<Record<DomainId, DefaultStatus>>;
   lastTickAt: string | null;
   /** True when the heartbeat has not been heard from in over an hour. */
   heartbeatStale: boolean;
@@ -154,8 +164,14 @@ export interface NewWindow {
   label: string;
   note?: string;
   payload: unknown;
+  /**
+   * Ignored for a live ops event: the window's start is worked out from when
+   * the event opens and how long it previews for, so there is one place a
+   * date can be wrong instead of two that must agree.
+   */
   startsAt: string;
   endsAt: string | null;
+  liveops?: LiveOpsBlock;
 }
 
 export function createWindow(input: NewWindow): Promise<{ entry: ScheduleEntry }> {
@@ -178,6 +194,26 @@ export function fetchDefault(domain: DomainId): Promise<{ domain: DomainId; pres
 
 export function saveDefault(domain: DomainId, payload: unknown, note?: string): Promise<{ committed: boolean }> {
   return call('/api/schedule/default', {
+    method: 'POST',
+    body: JSON.stringify({ domain, payload, note }),
+  });
+}
+
+export interface OffState {
+  domain: DomainId;
+  present: boolean;
+  payload: unknown;
+  /** True when nothing is recorded yet and `payload` is only a suggestion. */
+  suggested: boolean;
+  means: string | null;
+}
+
+export function fetchOff(domain: DomainId): Promise<OffState> {
+  return call<OffState>(`/api/schedule/off?domain=${encodeURIComponent(domain)}`);
+}
+
+export function saveOff(domain: DomainId, payload: unknown, note?: string): Promise<{ committed: boolean }> {
+  return call('/api/schedule/off', {
     method: 'POST',
     body: JSON.stringify({ domain, payload, note }),
   });

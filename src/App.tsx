@@ -12,12 +12,14 @@ import { SHOP_EXPORTER } from './exporters/shop';
 import { ArenaExporter } from './features/ArenaExporter';
 import { Dashboard } from './features/Dashboard';
 import { LiveConfig } from './features/LiveConfig';
+import { LiveOps } from './features/LiveOps';
 import { Schedule } from './features/Schedule';
 import { ParamReference } from './features/ParamReference';
 import { SOURCE_LABELS, useWorkbookSources } from './hooks/useWorkbookSources';
 
 const VIEWS: View[] = [
   'dashboard',
+  'liveops',
   'schedule',
   'live',
   'arena',
@@ -79,6 +81,7 @@ export function App() {
   return (
     <AppShell view={view} onNavigate={navigate} source={shellSource}>
       {view === 'dashboard' && <Dashboard onNavigate={navigate} />}
+      {view === 'liveops' && <LiveOps onNavigate={navigate} />}
       {view === 'schedule' && <Schedule onNavigate={navigate} />}
       {view === 'live' && <LiveConfig />}
       {view === 'arena' && (
