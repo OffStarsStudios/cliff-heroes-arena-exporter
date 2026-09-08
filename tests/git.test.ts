@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error - plain .mjs module shared with the production server.
-import { encodePath, explainFailure } from '../server/git.mjs';
+import { branchName, encodePath, explainFailure, repoName } from '../server/git.mjs';
 
 /**
  * Two things about the GitHub client are worth pinning.
@@ -71,5 +71,36 @@ describe('failure messages', () => {
   it('falls back to the status and the upstream message for anything else', () => {
     expect(explainFailure({ status: 500, data: { message: 'Server Error' } })).toContain('500');
     expect(explainFailure({ status: 500, data: { message: 'Server Error' } })).toContain('Server Error');
+  });
+});
+
+/**
+ * The schedule is stored somewhere other than the deployed branch, so reads and
+ * writes take a target. The defaults matter more than the overrides: every
+ * publish record still has to land on `main` beside the code it describes, and
+ * a target that silently defaulted to the wrong branch would scatter them.
+ */
+describe('read and write targets', () => {
+  it('defaults to the deployed repository and branch', () => {
+    expect(repoName()).toBe('OffStarsStudios/cliff-heroes-arena-exporter');
+    expect(branchName()).toBe('main');
+    expect(repoName(undefined)).toBe(repoName());
+    expect(branchName(undefined)).toBe(branchName());
+  });
+
+  it('takes a branch without taking a repository with it', () => {
+    // How the scheduler asks for the schedules branch: same repo, other branch.
+    expect(branchName({ branch: 'schedules' })).toBe('schedules');
+    expect(repoName({ branch: 'schedules' })).toBe(repoName());
+  });
+
+  it('takes a repository too, for the day a branch is not enough', () => {
+    expect(repoName({ repo: 'OffStarsStudios/schedules' })).toBe('OffStarsStudios/schedules');
+    expect(branchName({ repo: 'OffStarsStudios/schedules' })).toBe('main');
+  });
+
+  it('ignores an undefined field rather than treating it as a value', () => {
+    // SCHEDULE_TARGET leaves `repo` undefined unless the env var is set.
+    expect(repoName({ repo: undefined, branch: 'schedules' })).toBe(repoName());
   });
 });

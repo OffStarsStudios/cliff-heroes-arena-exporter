@@ -417,6 +417,32 @@ editing the schedule at once conflict loudly instead of interleaving.
 This is why **scheduling needs `GITHUB_TOKEN`** and reports itself unavailable
 without one, where publishing merely notes that the history was not written.
 
+#### On its own branch, and why
+
+`schedules/schedules.json` is written to a **`schedules` branch**, not to `main`.
+The reason is not a git one.
+
+The heartbeat writes `lastTickAt` on every tick, quiet ones included, so that a
+stalled scheduler is visible rather than silent. At a tick every five minutes
+that is around 288 commits a day - and every commit to the deployed branch
+queues a Vercel deployment, against a plan that allows a hundred a day. The
+allowance was gone by mid-afternoon and real deploys were refused for the rest
+of it, which is how a deliberate design decision quietly became an outage.
+
+A `vercel.json` `ignoreCommand` does **not** fix that. The Ignored Build Step
+runs *after* a deployment slot is claimed, so a skipped build still counts. The
+only thing that works is for these commits never to reach a branch Vercel
+watches, so `vercel.json` also carries
+`"git": { "deploymentEnabled": { "schedules": false } }`.
+
+The branch is created from `main` on the first write; nothing needs setting up
+by hand. The per-domain defaults in `config/defaults/` and the off states in
+`config/off/` stay on `main`, where they belong beside the code - they are
+written by hand, a few times a year, and a deploy for one of those is correct.
+
+If the branch ever proves not to be enough, set `GITHUB_SCHEDULE_REPO` and the
+schedule moves to another repository entirely, with no code change.
+
 ### The heartbeat
 
 Nothing happens without something calling `POST /api/schedule/tick`.
