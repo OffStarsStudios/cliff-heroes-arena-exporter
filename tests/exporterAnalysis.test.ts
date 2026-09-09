@@ -34,7 +34,7 @@ describe('the generic exporter analysis', () => {
     expect(analysis.result).toBeNull();
     expect(analysis.errors).toBe(1);
     expect(analysis.issues).toEqual([
-      { severity: 'error', code: 'missing-tab', message: 'Select the Arena settings tab in step 2 to continue.' },
+      { severity: 'error', code: 'missing-tab', message: 'Select the Arena settings tab in the tab mapping to continue.' },
     ]);
   });
 

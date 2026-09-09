@@ -1,17 +1,50 @@
 import { BattlePassPreviewTable } from '../components/BattlePassPreviewTable';
-import { transformBattlePass } from '../lib/battlePass';
+import { SeasonWindowPanel, readableUtc } from '../components/SeasonWindowPanel';
+import {
+  EMPTY_SCHEDULE,
+  parseStartUtc,
+  seasonEndUtc,
+  transformBattlePass,
+  validateSchedule,
+  type BattlePassSchedule,
+} from '../lib/battlePass';
 import { buildLookup } from '../lib/lookups';
 import { autoSelectBattlePassSheets, type BattlePassSheetSelection } from '../lib/sheetSelect';
 import { serializeBattlePassConfig, validateBattlePassConfig } from '../lib/validateBattlePass';
 import type { BattlePassConfig, BattlePassPreviewRow } from '../lib/types';
-import { emptyRegistry, idsFromLookup } from '../workspace/registry';
+import { rewardRegistryFromLookup } from '../workspace/registry';
 import type { ExporterDefinition } from './types';
+
+/**
+ * Reads a schedule out of anything shaped like a published `battlePassSettings`.
+ *
+ * Used both to seed the panel from the live season and to revive what was
+ * stored locally, because the two want the same three fields checked the same
+ * way. Anything that does not parse yields null, which the page reads as
+ * "nothing usable here" and falls through to the next source.
+ */
+function scheduleFrom(payload: unknown): BattlePassSchedule | null {
+  if (payload === null || typeof payload !== 'object') return null;
+  const record = payload as Record<string, unknown>;
+  const start = typeof record.StartUtc === 'string' ? record.StartUtc : record.startUtc;
+  const days = typeof record.DurationDays === 'number' ? record.DurationDays : record.durationDays;
+  const art = typeof record.FinalRewardArt === 'string' ? record.FinalRewardArt : record.finalRewardArt;
+  if (typeof start !== 'string' || typeof days !== 'number') return null;
+  const canonical = parseStartUtc(start);
+  if (canonical === null || !Number.isInteger(days) || days < 1) return null;
+  return {
+    startUtc: canonical,
+    durationDays: days,
+    finalRewardArt: typeof art === 'string' ? art : '',
+  };
+}
 
 /** The Battle pass exporter: `battlePassSettings` from the Battle Pass Settings workbook. */
 export const BATTLE_PASS_EXPORTER: ExporterDefinition<
   BattlePassSheetSelection,
   BattlePassConfig,
-  BattlePassPreviewRow
+  BattlePassPreviewRow,
+  BattlePassSchedule
 > = {
   domain: 'battlePass',
   dataset: 'battlePass',
@@ -32,7 +65,7 @@ export const BATTLE_PASS_EXPORTER: ExporterDefinition<
     {
       key: 'season',
       label: 'Season',
-      note: 'One row per season setting: the ID and name, the start time, duration, tokens per tier, the premium product and the skip cost.',
+      note: 'One row per season setting: the ID and name, tokens per tier, the premium product and the skip cost. The start, duration and final reward art are set on this page instead.',
     },
     {
       key: 'tiers',
@@ -46,12 +79,32 @@ export const BATTLE_PASS_EXPORTER: ExporterDefinition<
     },
   ],
   autoSelect: autoSelectBattlePassSheets,
-  analyze({ season, tiers, rewards }) {
+  controls: {
+    title: 'Set the season window',
+    hint: 'Start, duration and final reward art',
+    note: (
+      <>
+        These three are set here rather than in the sheet. When a season starts and how long it
+        runs are decisions about the live game, and the art usually arrives after the ladder is
+        already written, so none of them is worth a trip through Drive. Everything else on the
+        pass still comes from the <span className="mono">Season</span> tab.
+      </>
+    ),
+    initial: EMPTY_SCHEDULE,
+    fromLive: scheduleFrom,
+    revive: scheduleFrom,
+    Panel: SeasonWindowPanel,
+    validate: validateSchedule,
+    summary: (schedule) => {
+      const end = seasonEndUtc(schedule);
+      if (end === null) return 'Not set';
+      return `${readableUtc(schedule.startUtc)} for ${schedule.durationDays} day${schedule.durationDays === 1 ? '' : 's'}`;
+    },
+  },
+  analyze({ season, tiers, rewards }, schedule) {
     const lookup = buildLookup(rewards, 'reward');
-    const result = transformBattlePass({ season, tiers, rewards: lookup.table });
-    const registry = emptyRegistry();
-    for (const id of idsFromLookup(lookup.table)) registry.rewards.add(id);
-    if (registry.rewards.size > 0) registry.sources.rewards.push('Rewards lookup tab');
+    const result = transformBattlePass({ season, tiers, rewards: lookup.table, schedule });
+    const registry = rewardRegistryFromLookup(lookup.table, 'battlePass');
     return {
       config: result.config,
       preview: result.preview,
@@ -69,5 +122,5 @@ export const BATTLE_PASS_EXPORTER: ExporterDefinition<
   serialize: serializeBattlePassConfig,
   PreviewTable: BattlePassPreviewTable,
   noun: { singular: 'tier', plural: 'tiers' },
-  errorContext: 'a season setting, a tier row or a reward lookup is failing',
+  errorContext: 'a season setting, the season window, a tier row or a reward lookup is failing',
 };

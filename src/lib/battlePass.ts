@@ -17,10 +17,18 @@ import type {
 /**
  * Turns the Battle Pass Settings workbook into `battlePassSettings`.
  *
- * Two tabs plus a lookup: a `Season` key/value tab holding the nine season
- * scalars, and a `Tiers` tab with one row per tier carrying the free and the
- * premium reward. Reward names are resolved through the Rewards lookup tab,
- * exactly as the shop does - reward IDs are never constructed from names.
+ * Two tabs plus a lookup: a `Season` key/value tab holding the season scalars,
+ * and a `Tiers` tab with one row per tier carrying the free and the premium
+ * reward. Reward names are resolved through the Rewards lookup tab, exactly as
+ * the shop does - reward IDs are never constructed from names.
+ *
+ * Three of the ten season fields do not come from the sheet at all. When the
+ * season starts, how long it runs and what art the final reward wears are
+ * decisions about a live season rather than descriptions of a ladder, and they
+ * are the ones somebody wants to change without opening Drive and re-exporting
+ * - to push a start back an hour, or to drop in the art once it exists. So the
+ * console sets them, on the battle pass page, and hands them here as
+ * `schedule`. The sheet keeps what it is good at: the ladder and the IDs.
  *
  * The tier list is positional in the client: tier 1 is `Tiers[0]`. A gap in
  * the tier numbers would silently shift every tier above it, so the numbers
@@ -44,6 +52,25 @@ export const SEASON_KEYS = [
 
 export type SeasonKey = (typeof SEASON_KEYS)[number];
 
+/**
+ * The three the console owns. They are still resolved by name, so a sheet that
+ * has not been tidied up yet is told its rows are ignored rather than told they
+ * are settings the game does not read.
+ */
+export const CONSOLE_SEASON_KEYS = ['StartUtc', 'DurationDays', 'FinalRewardArt'] as const;
+
+export type ConsoleSeasonKey = (typeof CONSOLE_SEASON_KEYS)[number];
+
+/** The scalars the Season tab is still the source of. */
+export const SHEET_SEASON_KEYS = SEASON_KEYS.filter(
+  (key): key is Exclude<SeasonKey, ConsoleSeasonKey> =>
+    !(CONSOLE_SEASON_KEYS as readonly string[]).includes(key),
+);
+
+function isConsoleKey(key: SeasonKey): key is ConsoleSeasonKey {
+  return (CONSOLE_SEASON_KEYS as readonly string[]).includes(key);
+}
+
 const SEASON_RESOLVER = makeNameResolver(SEASON_KEYS);
 
 /** How the sheet spells each setting, and how messages name it. */
@@ -59,8 +86,6 @@ const SEASON_TITLES: Record<SeasonKey, string> = {
   FinalRewardArt: 'Final Reward Art',
 };
 
-/** The one setting the game is happy to receive empty: the art is optional. */
-const OPTIONAL_SEASON_KEYS: SeasonKey[] = ['FinalRewardArt'];
 
 const SETTING_LABELS = ['setting', 'settings', 'key', 'name', 'parameter', 'field'];
 const VALUE_LABELS = ['value', 'values', 'input'];
@@ -96,6 +121,84 @@ export function parseStartUtc(raw: string): string | null {
     return null;
   }
   return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+
+/* ------------------------------------------------------------- schedule -- */
+
+/**
+ * The three fields the console owns rather than the sheet.
+ *
+ * `startUtc` is canonical `YYYY-MM-DD HH:mm`, the same shape the sheet used to
+ * carry and the client still expects; `finalRewardArt` is empty when there is
+ * no art, which is the one value the game accepts blank.
+ */
+export interface BattlePassSchedule {
+  startUtc: string;
+  durationDays: number;
+  finalRewardArt: string;
+}
+
+/** What the panel opens on before the live season or a stored value replaces it. */
+export const EMPTY_SCHEDULE: BattlePassSchedule = {
+  startUtc: '',
+  durationDays: 30,
+  finalRewardArt: '',
+};
+
+/**
+ * Checks the console-set fields, in the same voice the sheet checks get.
+ *
+ * The schema gate refuses these values too, but it reports in schema language
+ * after the fact. Reporting them here puts them in the page's own issue list,
+ * beside the sheet's, which is where somebody looking for what is blocking the
+ * publish will actually look.
+ */
+export function validateSchedule(schedule: BattlePassSchedule): Issue[] {
+  const issues: Issue[] = [];
+
+  if (schedule.startUtc.trim() === '') {
+    issues.push({
+      severity: 'error',
+      code: 'battlepass-schedule-start-missing',
+      message: 'The season has no start time. Set it on the battle pass page.',
+    });
+  } else if (parseStartUtc(schedule.startUtc) === null) {
+    issues.push({
+      severity: 'error',
+      code: 'battlepass-schedule-start-invalid',
+      message: `The season start must be a UTC timestamp written as YYYY-MM-DD HH:mm, not ${JSON.stringify(schedule.startUtc)}.`,
+    });
+  }
+
+  if (!Number.isInteger(schedule.durationDays) || schedule.durationDays < 1) {
+    // An empty box arrives as 0, and "not 0" would be describing the empty box
+    // back at somebody rather than telling them anything.
+    const seen =
+      Number.isFinite(schedule.durationDays) && schedule.durationDays !== 0
+        ? `, not ${schedule.durationDays}`
+        : '';
+    issues.push({
+      severity: 'error',
+      code: 'battlepass-schedule-duration-invalid',
+      message: `The season duration must be a whole number of days, 1 or more${seen}. Set it on the battle pass page.`,
+    });
+  }
+
+  return issues;
+}
+
+/** The UTC instant a season ends, or null while the schedule is unusable. */
+export function seasonEndUtc(schedule: BattlePassSchedule): string | null {
+  const start = parseStartUtc(schedule.startUtc);
+  if (start === null || !Number.isInteger(schedule.durationDays) || schedule.durationDays < 1) {
+    return null;
+  }
+  const [date, time] = start.split(' ');
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  const end = new Date(Date.UTC(year, month - 1, day + schedule.durationDays, hour, minute));
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${end.getUTCFullYear()}-${pad(end.getUTCMonth() + 1)}-${pad(end.getUTCDate())} ${pad(end.getUTCHours())}:${pad(end.getUTCMinutes())}`;
 }
 
 interface SeasonCell {
@@ -147,6 +250,15 @@ function readSeason(sheet: RawSheet, issues: Issue[]): Partial<Record<SeasonKey,
       continue;
     }
     const key = resolved.name;
+    if (isConsoleKey(key)) {
+      issues.push({
+        severity: 'warning',
+        code: 'battlepass-setting-ignored',
+        message: `"${SEASON_TITLES[key]}" on the ${tab} is ignored - the console sets it on the battle pass page now, so the sheet value has no effect. Delete the row to stop this warning.`,
+        sheetRow,
+      });
+      continue;
+    }
     if (values[key] !== undefined) {
       issues.push({
         severity: 'error',
@@ -159,7 +271,7 @@ function readSeason(sheet: RawSheet, issues: Issue[]): Partial<Record<SeasonKey,
     values[key] = { raw: row[valueIndex] ?? null, sheetRow };
   }
 
-  for (const key of SEASON_KEYS) {
+  for (const key of SHEET_SEASON_KEYS) {
     if (values[key] === undefined) {
       issues.push({
         severity: 'error',
@@ -171,19 +283,19 @@ function readSeason(sheet: RawSheet, issues: Issue[]): Partial<Record<SeasonKey,
   return values;
 }
 
-/** The typed season scalars. A field is absent when its cell failed. */
-type SeasonValues = Partial<Record<SeasonKey, string | number>>;
+/** The typed season scalars the sheet owns. A field is absent when its cell failed. */
+type SeasonValues = Partial<Record<Exclude<SeasonKey, ConsoleSeasonKey>, string | number>>;
 
 /** Types each season scalar, reporting rather than substituting on failure. */
 function typeSeason(
-  cells: Partial<Record<SeasonKey, SeasonCell>>,
+  cells: Partial<Record<Exclude<SeasonKey, ConsoleSeasonKey>, SeasonCell>>,
   sheetName: string,
   issues: Issue[],
 ): SeasonValues {
   const tab = `"${sheetName}" tab`;
   const values: SeasonValues = {};
 
-  const fail = (code: string, key: SeasonKey, message: string) => {
+  const fail = (code: string, key: Exclude<SeasonKey, ConsoleSeasonKey>, message: string) => {
     issues.push({
       severity: 'error',
       code,
@@ -192,20 +304,19 @@ function typeSeason(
     });
   };
 
-  const text = (key: SeasonKey): string | null => {
+  const text = (key: Exclude<SeasonKey, ConsoleSeasonKey>): string | null => {
     const cell = cells[key];
     if (cell === undefined) return null;
     const value = cellText(cell.raw);
     if (value === null) {
       // A missing row was already reported; only a present but empty one is new.
-      if (OPTIONAL_SEASON_KEYS.includes(key)) return '';
       fail('battlepass-value-missing', key, 'is empty.');
       return null;
     }
     return value;
   };
 
-  const whole = (key: SeasonKey, minimum: number) => {
+  const whole = (key: Exclude<SeasonKey, ConsoleSeasonKey>, minimum: number) => {
     const cell = cells[key];
     if (cell === undefined) return;
     if (isBlank(cell.raw)) {
@@ -244,21 +355,6 @@ function typeSeason(
   const seasonName = text('SeasonName');
   if (seasonName !== null) values.SeasonName = seasonName;
 
-  const start = text('StartUtc');
-  if (start !== null) {
-    const parsed = parseStartUtc(start);
-    if (parsed === null) {
-      fail(
-        'battlepass-start-invalid',
-        'StartUtc',
-        `must be a UTC timestamp written as YYYY-MM-DD HH:mm, not ${JSON.stringify(start)}.`,
-      );
-    } else {
-      values.StartUtc = parsed;
-    }
-  }
-
-  whole('DurationDays', 1);
   whole('TokensPerTier', 1);
 
   const productId = text('PremiumProductID');
@@ -278,9 +374,6 @@ function typeSeason(
 
   const currency = text('SkipCurrencyID');
   if (currency !== null) values.SkipCurrencyID = currency;
-
-  const art = text('FinalRewardArt');
-  if (art !== null) values.FinalRewardArt = art;
 
   return values;
 }
@@ -333,6 +426,8 @@ export interface BattlePassTransformInput {
   tiers: RawSheet;
   /** Reward name -> reward ID, built from the Rewards lookup tab. */
   rewards: LookupTable;
+  /** The start, duration and final reward art, set in the console. */
+  schedule: BattlePassSchedule;
 }
 
 /** Builds the battle pass config. Tier numbers decide the output order. */
@@ -341,6 +436,7 @@ export function transformBattlePass(input: BattlePassTransformInput): BattlePass
 
   const seasonCells = readSeason(input.season, issues);
   const season = typeSeason(seasonCells, input.season.name, issues);
+  issues.push(...validateSchedule(input.schedule));
 
   const sheet = input.tiers;
   const tab = `"${sheet.name}" tab`;
@@ -523,13 +619,13 @@ export function transformBattlePass(input: BattlePassTransformInput): BattlePass
   const config: BattlePassConfig = {
     SeasonID: String(season.SeasonID ?? ''),
     SeasonName: String(season.SeasonName ?? ''),
-    StartUtc: String(season.StartUtc ?? ''),
-    DurationDays: Number(season.DurationDays ?? 0),
+    StartUtc: parseStartUtc(input.schedule.startUtc) ?? input.schedule.startUtc,
+    DurationDays: input.schedule.durationDays,
     TokensPerTier: Number(season.TokensPerTier ?? 0),
     PremiumProductID: String(season.PremiumProductID ?? ''),
     SkipTierCost: Number(season.SkipTierCost ?? 0),
     SkipCurrencyID: String(season.SkipCurrencyID ?? ''),
-    FinalRewardArt: String(season.FinalRewardArt ?? ''),
+    FinalRewardArt: input.schedule.finalRewardArt,
     Tiers: tiers,
   };
 

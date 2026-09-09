@@ -771,9 +771,11 @@ more, an amount with no reward beside it, an empty tab, and the schema gate.
 Warnings: an ID not matching `shop.<kind>.<name>`, a Sold In spelled with different
 case or spacing, and a product that grants nothing.
 
-The Rewards tab also feeds the live-config check, so reward IDs named by the
-trophy road and the battle pass are checked against it when this workbook is
-loaded.
+The Rewards tab also feeds the live-config check, but only for this workbook's
+own config. A lookup tab lists the rewards one sheet needs a name for, not every
+reward in the game, so an ID missing from it means "this sheet never names it"
+rather than "it does not exist" - judging another config's references against it
+reported errors that publishing this one could not have caused.
 
 ## Output schema: battle pass
 
@@ -804,10 +806,22 @@ grants nothing at all is `{}`.
 ### The Battle Pass Settings sheet
 
 Three tabs. `Season` is a key/value tab - `Setting | Value` - with one row per
-season setting: Season ID, Season Name, Start (UTC), Duration Days, Tokens Per
-Tier, Premium Product ID, Skip Tier Cost, Skip Currency ID, Final Reward Art.
-Every row must be present; Final Reward Art is the only one that may be left
-empty.
+season setting: Season ID, Season Name, Tokens Per Tier, Premium Product ID,
+Skip Tier Cost, Skip Currency ID. Every row must be present and carry a value.
+
+The other three season fields - **Start (UTC), Duration Days and Final Reward
+Art** - are not in the sheet. They are set on the battle pass page itself, in a
+step between loading the sheet and reviewing it. When a season starts and how
+long it runs are decisions about the live game rather than descriptions of a
+ladder, and the final reward art usually arrives after the ladder is already
+written; none of the three is worth a trip through Drive to edit a cell and
+re-export. The page remembers them per browser and seeds them from the live
+`battlePassSettings` the first time, so it opens on the season the game is
+actually running rather than on a blank form.
+
+A sheet that still carries those three rows keeps working: they are ignored,
+with one warning each saying so, and the console's values are what get
+published. Delete the rows to clear the warnings.
 
 `Tiers` has one row per tier: `Tier | Free Reward | Free Amount | Premium Reward
 | Premium Amount`. Either track may be left blank on a tier, and the reward
@@ -816,26 +830,34 @@ trophy road use. Rows may be in any order - the tier numbers decide the output
 order - but they have to run 1 upwards with no gaps, because a gap would shift
 every tier above it.
 
-Start (UTC) is read as `YYYY-MM-DD HH:mm`. A cell formatted as a real date works
-too: it arrives as an ISO timestamp and is written back in the canonical form.
+The start is stored and published as `YYYY-MM-DD HH:mm`, in UTC. The field on
+the page is a plain date-and-time picker with no zone of its own, and what is
+typed is taken as UTC rather than converted out of the browser's zone; the panel
+prints the resulting window back in words, end included, so it can be read at a
+glance.
 
 ### Battle pass validation
 
 Errors: a missing or duplicated season setting, a row with a value but no
-setting name, an unknown setting name (with a suggestion), an empty value on
-anything but Final Reward Art, a Duration Days / Tokens Per Tier that is not a
-whole number of 1 or more, a negative Skip Tier Cost, a Start (UTC) that is not
-a UTC timestamp, a missing tier or reward column, a row with values but no tier
-number, a tier that is not a whole number of 1 or more, a duplicated tier, a gap
-in the ladder, a reward name the Rewards tab does not define or defines twice,
-an amount missing or not a whole number of 1 or more, an amount with no reward
-beside it, an empty tab, and the schema gate.
+setting name, an unknown setting name (with a suggestion), an empty value, a
+Tokens Per Tier that is not a whole number of 1 or more, a negative Skip Tier
+Cost, a season start that is unset or not a UTC timestamp, a duration that is
+not a whole number of 1 or more, a missing tier or reward column, a row with
+values but no tier number, a tier that is not a whole number of 1 or more, a
+duplicated tier, a gap in the ladder, a reward name the Rewards tab does not
+define or defines twice, an amount missing or not a whole number of 1 or more,
+an amount with no reward beside it, an empty tab, and the schema gate.
 
 Warnings: a Season ID not matching `pass.<name>`, a Premium Product ID not
-matching `shop.<kind>.<name>`, and a tier that grants nothing on either track.
+matching `shop.<kind>.<name>`, a tier that grants nothing on either track, and a
+Season row the console now owns.
 
 The live-config check adds the edge to the shop: the premium product has to be a
 product `shopSettings` defines, and an existing but disabled one is a warning.
+When it is not defined, the message lists the pass products the shop does sell,
+because the two causes look identical otherwise - the pass naming the wrong
+product, or the shop config that defines the right one not having been published
+yet. Publish the shop first when it is the second.
 
 ## Output schema: hero stats
 

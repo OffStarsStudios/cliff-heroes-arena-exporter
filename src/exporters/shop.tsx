@@ -4,7 +4,7 @@ import { autoSelectShopSheets, type ShopSheetSelection } from '../lib/sheetSelec
 import { transformShop } from '../lib/shop';
 import { serializeShopConfig, validateShopConfig } from '../lib/validateShop';
 import type { ShopConfig, ShopPreviewRow } from '../lib/types';
-import { idsFromLookup, emptyRegistry } from '../workspace/registry';
+import { rewardRegistryFromLookup } from '../workspace/registry';
 import type { ExporterDefinition } from './types';
 
 /** The Shop exporter: `shopSettings` from the Shop Settings workbook. */
@@ -39,9 +39,7 @@ export const SHOP_EXPORTER: ExporterDefinition<ShopSheetSelection, ShopConfig, S
   analyze({ products, rewards }) {
     const lookup = buildLookup(rewards, 'reward');
     const result = transformShop({ products, rewards: lookup.table });
-    const registry = emptyRegistry();
-    for (const id of idsFromLookup(lookup.table)) registry.rewards.add(id);
-    if (registry.rewards.size > 0) registry.sources.rewards.push('Rewards lookup tab');
+    const registry = rewardRegistryFromLookup(lookup.table, 'shop');
     return {
       config: result.config,
       preview: result.preview,

@@ -13,11 +13,23 @@
  * The registry is additive and always optional. A namespace with no known IDs
  * means "we cannot check this", never "nothing is valid" - the graph checker
  * skips rules whose namespace is empty rather than reporting false errors.
+ *
+ * Rewards carry one more restriction, and it is the reason `rewardScope`
+ * exists. `arenasSettings` and `heroesSettings` are complete: they are the
+ * definitive list of what the game has, so an arena or hero missing from them
+ * genuinely does not exist. A workbook's Rewards lookup tab is not. It lists
+ * the rewards that one sheet needs a name for, and nothing obliges the battle
+ * pass sheet to name a reward only the trophy road grants. Treating it as the
+ * game's reward list made loading the battle pass report the trophy road's own
+ * rewards as missing - errors that blocked publishing and that publishing the
+ * battle pass could not possibly have caused. So a reward set is authoritative
+ * only for the domains in its scope, which for a workbook is the one config
+ * that workbook builds.
  */
 
 import { buildLookup } from '../lib/lookups';
 import type { Issue, LookupTable, RawSheet } from '../lib/types';
-import type { ConfigSet } from '../domains/types';
+import type { ConfigSet, DomainId } from '../domains/types';
 
 /** Where a namespace's IDs came from, so messages can say what was consulted. */
 export type IdSource = 'Arenas lookup tab' | 'Rewards lookup tab' | 'Heroes lookup tab' | 'arenasSettings' | 'heroesSettings';
@@ -26,6 +38,12 @@ export interface IdRegistry {
   arenas: Set<string>;
   rewards: Set<string>;
   heroes: Set<string>;
+  /**
+   * The domains whose reward references this reward set may be judged against.
+   * A lookup tab covers its own workbook's config and no other, so an ID it
+   * does not list means "this sheet never names it", not "it does not exist".
+   */
+  rewardScope: Set<DomainId>;
   sources: {
     arenas: IdSource[];
     rewards: IdSource[];
@@ -38,6 +56,7 @@ export function emptyRegistry(): IdRegistry {
     arenas: new Set(),
     rewards: new Set(),
     heroes: new Set(),
+    rewardScope: new Set(),
     sources: { arenas: [], rewards: [], heroes: [] },
   };
 }
@@ -53,12 +72,25 @@ export interface WorkbookLookupSheets {
   heroes?: RawSheet;
 }
 
+/** A registry holding just what one workbook's Rewards tab defines, scoped to it. */
+export function rewardRegistryFromLookup(table: LookupTable, domain: DomainId): IdRegistry {
+  const registry = emptyRegistry();
+  for (const id of idsFromLookup(table)) registry.rewards.add(id);
+  if (registry.rewards.size === 0) return registry;
+  registry.rewardScope.add(domain);
+  registry.sources.rewards.push('Rewards lookup tab');
+  return registry;
+}
+
 /**
  * Builds a registry from the workbook's lookup tabs. Lookup parsing issues are
  * returned rather than thrown, because a malformed Rewards tab should degrade
  * reward checking to "unknown", not block the checks that do not need it.
+ *
+ * `domain` is the config this workbook builds, and is what the reward set is
+ * scoped to - see the note on `rewardScope`.
  */
-export function registryFromWorkbook(sheets: WorkbookLookupSheets): {
+export function registryFromWorkbook(sheets: WorkbookLookupSheets, domain: DomainId): {
   registry: IdRegistry;
   issues: Issue[];
 } {
@@ -78,6 +110,7 @@ export function registryFromWorkbook(sheets: WorkbookLookupSheets): {
   load(sheets.arenas, 'arena', registry.arenas, 'Arenas lookup tab', registry.sources.arenas);
   load(sheets.rewards, 'reward', registry.rewards, 'Rewards lookup tab', registry.sources.rewards);
   load(sheets.heroes, 'hero', registry.heroes, 'Heroes lookup tab', registry.sources.heroes);
+  if (registry.rewards.size > 0) registry.rewardScope.add(domain);
 
   return { registry, issues };
 }
@@ -117,6 +150,7 @@ export function mergeRegistries(...parts: IdRegistry[]): IdRegistry {
     for (const id of part.arenas) merged.arenas.add(id);
     for (const id of part.rewards) merged.rewards.add(id);
     for (const id of part.heroes) merged.heroes.add(id);
+    for (const domain of part.rewardScope) merged.rewardScope.add(domain);
     for (const source of part.sources.arenas) if (!merged.sources.arenas.includes(source)) merged.sources.arenas.push(source);
     for (const source of part.sources.rewards) if (!merged.sources.rewards.includes(source)) merged.sources.rewards.push(source);
     for (const source of part.sources.heroes) if (!merged.sources.heroes.includes(source)) merged.sources.heroes.push(source);
@@ -127,4 +161,14 @@ export function mergeRegistries(...parts: IdRegistry[]): IdRegistry {
 /** True when a namespace has enough content to judge an unknown ID against. */
 export function canCheck(registry: IdRegistry, namespace: 'arenas' | 'rewards' | 'heroes'): boolean {
   return registry[namespace].size > 0;
+}
+
+/**
+ * True when a reward reference made by `domain` can be judged against the
+ * known reward IDs - which needs both some IDs and a scope that covers that
+ * domain. A reference from a config the loaded workbook has nothing to do with
+ * is unjudgeable, not wrong.
+ */
+export function canCheckRewardsFor(registry: IdRegistry, domain: DomainId): boolean {
+  return registry.rewards.size > 0 && registry.rewardScope.has(domain);
 }

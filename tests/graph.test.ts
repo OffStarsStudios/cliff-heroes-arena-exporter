@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateGraph } from '../src/workspace/graph';
 import { emptyRegistry, mergeRegistries, registryFromConfigs, type IdRegistry } from '../src/workspace/registry';
-import type { ArenasConfig, BattlePassConfig, BotsConfig, ConfigSet, HeroUpgradeConfig, MatchTrophyConfig, ShopConfig } from '../src/domains/types';
+import type { ArenasConfig, BattlePassConfig, BotsConfig, ConfigSet, DomainId, HeroUpgradeConfig, MatchTrophyConfig, ShopConfig } from '../src/domains/types';
 import type { ArenaProgressConfig, HeroEntry, HeroesConfig } from '../src/lib/types';
 
 import arenasJson from '../config/arenas.json';
@@ -49,11 +49,17 @@ function heroes(...entries: HeroEntry[]): HeroesConfig {
   return { Heroes: entries };
 }
 
-/** A registry that knows the given reward IDs, as a Rewards lookup tab would. */
-function rewardsKnown(...ids: string[]): IdRegistry {
+/**
+ * A registry that knows the given reward IDs, as one workbook's Rewards lookup
+ * tab would - scoped, as the real thing is, to the config that workbook builds.
+ */
+function rewardsKnown(scope: DomainId, ...ids: string[]): IdRegistry {
   const registry = emptyRegistry();
   for (const id of ids) registry.rewards.add(id);
-  if (ids.length > 0) registry.sources.rewards.push('Rewards lookup tab');
+  if (ids.length > 0) {
+    registry.rewardScope.add(scope);
+    registry.sources.rewards.push('Rewards lookup tab');
+  }
   return registry;
 }
 
@@ -171,9 +177,41 @@ describe('rarities', () => {
 });
 
 describe('rewards', () => {
-  it('flags a reward the Rewards lookup tab does not define', () => {
-    const known = rewardsKnown('reward.currency.coins', 'reward.currency.cards');
+  it('flags a reward the sheet references but its own Rewards tab does not define', () => {
+    const known = rewardsKnown('trophyRoad', 'reward.currency.coins', 'reward.currency.cards');
     expect(codes(live, known)).toContain('graph-reward-unknown');
+  });
+
+  /**
+   * The bug this pins: loading the battle pass sheet used to report the trophy
+   * road's own rewards as undefined, because the pass's Rewards tab has no
+   * reason to name a reward only the trophy road grants. Those errors blocked
+   * publishing and publishing the pass could not have caused them.
+   */
+  it('judges no config against another config’s lookup tab', () => {
+    // Exactly the battle pass sheet's Rewards tab: no glint, no sakuracliffs.
+    const passTab = rewardsKnown(
+      'battlePass',
+      'reward.currency.coins',
+      'reward.currency.cards',
+      'reward.currency.gems',
+      'reward.lootbox.common',
+      'reward.skin.tank.flower',
+      'reward.skin.cliff.halloween',
+      'reward.hero.cinder',
+      'reward.arena.mysticforest',
+    );
+    const issues = check(live, passTab).issues.filter((issue) => issue.code === 'graph-reward-unknown');
+    expect(issues).toEqual([]);
+
+    // Scoping narrows what is judged; it does not stop the rule from firing.
+    const short = rewardsKnown('battlePass', 'reward.currency.coins');
+    expect(codes(live, short)).toContain('graph-reward-unknown');
+    expect(
+      check(live, short)
+        .issues.filter((issue) => issue.code === 'graph-reward-unknown')
+        .every((issue) => issue.message.includes('battle pass')),
+    ).toBe(true);
   });
 
   it('flags a hero reward naming a hero that heroesSettings does not define', () => {

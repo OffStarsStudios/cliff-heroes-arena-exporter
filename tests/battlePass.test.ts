@@ -5,7 +5,13 @@ import battlePassJson from '../config/battlePass.json';
 import shopJson from '../config/shop.json';
 import { runAnalysis } from '../src/exporters/analysis';
 import { BATTLE_PASS_EXPORTER } from '../src/exporters/battlePass';
-import { parseStartUtc, transformBattlePass } from '../src/lib/battlePass';
+import {
+  parseStartUtc,
+  seasonEndUtc,
+  transformBattlePass,
+  validateSchedule,
+  type BattlePassSchedule,
+} from '../src/lib/battlePass';
 import { buildLookup } from '../src/lib/lookups';
 import { autoSelectBattlePassSheets, detectDataset } from '../src/lib/sheetSelect';
 import { serializeBattlePassConfig, validateBattlePassConfig } from '../src/lib/validateBattlePass';
@@ -41,19 +47,25 @@ const REWARDS: RawSheet = sheet('Rewards', [
   ['Skin_Cliff_Halloween', 'reward.skin.cliff.halloween'],
 ]);
 
-// The live season header, row for row.
+// The live season header, row for row. The start, the duration and the final
+// reward art are not here: the console sets those, and hands them over as the
+// schedule below.
 const SEASON_ROWS: RawCell[][] = [
   ['Setting', 'Value'],
   ['Season ID', 'pass.season1'],
   ['Season Name', 'SEASON 1'],
-  ['Start (UTC)', '2026-09-01 00:00'],
-  ['Duration Days', 30],
   ['Tokens Per Tier', 100],
   ['Premium Product ID', 'shop.pass.season1.premium'],
   ['Skip Tier Cost', 75],
   ['Skip Currency ID', 'hardCurrency'],
-  ['Final Reward Art', null],
 ];
+
+/** The live season window, as the battle pass page would have it set. */
+const SCHEDULE: BattlePassSchedule = {
+  startUtc: '2026-09-01 00:00',
+  durationDays: 30,
+  finalRewardArt: '',
+};
 
 const TIER_HEADER: RawCell[] = ['Tier', 'Free Reward', 'Free Amount', 'Premium Reward', 'Premium Amount'];
 
@@ -97,12 +109,14 @@ function run(
   tiers: RawCell[][] = TIER_ROWS,
   season: RawCell[][] = SEASON_ROWS,
   rewards: RawSheet = REWARDS,
+  schedule: BattlePassSchedule = SCHEDULE,
 ): BattlePassTransformResult {
   const lookup = buildLookup(rewards, 'reward');
   const result = transformBattlePass({
     season: sheet('Season', season),
     tiers: sheet('Tiers', tiers),
     rewards: lookup.table,
+    schedule,
   });
   return { ...result, issues: [...lookup.issues, ...result.issues] };
 }
@@ -174,11 +188,40 @@ describe('a Battle Pass Settings workbook', () => {
   });
 
   it('exports the live payload through the exporter definition, with a reward registry', () => {
-    const analysis = runAnalysis(BATTLE_PASS_EXPORTER, workbook, BATTLE_PASS_EXPORTER.autoSelect(workbook));
+    const analysis = runAnalysis(
+      BATTLE_PASS_EXPORTER,
+      workbook,
+      BATTLE_PASS_EXPORTER.autoSelect(workbook),
+      SCHEDULE,
+    );
     expect(analysis.errors).toBe(0);
     expect(analysis.result?.config).toEqual(battlePassJson);
     expect(analysis.result?.registry?.rewards.has('reward.skin.cliff.halloween')).toBe(true);
     expect(analysis.result?.registry?.sources.rewards).toEqual(['Rewards lookup tab']);
+    // The reward set covers this workbook's own config and no other.
+    expect([...(analysis.result?.registry?.rewardScope ?? [])]).toEqual(['battlePass']);
+  });
+
+  /**
+   * The fixture still has the three rows the console took over, because so do
+   * the sheets in Drive. They must not break the export - they are ignored,
+   * and said to be ignored, so somebody can tidy the sheet when they get to it.
+   */
+  it('ignores the rows the console now owns, and says so once each', () => {
+    const analysis = runAnalysis(
+      BATTLE_PASS_EXPORTER,
+      workbook,
+      BATTLE_PASS_EXPORTER.autoSelect(workbook),
+      { startUtc: '2026-11-01 12:00', durationDays: 45, finalRewardArt: 'art/season2_final' },
+    );
+    expect(analysis.errors).toBe(0);
+    const ignored = analysis.issues.filter((issue) => issue.code === 'battlepass-setting-ignored');
+    expect(ignored).toHaveLength(3);
+    expect(ignored.every((issue) => issue.severity === 'warning')).toBe(true);
+    // The console's values win over the ones still sitting in the sheet.
+    expect(analysis.result?.config.StartUtc).toBe('2026-11-01 12:00');
+    expect(analysis.result?.config.DurationDays).toBe(45);
+    expect(analysis.result?.config.FinalRewardArt).toBe('art/season2_final');
   });
 
   it('is not mistaken for any other workbook, nor they for it', () => {
@@ -192,10 +235,12 @@ describe('a Battle Pass Settings workbook', () => {
 
 describe('the season tab', () => {
   it('names an unknown setting and suggests the intended one', () => {
-    const rows = SEASON_ROWS.map((row) => (row[0] === 'Duration Days' ? ['Duration Dayz', row[1]] : row));
+    const rows = SEASON_ROWS.map((row) =>
+      row[0] === 'Tokens Per Tier' ? ['Tokens Per Tierz', row[1]] : row,
+    );
     const result = run(TIER_ROWS, rows);
     expect(codes(result)).toContain('battlepass-setting-unknown');
-    expect(errors(result)[0]).toContain('Did you mean "Duration Days"?');
+    expect(errors(result)[0]).toContain('Did you mean "Tokens Per Tier"?');
   });
 
   it('accepts a differently spaced or cased setting name', () => {
@@ -214,21 +259,27 @@ describe('the season tab', () => {
     expect(codes(run(TIER_ROWS, [...SEASON_ROWS, [null, 12]]))).toContain('battlepass-setting-unnamed');
   });
 
-  it('requires every setting but the final reward art to carry a value', () => {
+  it('requires every setting it still owns to carry a value', () => {
     expect(codes(run(TIER_ROWS, season('Season Name', null)))).toContain('battlepass-value-missing');
     expect(codes(run(TIER_ROWS, season('Skip Currency ID', null)))).toContain('battlepass-value-missing');
-    const art = run(TIER_ROWS, season('Final Reward Art', null));
-    expect(errors(art)).toEqual([]);
-    expect(art.config.FinalRewardArt).toBe('');
   });
 
   it('types the numbers and states the range it wanted', () => {
-    expect(codes(run(TIER_ROWS, season('Duration Days', 'a month')))).toContain('battlepass-value-invalid');
-    expect(codes(run(TIER_ROWS, season('Duration Days', 0)))).toContain('battlepass-value-invalid');
     expect(codes(run(TIER_ROWS, season('Tokens Per Tier', 12.5)))).toContain('battlepass-value-invalid');
+    expect(codes(run(TIER_ROWS, season('Tokens Per Tier', 0)))).toContain('battlepass-value-invalid');
     // A free skip is a legitimate setting; a negative one is not.
     expect(errors(run(TIER_ROWS, season('Skip Tier Cost', 0)))).toEqual([]);
     expect(codes(run(TIER_ROWS, season('Skip Tier Cost', -1)))).toContain('battlepass-value-invalid');
+  });
+
+  it('ignores a row the console owns rather than calling it unknown', () => {
+    const rows = [...SEASON_ROWS, ['Start (UTC)', '2026-01-01 00:00'], ['Final Reward Art', 'art/x']];
+    const result = run(TIER_ROWS, rows);
+    expect(errors(result)).toEqual([]);
+    expect(codes(result)).toEqual(['battlepass-setting-ignored', 'battlepass-setting-ignored']);
+    // Ignored means ignored: the sheet's start does not reach the payload.
+    expect(result.config.StartUtc).toBe('2026-09-01 00:00');
+    expect(result.config.FinalRewardArt).toBe('');
   });
 
   it('warns about IDs that break the naming conventions', () => {
@@ -241,12 +292,15 @@ describe('the season tab', () => {
   });
 });
 
-describe('the start time', () => {
-  it('canonicalises what a date-formatted cell hands over', () => {
+describe('the season window the console sets', () => {
+  const withSchedule = (patch: Partial<BattlePassSchedule>) =>
+    run(TIER_ROWS, SEASON_ROWS, REWARDS, { ...SCHEDULE, ...patch });
+
+  it('canonicalises whatever shape the start arrives in', () => {
     expect(parseStartUtc('2026-09-01 00:00')).toBe('2026-09-01 00:00');
     expect(parseStartUtc('2026-09-01T00:00:00.000Z')).toBe('2026-09-01 00:00');
     expect(parseStartUtc('2026-09-01')).toBe('2026-09-01 00:00');
-    expect(run(TIER_ROWS, season('Start (UTC)', '2026-09-01T06:30:00.000Z')).config.StartUtc).toBe(
+    expect(withSchedule({ startUtc: '2026-09-01T06:30:00.000Z' }).config.StartUtc).toBe(
       '2026-09-01 06:30',
     );
   });
@@ -255,9 +309,38 @@ describe('the start time', () => {
     expect(parseStartUtc('01/09/2026')).toBeNull();
     expect(parseStartUtc('2026-02-30 00:00')).toBeNull();
     expect(parseStartUtc('2026-09-01 25:00')).toBeNull();
-    const result = run(TIER_ROWS, season('Start (UTC)', 'next Tuesday'));
-    expect(codes(result)).toContain('battlepass-start-invalid');
+    const result = withSchedule({ startUtc: 'next Tuesday' });
+    expect(codes(result)).toContain('battlepass-schedule-start-invalid');
     expect(errors(result)[0]).toContain('YYYY-MM-DD HH:mm');
+  });
+
+  it('reports an unset window through the sheet issue list, not just the schema gate', () => {
+    expect(validateSchedule({ ...SCHEDULE, startUtc: '' }).map((issue) => issue.code)).toEqual([
+      'battlepass-schedule-start-missing',
+    ]);
+    // An empty duration box arrives as 0, and is not read back at the reader.
+    const empty = validateSchedule({ ...SCHEDULE, durationDays: 0 });
+    expect(empty.map((issue) => issue.code)).toEqual(['battlepass-schedule-duration-invalid']);
+    expect(empty[0].message).not.toContain('0');
+    expect(validateSchedule({ ...SCHEDULE, durationDays: 1.5 })[0].message).toContain('not 1.5');
+    expect(codes(withSchedule({ durationDays: 0 }))).toContain('battlepass-schedule-duration-invalid');
+  });
+
+  it('carries the console values straight into the payload', () => {
+    const result = withSchedule({ durationDays: 45, finalRewardArt: 'art/season2_final' });
+    expect(errors(result)).toEqual([]);
+    expect(result.config.DurationDays).toBe(45);
+    expect(result.config.FinalRewardArt).toBe('art/season2_final');
+    expect(validateBattlePassConfig(result.config)).toEqual([]);
+  });
+
+  it('computes the end of the window, month and year rollovers included', () => {
+    expect(seasonEndUtc(SCHEDULE)).toBe('2026-10-01 00:00');
+    expect(seasonEndUtc({ ...SCHEDULE, startUtc: '2026-12-20 18:30', durationDays: 30 })).toBe(
+      '2027-01-19 18:30',
+    );
+    expect(seasonEndUtc({ ...SCHEDULE, startUtc: '' })).toBeNull();
+    expect(seasonEndUtc({ ...SCHEDULE, durationDays: 0 })).toBeNull();
   });
 });
 

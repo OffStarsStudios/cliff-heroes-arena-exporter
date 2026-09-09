@@ -47,7 +47,40 @@ export interface AnalysisResult<TConfig, TRow> {
   registry?: IdRegistry;
 }
 
-export interface ExporterDefinition<S extends TabSelection, TConfig, TRow> {
+/**
+ * Fields the console sets itself, instead of reading them from the sheet.
+ *
+ * Most of a config is a description of content and belongs in a spreadsheet a
+ * designer owns. A few fields are not: they are decisions about a live season -
+ * when it starts, how long it runs - that somebody wants to change in the
+ * minute before publishing, without opening Drive, editing a cell and
+ * re-exporting. Those live here instead, as a step on the page.
+ *
+ * The value is remembered per config in `localStorage` and seeded from the live
+ * payload the first time, so the panel opens on what the game is actually
+ * serving rather than on a blank form.
+ */
+export interface ExporterControls<TSettings> {
+  /** Step title, e.g. "Set the season window". */
+  title: string;
+  /** Step subtitle. */
+  hint: string;
+  /** Shown above the fields: why these are here and not in the sheet. */
+  note: ReactNode;
+  /** Opened on when nothing is stored and the live payload cannot supply one. */
+  initial: TSettings;
+  /** Reads the settings back out of a live payload, or null when it cannot. */
+  fromLive(payload: unknown): TSettings | null;
+  /** Revives a stored value, or null when what was stored no longer fits. */
+  revive(stored: unknown): TSettings | null;
+  Panel: ComponentType<{ value: TSettings; onChange: (next: TSettings) => void }>;
+  /** The step's status chip, e.g. "1 Sep - 1 Oct". */
+  summary(value: TSettings): string;
+  /** Problems with the settings themselves, listed beside the sheet's. */
+  validate(value: TSettings): Issue[];
+}
+
+export interface ExporterDefinition<S extends TabSelection, TConfig, TRow, TSettings = void> {
   /** Publish target, localStorage key and graph-check substitution key. */
   domain: DomainId;
   /** Which `detectDataset` answer means "this workbook is for me". */
@@ -64,8 +97,10 @@ export interface ExporterDefinition<S extends TabSelection, TConfig, TRow> {
   tabsHint: string;
   tabs: TabSpec<S>[];
   autoSelect(workbook: RawWorkbook): S;
+  /** Fields the page collects itself. Absent for a config the sheet fully describes. */
+  controls?: ExporterControls<TSettings>;
   /** Pure. Only called once every tab is chosen; `sheets` has a RawSheet per tab key. */
-  analyze(sheets: Record<keyof S & string, RawSheet>): AnalysisResult<TConfig, TRow>;
+  analyze(sheets: Record<keyof S & string, RawSheet>, settings: TSettings): AnalysisResult<TConfig, TRow>;
   /** Independent schema gate, run on "Generate JSON". */
   validate(config: TConfig): Issue[];
   serialize(config: TConfig): string;

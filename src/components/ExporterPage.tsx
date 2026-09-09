@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { View } from './AppShell';
 import { ChangeReview } from './ChangeReview';
 import { Icon } from './Icon';
@@ -8,15 +8,80 @@ import { Step, type StepStatus } from './Step';
 import { IssueList } from './Summary';
 import { TabPicker } from './TabPicker';
 import { ENVIRONMENTS, liveEnvironment } from '../domains/account';
+import type { ExporterDomain } from '../domains/types';
 import { runAnalysis } from '../exporters/analysis';
-import type { ExporterDefinition, TabSelection, TabSpec } from '../exporters/types';
+import type { ExporterControls, ExporterDefinition, TabSelection, TabSpec } from '../exporters/types';
 import { useRelease } from '../hooks/useRelease';
+import { recallSettings, rememberSettings } from '../lib/exporterSettings';
+import { fetchLiveConfig } from '../lib/liveConfig';
 import { detectDataset, type Dataset } from '../lib/sheetSelect';
 
-interface ExporterPageProps<S extends TabSelection, TConfig, TRow> {
-  definition: ExporterDefinition<S, TConfig, TRow>;
+interface ExporterPageProps<S extends TabSelection, TConfig, TRow, TSettings> {
+  definition: ExporterDefinition<S, TConfig, TRow, TSettings>;
   source: SourceController;
   onNavigate: (view: View) => void;
+}
+
+/**
+ * The value of a page's own fields, and where it came from.
+ *
+ * Three sources, in order of authority: what this browser last had, then the
+ * live payload, then the definition's own starting point. Seeding from live
+ * matters more than it looks - it means opening the page shows the season the
+ * game is actually running, so publishing without touching the panel republishes
+ * that window rather than silently replacing it with a default.
+ */
+function useExporterSettings<TSettings>(
+  domain: ExporterDomain,
+  controls: ExporterControls<TSettings> | undefined,
+  environmentId: string,
+): [TSettings, (next: TSettings) => void] {
+  const stored = controls === undefined ? null : controls.revive(recallSettings(domain));
+  const [value, setValue] = useState<TSettings>(
+    () => stored ?? (controls === undefined ? (undefined as TSettings) : controls.initial),
+  );
+  // Seeding is a one-shot: once somebody has typed in the panel, a slow live
+  // response must not reach back and overwrite what they typed.
+  const seeded = useRef(false);
+
+  useEffect(() => {
+    if (controls === undefined || seeded.current) return;
+    // Something stored that still fits wins. Something stored that no longer
+    // does counts as nothing, and falls through to the live season below.
+    if (stored !== null) {
+      seeded.current = true;
+      return;
+    }
+    let cancelled = false;
+    fetchLiveConfig(domain, environmentId)
+      .then((view) => {
+        if (cancelled || seeded.current) return;
+        const fromLive = controls.fromLive(view.live.json);
+        seeded.current = true;
+        if (fromLive !== null) setValue(fromLive);
+      })
+      // A page whose fields have to be filled in by hand is a far better
+      // outcome than one that will not load because ConfigCat is unreachable.
+      .catch(() => {
+        seeded.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `stored` is read once, on the first run; `seeded` closes the effect after.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controls, domain, environmentId]);
+
+  const update = useCallback(
+    (next: TSettings) => {
+      seeded.current = true;
+      setValue(next);
+      rememberSettings(domain, next);
+    },
+    [domain],
+  );
+
+  return [value, update];
 }
 
 /** Where a workbook of another kind should be taken instead. */
@@ -52,11 +117,11 @@ function emptySelection<S extends TabSelection>(tabs: TabSpec<S>[]): S {
  * The tab mapping survives as a fold rather than a step, because it is right
  * automatically almost every time and is only interesting when it is not.
  */
-export function ExporterPage<S extends TabSelection, TConfig, TRow>({
+export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
   definition,
   source,
   onNavigate,
-}: ExporterPageProps<S, TConfig, TRow>) {
+}: ExporterPageProps<S, TConfig, TRow, TSettings>) {
   const { workbook } = source;
   const [selection, setSelection] = useState<S>(() => emptySelection(definition.tabs));
   const [openStep, setOpenStep] = useState(1);
@@ -70,13 +135,28 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
   const [environmentId, setEnvironmentId] = useState(
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
+  const { controls } = definition;
+  const [settings, setSettings] = useExporterSettings<TSettings>(
+    definition.domain,
+    controls,
+    environmentId,
+  );
+  const settingsIssues = useMemo(
+    () => (controls === undefined ? [] : controls.validate(settings)),
+    [controls, settings],
+  );
+  // With a settings panel the review is the third step, not the second.
+  const reviewIndex = controls === undefined ? 2 : 3;
 
   // A new workbook re-runs auto-selection from scratch.
   useEffect(() => {
     setSelection(workbook === null ? emptySelection(definition.tabs) : definition.autoSelect(workbook));
   }, [workbook, definition]);
 
-  const analysis = useMemo(() => runAnalysis(definition, workbook, selection), [definition, workbook, selection]);
+  const analysis = useMemo(
+    () => runAnalysis(definition, workbook, selection, settings),
+    [definition, workbook, selection, settings],
+  );
   const { result, issues, errors: errorCount, warnings: warningCount } = analysis;
 
   /**
@@ -110,8 +190,8 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
   // The review step opens itself as soon as there is anything to review, which
   // is the whole point: load a sheet, see the changes.
   useEffect(() => {
-    setOpenStep(hasWorkbook && tabsReady ? 2 : 1);
-  }, [hasWorkbook, tabsReady]);
+    setOpenStep(hasWorkbook && tabsReady ? reviewIndex : 1);
+  }, [hasWorkbook, tabsReady, reviewIndex]);
 
   // An auto-selection that came up short is the one case where the mapping is
   // worth showing without being asked for.
@@ -291,14 +371,32 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow>({
           </div>
         </Step>
 
+        {controls !== undefined && (
+          <Step
+            index={2}
+            title={controls.title}
+            hint={controls.hint}
+            status={settingsIssues.length > 0 ? 'blocked' : 'done'}
+            statusLabel={settingsIssues.length > 0 ? 'Not set' : controls.summary(settings)}
+            open={openStep === 2}
+            onToggle={() => toggle(2)}
+          >
+            <div className="stack-sm">
+              <p className="field__note">{controls.note}</p>
+              <controls.Panel value={settings} onChange={setSettings} />
+              {settingsIssues.length > 0 && <IssueList issues={settingsIssues} severity="error" />}
+            </div>
+          </Step>
+        )}
+
         <Step
-          index={2}
+          index={reviewIndex}
           title="Review and ship"
           hint="What this sheet changes in the live game"
           status={reviewStatus}
           statusLabel={reviewChip}
-          open={openStep === 2}
-          onToggle={() => toggle(2)}
+          open={openStep === reviewIndex}
+          onToggle={() => toggle(reviewIndex)}
           locked={!hasWorkbook}
         >
           {result === null ? (

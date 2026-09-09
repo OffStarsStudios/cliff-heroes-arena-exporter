@@ -22,10 +22,11 @@ export function findSheet(workbook: RawWorkbook | null, name: string | null): Ra
  * errors (the same wording every exporter has used), and only when all tabs
  * are present is the definition's own analysis run.
  */
-export function runAnalysis<S extends TabSelection, TConfig, TRow>(
-  definition: ExporterDefinition<S, TConfig, TRow>,
+export function runAnalysis<S extends TabSelection, TConfig, TRow, TSettings = void>(
+  definition: ExporterDefinition<S, TConfig, TRow, TSettings>,
   workbook: RawWorkbook | null,
   selection: S,
+  settings?: TSettings,
 ): Analysis<TConfig, TRow> {
   if (workbook === null) return { result: null, issues: [], errors: 0, warnings: 0 };
 
@@ -37,7 +38,7 @@ export function runAnalysis<S extends TabSelection, TConfig, TRow>(
       issues.push({
         severity: 'error',
         code: 'missing-tab',
-        message: `Select the ${tab.label} tab in step 2 to continue.`,
+        message: `Select the ${tab.label} tab in the tab mapping to continue.`,
       });
       continue;
     }
@@ -48,7 +49,7 @@ export function runAnalysis<S extends TabSelection, TConfig, TRow>(
     return { result: null, issues, errors: issues.length, warnings: 0 };
   }
 
-  const result = definition.analyze(sheets as Record<keyof S & string, RawSheet>);
+  const result = definition.analyze(sheets as Record<keyof S & string, RawSheet>, settings as TSettings);
   const errors = result.issues.filter((issue) => issue.severity === 'error').length;
   return {
     result,

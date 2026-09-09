@@ -893,6 +893,8 @@ textarea {
 
 input[type='text'],
 input[type='url'],
+input[type='number'],
+input[type='datetime-local'],
 select {
   background: var(--surface);
   border: 1px solid var(--border-strong);
@@ -905,12 +907,16 @@ select {
 
 input[type='text']:hover,
 input[type='url']:hover,
+input[type='number']:hover,
+input[type='datetime-local']:hover,
 select:hover {
   border-color: #94a3b8;
 }
 
 input[type='text']:focus,
 input[type='url']:focus,
+input[type='number']:focus,
+input[type='datetime-local']:focus,
 select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
