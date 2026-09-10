@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import type { View } from './AppShell';
 import { ChangeReview } from './ChangeReview';
 import { Icon } from './Icon';
@@ -8,80 +8,16 @@ import { Step, type StepStatus } from './Step';
 import { IssueList } from './Summary';
 import { TabPicker } from './TabPicker';
 import { ENVIRONMENTS, liveEnvironment } from '../domains/account';
-import type { ExporterDomain } from '../domains/types';
 import { runAnalysis } from '../exporters/analysis';
-import type { ExporterControls, ExporterDefinition, TabSelection, TabSpec } from '../exporters/types';
+import type { ExporterDefinition, TabSelection, TabSpec } from '../exporters/types';
+import { useExporterSettings } from '../hooks/useExporterSettings';
 import { useRelease } from '../hooks/useRelease';
-import { recallSettings, rememberSettings } from '../lib/exporterSettings';
-import { fetchLiveConfig } from '../lib/liveConfig';
 import { detectDataset, type Dataset } from '../lib/sheetSelect';
 
 interface ExporterPageProps<S extends TabSelection, TConfig, TRow, TSettings> {
   definition: ExporterDefinition<S, TConfig, TRow, TSettings>;
   source: SourceController;
   onNavigate: (view: View) => void;
-}
-
-/**
- * The value of a page's own fields, and where it came from.
- *
- * Three sources, in order of authority: what this browser last had, then the
- * live payload, then the definition's own starting point. Seeding from live
- * matters more than it looks - it means opening the page shows the season the
- * game is actually running, so publishing without touching the panel republishes
- * that window rather than silently replacing it with a default.
- */
-function useExporterSettings<TSettings>(
-  domain: ExporterDomain,
-  controls: ExporterControls<TSettings> | undefined,
-  environmentId: string,
-): [TSettings, (next: TSettings) => void] {
-  const stored = controls === undefined ? null : controls.revive(recallSettings(domain));
-  const [value, setValue] = useState<TSettings>(
-    () => stored ?? (controls === undefined ? (undefined as TSettings) : controls.initial),
-  );
-  // Seeding is a one-shot: once somebody has typed in the panel, a slow live
-  // response must not reach back and overwrite what they typed.
-  const seeded = useRef(false);
-
-  useEffect(() => {
-    if (controls === undefined || seeded.current) return;
-    // Something stored that still fits wins. Something stored that no longer
-    // does counts as nothing, and falls through to the live season below.
-    if (stored !== null) {
-      seeded.current = true;
-      return;
-    }
-    let cancelled = false;
-    fetchLiveConfig(domain, environmentId)
-      .then((view) => {
-        if (cancelled || seeded.current) return;
-        const fromLive = controls.fromLive(view.live.json);
-        seeded.current = true;
-        if (fromLive !== null) setValue(fromLive);
-      })
-      // A page whose fields have to be filled in by hand is a far better
-      // outcome than one that will not load because ConfigCat is unreachable.
-      .catch(() => {
-        seeded.current = true;
-      });
-    return () => {
-      cancelled = true;
-    };
-    // `stored` is read once, on the first run; `seeded` closes the effect after.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controls, domain, environmentId]);
-
-  const update = useCallback(
-    (next: TSettings) => {
-      seeded.current = true;
-      setValue(next);
-      rememberSettings(domain, next);
-    },
-    [domain],
-  );
-
-  return [value, update];
 }
 
 /** Where a workbook of another kind should be taken instead. */
@@ -136,15 +72,17 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
   const { controls } = definition;
-  const [settings, setSettings] = useExporterSettings<TSettings>(
-    definition.domain,
+  const [settings, setSettings] = useExporterSettings<TSettings>({
+    domain: definition.domain,
     controls,
     environmentId,
-  );
+    persist: true,
+  });
   const settingsIssues = useMemo(
     () => (controls === undefined ? [] : controls.validate(settings)),
     [controls, settings],
   );
+  const settingsErrors = settingsIssues.filter((issue) => issue.severity === 'error').length;
   // With a settings panel the review is the third step, not the second.
   const reviewIndex = controls === undefined ? 2 : 3;
 
@@ -376,15 +314,23 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
             index={2}
             title={controls.title}
             hint={controls.hint}
-            status={settingsIssues.length > 0 ? 'blocked' : 'done'}
-            statusLabel={settingsIssues.length > 0 ? 'Not set' : controls.summary(settings)}
+            // Only an error means "not set". A warning - a skip currency
+            // nobody has confirmed - is a choice, not a blank field, and a step
+            // that reads "Not set" over a filled-in form is just wrong.
+            status={settingsErrors > 0 ? 'blocked' : 'done'}
+            statusLabel={settingsErrors > 0 ? 'Not set' : controls.summary(settings)}
             open={openStep === 2}
             onToggle={() => toggle(2)}
           >
             <div className="stack-sm">
               <p className="field__note">{controls.note}</p>
-              <controls.Panel value={settings} onChange={setSettings} />
-              {settingsIssues.length > 0 && <IssueList issues={settingsIssues} severity="error" />}
+              <controls.Panel value={settings} onChange={setSettings} environmentId={environmentId} />
+              {/* Warnings as well as errors: a warning about these fields - a
+                  skip currency nobody has confirmed, say - is about a choice
+                  made right here, and belongs beside the control that made it
+                  rather than in the review of a sheet that may not be loaded. */}
+              <IssueList issues={settingsIssues} severity="error" />
+              <IssueList issues={settingsIssues} severity="warning" />
             </div>
           </Step>
         )}

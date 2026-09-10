@@ -733,6 +733,79 @@
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+/* A denser field grid than .grid-fields.
+   The season header is nine controls, and a 200px minimum stranded them two to
+   a row inside a modal - which is how a form that fits on one screen turns into
+   a scroll. Narrower columns, and the two long IDs are allowed to span. */
+.fieldgrid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+}
+
+.fieldgrid .field--wide {
+  grid-column: span 2;
+}
+
+/* A label and the one action that belongs to it, on the same line - the action
+   is where the sentence explaining the field used to be. */
+.field__labelrow {
+  align-items: baseline;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  min-height: 17px;
+}
+
+/* One quiet line of state under a group of fields, in place of a paragraph. */
+.factline {
+  align-items: center;
+  color: var(--text-faint);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: var(--space-3);
+}
+
+.factline__warn {
+  align-items: center;
+  color: var(--warn);
+  display: flex;
+  gap: 4px;
+}
+
+/* Two dates and what they add up to. Narrower columns than .grid-2 so the
+   three stay on one line in the modal rather than orphaning the readout. */
+.grid-3 {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+/* A calculated field: shaped like the inputs beside it, obviously not one. */
+.field__readout {
+  align-items: center;
+  background: var(--surface-2, rgba(15, 23, 42, 0.03));
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  display: flex;
+  font-weight: 600;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+/* A URL box with its load button, which only makes sense together. */
+.linkrow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.linkrow input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* ---------- modal ---------- */
 
 .modal {
@@ -787,11 +860,26 @@
 }
 
 .modal__foot {
+  align-items: center;
   border-top: 1px solid var(--border);
   display: flex;
   gap: var(--space-2);
   justify-content: flex-end;
   padding: var(--space-3) var(--space-4);
+}
+
+/* Why the primary button is disabled, beside the button rather than hunted for. */
+.modal__hint {
+  color: var(--muted);
+  flex: 1 1 auto;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+/* The booking form carries a whole config review, not just a few fields. */
+.modal__panel--roomy {
+  max-width: 660px;
 }
 
 /* ---------- responsive ---------- */

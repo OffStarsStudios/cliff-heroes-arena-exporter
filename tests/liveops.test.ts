@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest';
 import * as serverLiveOps from '../server/liveops.mjs';
 // @ts-expect-error - plain .mjs module shared with the production server.
 import { checkEntry } from '../server/schedule.mjs';
+import { BATTLE_PASS_EXPORTER } from '../src/exporters/battlePass';
+import { EMPTY_SEASON } from '../src/lib/battlePass';
 import {
   EVENT_CATEGORIES,
   LIVEOPS_DOMAINS,
   durationLabel,
+  eventDuration,
   layOutBars,
   phaseOf,
   ticksFor,
@@ -158,6 +161,12 @@ describe('booking an event', () => {
     expect(problems.join(' ')).toMatch(/between 0 and 336/);
   });
 
+  it('accepts an event with no preview at all', () => {
+    // The form stopped asking: an event's config goes up when the event opens.
+    // Older entries still carry the field, which is why it is only optional.
+    expect(checkEvent({ category: 'monetization', opensAt: iso(DAY) }, window)).toEqual([]);
+  });
+
   it('asks for the off state rather than the default', () => {
     // The distinction this whole feature turns on: a default battle pass is
     // last season, and restoring last season when this one ends is exactly the
@@ -274,11 +283,63 @@ describe('how long an event runs', () => {
     expect(durationLabel(iso(0), iso(30 * DAY))).toBe('30 days');
   });
 
-  it('counts hours for a weekend-length event', () => {
-    expect(durationLabel(iso(0), iso(36 * HOUR))).toBe('36 hours');
+  it('spells out the hours left over rather than rounding them away', () => {
+    // The form calculates this from two dates somebody typed, so a season that
+    // is out by half a day has to look wrong rather than look like 30 days.
+    expect(durationLabel(iso(0), iso(30 * DAY + 12 * HOUR))).toBe('30 days 12 hours');
+    expect(durationLabel(iso(0), iso(36 * HOUR))).toBe('1 day 12 hours');
+  });
+
+  it('counts hours alone for a weekend-length event', () => {
+    expect(durationLabel(iso(0), iso(6 * HOUR))).toBe('6 hours');
+  });
+
+  it('breaks the window into the two units it is booked in', () => {
+    expect(eventDuration(iso(0), iso(30 * DAY + 6 * HOUR))).toMatchObject({ days: 30, hours: 6 });
+    expect(eventDuration(iso(0), null)).toBeNull();
+    // An end before the start is a typo, not a negative duration.
+    expect(eventDuration(iso(0), iso(-DAY))).toBeNull();
   });
 
   it('says so when there is no end', () => {
     expect(durationLabel(iso(0), null)).toBe('no end');
+  });
+});
+
+/* ----------------------------------------------------------- the config -- */
+
+describe('the config an event carries', () => {
+  it('takes the season window from the event rather than asking twice', () => {
+    // The booking form has no season fields: a pass published by an event runs
+    // for exactly as long as the event, so two answers that must agree would
+    // only be two answers that can disagree.
+    const season = BATTLE_PASS_EXPORTER.eventSettings?.(
+      { ...EMPTY_SEASON, seasonId: 'pass.season2', finalRewardArt: 'art.season2' },
+      { opensAt: '2026-10-01T09:00:00.000Z', endsAt: '2026-10-29T09:00:00.000Z' },
+    );
+    expect(season).toEqual({
+      ...EMPTY_SEASON,
+      startUtc: '2026-10-01 09:00',
+      durationDays: 28,
+      // Nothing in the window speaks to the rest of the header, so it survives.
+      seasonId: 'pass.season2',
+      finalRewardArt: 'art.season2',
+    });
+  });
+
+  it('rounds a window that is not a whole number of days, because the client counts days', () => {
+    const season = BATTLE_PASS_EXPORTER.eventSettings?.(EMPTY_SEASON, {
+      opensAt: '2026-10-01T00:00:00.000Z',
+      endsAt: '2026-10-08T13:00:00.000Z',
+    });
+    expect(season?.durationDays).toBe(8);
+  });
+
+  it('never rounds an event down to no season at all', () => {
+    const season = BATTLE_PASS_EXPORTER.eventSettings?.(EMPTY_SEASON, {
+      opensAt: '2026-10-01T00:00:00.000Z',
+      endsAt: '2026-10-01T06:00:00.000Z',
+    });
+    expect(season?.durationDays).toBe(1);
   });
 });

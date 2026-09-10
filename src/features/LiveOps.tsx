@@ -16,6 +16,7 @@ import {
   durationLabel,
   isLiveOpsEntry,
   phaseOf,
+  previewHoursOf,
   type EventPhase,
   type LiveOpsEntry,
 } from '../lib/liveops';
@@ -124,8 +125,9 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
           </h1>
           <p className="page__lead">
             Features that are not always in the game. An event publishes its config when it opens and removes the
-            feature again when it ends - there is no previous version to go back to, which is the whole difference
-            between this page and <button type="button" className="linklike" onClick={() => onNavigate('schedule')}>scheduling</button>.
+            feature when it ends - unlike{' '}
+            <button type="button" className="linklike" onClick={() => onNavigate('schedule')}>scheduling</button>, which
+            goes back to a previous version.
           </p>
         </div>
         <button type="button" className="btn btn--primary" onClick={() => setComposing(true)}>
@@ -181,8 +183,8 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
         <p className="banner banner--warn">
           <Icon name="alert" size={14} className="banner__icon" />
           <span>
-            {notReady.map((domain) => DOMAIN_LABELS[domain]).join(', ')} has no off state recorded, so an event could
-            go up but never come down. Open the scheduling form and record it before booking anything.
+            {notReady.map((domain) => DOMAIN_LABELS[domain]).join(', ')} has no off state recorded - an event could go
+            up but never come down. Record it in the booking form.
           </span>
         </p>
       )}
@@ -254,8 +256,7 @@ function EventTable({
   if (events.length === 0) {
     return (
       <p className="empty">
-        Nothing is scheduled. An event is a battle pass season, a rolling offer, a limited-time feature - anything the
-        game should stop showing when it is over.
+        Nothing is scheduled. An event is a battle pass season, a rolling offer, a limited-time feature.
       </p>
     );
   }
@@ -305,8 +306,9 @@ function EventTable({
                 </td>
                 <td>
                   {localTime(entry.liveops.opensAt)}
-                  {entry.liveops.previewHours > 0 && (
-                    <span className="table__sub">config published {entry.liveops.previewHours}h earlier</span>
+                  {/* Only events booked while the preview box existed have one. */}
+                  {previewHoursOf(entry.liveops) > 0 && (
+                    <span className="table__sub">config published {previewHoursOf(entry.liveops)}h earlier</span>
                   )}
                 </td>
                 <td>
@@ -321,7 +323,18 @@ function EventTable({
                 <td>
                   <span className={`chip chip--${PHASE_TONES[phase]}`}>{PHASE_LABELS[phase]}</span>
                 </td>
-                <td className="mono">{(entry.payloadBytes / 1024).toFixed(1)} kB</td>
+                <td className="mono">
+                  {(entry.payloadBytes / 1024).toFixed(1)} kB
+                  {/* Provenance, not a live link: the payload was snapshotted
+                      when the event was booked. */}
+                  {typeof entry.liveops.sourceUrl === 'string' && entry.liveops.sourceUrl !== '' && (
+                    <span className="table__sub">
+                      <a href={entry.liveops.sourceUrl} target="_blank" rel="noreferrer">
+                        from the sheet
+                      </a>
+                    </span>
+                  )}
+                </td>
                 <td>
                   {open && (
                     <button

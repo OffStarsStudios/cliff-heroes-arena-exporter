@@ -60,6 +60,21 @@ export interface AnalysisResult<TConfig, TRow> {
  * payload the first time, so the panel opens on what the game is actually
  * serving rather than on a blank form.
  */
+export interface ControlsPanelProps<TSettings> {
+  value: TSettings;
+  onChange: (next: TSettings) => void;
+  /**
+   * Which environment's live configs the panel may offer choices from - the
+   * shop's actual products, say. A panel that only holds free text ignores it.
+   */
+  environmentId: string;
+  /**
+   * True when a live ops event owns the fields `eventSettings` derives, so the
+   * panel shows those as already decided instead of inviting a second answer.
+   */
+  fromEvent?: boolean;
+}
+
 export interface ExporterControls<TSettings> {
   /** Step title, e.g. "Set the season window". */
   title: string;
@@ -73,7 +88,7 @@ export interface ExporterControls<TSettings> {
   fromLive(payload: unknown): TSettings | null;
   /** Revives a stored value, or null when what was stored no longer fits. */
   revive(stored: unknown): TSettings | null;
-  Panel: ComponentType<{ value: TSettings; onChange: (next: TSettings) => void }>;
+  Panel: ComponentType<ControlsPanelProps<TSettings>>;
   /** The step's status chip, e.g. "1 Sep - 1 Oct". */
   summary(value: TSettings): string;
   /** Problems with the settings themselves, listed beside the sheet's. */
@@ -99,6 +114,20 @@ export interface ExporterDefinition<S extends TabSelection, TConfig, TRow, TSett
   autoSelect(workbook: RawWorkbook): S;
   /** Fields the page collects itself. Absent for a config the sheet fully describes. */
   controls?: ExporterControls<TSettings>;
+  /**
+   * The same fields, worked out from a live ops event's window instead of
+   * being typed in.
+   *
+   * A config published by an event is published for exactly as long as the
+   * event runs, so asking for the season window a second time in the booking
+   * form would be asking somebody to keep two answers agreeing. The event's
+   * own times are the answer; this maps them onto whatever the config calls
+   * them. `base` is what the page last had, so fields the event says nothing
+   * about - the final reward art, say - are carried over rather than blanked.
+   *
+   * Absent for a config whose page fields have nothing to do with a window.
+   */
+  eventSettings?(base: TSettings, window: { opensAt: string; endsAt: string }): TSettings;
   /** Pure. Only called once every tab is chosen; `sheets` has a RawSheet per tab key. */
   analyze(sheets: Record<keyof S & string, RawSheet>, settings: TSettings): AnalysisResult<TConfig, TRow>;
   /** Independent schema gate, run on "Generate JSON". */

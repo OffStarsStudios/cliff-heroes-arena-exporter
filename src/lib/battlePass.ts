@@ -1,7 +1,7 @@
-import { findColumn, resolveColumns, sheetHeaders, type ColumnSpec } from './columns';
+import { resolveColumns, type ColumnSpec } from './columns';
 import { resolveLookup } from './lookups';
-import { makeNameResolver } from './nameResolve';
 import { cellText, isBlank, isBlankRow, parseNumber } from './normalize';
+import { SHOP_SOLD_IN } from './shop';
 import type {
   BattlePassConfig,
   BattlePassPreviewRow,
@@ -10,32 +10,30 @@ import type {
   BattlePassTransformResult,
   Issue,
   LookupTable,
-  RawCell,
   RawSheet,
 } from './types';
 
 /**
  * Turns the Battle Pass Settings workbook into `battlePassSettings`.
  *
- * Two tabs plus a lookup: a `Season` key/value tab holding the season scalars,
- * and a `Tiers` tab with one row per tier carrying the free and the premium
- * reward. Reward names are resolved through the Rewards lookup tab, exactly as
- * the shop does - reward IDs are never constructed from names.
+ * One tab plus a lookup: a `Tiers` tab with one row per tier carrying the free
+ * and the premium reward, joined against the Rewards lookup tab exactly as the
+ * shop does - reward IDs are never constructed from names.
  *
- * Three of the ten season fields do not come from the sheet at all. When the
- * season starts, how long it runs and what art the final reward wears are
- * decisions about a live season rather than descriptions of a ladder, and they
- * are the ones somebody wants to change without opening Drive and re-exporting
- * - to push a start back an hour, or to drop in the art once it exists. So the
- * console sets them, on the battle pass page, and hands them here as
- * `schedule`. The sheet keeps what it is good at: the ladder and the IDs.
+ * The season header does not come from the sheet at all. It used to: a
+ * key/value `Season` tab held the ID, the name, the product, the currency and
+ * the numbers, and every one of them was a decision about one live season
+ * rather than a description of the ladder. Worse, half of them are IDs that
+ * have to match another config exactly, and a spreadsheet cannot offer the
+ * shop's actual product list or the game's actual currencies. So the console
+ * owns the header - see `BattlePassSeason` - and hands it in as `season`.
  *
  * The tier list is positional in the client: tier 1 is `Tiers[0]`. A gap in
  * the tier numbers would silently shift every tier above it, so the numbers
  * must run 1..N, the same rule the match trophy places follow.
  */
 
-/* --------------------------------------------------------------- season -- */
+/* ----------------------------------------------------------- output keys -- */
 
 /** The season scalars, in output order. `Tiers` is appended after them. */
 export const SEASON_KEYS = [
@@ -51,44 +49,6 @@ export const SEASON_KEYS = [
 ] as const;
 
 export type SeasonKey = (typeof SEASON_KEYS)[number];
-
-/**
- * The three the console owns. They are still resolved by name, so a sheet that
- * has not been tidied up yet is told its rows are ignored rather than told they
- * are settings the game does not read.
- */
-export const CONSOLE_SEASON_KEYS = ['StartUtc', 'DurationDays', 'FinalRewardArt'] as const;
-
-export type ConsoleSeasonKey = (typeof CONSOLE_SEASON_KEYS)[number];
-
-/** The scalars the Season tab is still the source of. */
-export const SHEET_SEASON_KEYS = SEASON_KEYS.filter(
-  (key): key is Exclude<SeasonKey, ConsoleSeasonKey> =>
-    !(CONSOLE_SEASON_KEYS as readonly string[]).includes(key),
-);
-
-function isConsoleKey(key: SeasonKey): key is ConsoleSeasonKey {
-  return (CONSOLE_SEASON_KEYS as readonly string[]).includes(key);
-}
-
-const SEASON_RESOLVER = makeNameResolver(SEASON_KEYS);
-
-/** How the sheet spells each setting, and how messages name it. */
-const SEASON_TITLES: Record<SeasonKey, string> = {
-  SeasonID: 'Season ID',
-  SeasonName: 'Season Name',
-  StartUtc: 'Start (UTC)',
-  DurationDays: 'Duration Days',
-  TokensPerTier: 'Tokens Per Tier',
-  PremiumProductID: 'Premium Product ID',
-  SkipTierCost: 'Skip Tier Cost',
-  SkipCurrencyID: 'Skip Currency ID',
-  FinalRewardArt: 'Final Reward Art',
-};
-
-
-const SETTING_LABELS = ['setting', 'settings', 'key', 'name', 'parameter', 'field'];
-const VALUE_LABELS = ['value', 'values', 'input'];
 
 /** `pass.<name>`, the convention the client and the shop product share. */
 const SEASON_ID_PATTERN = /^pass\.[a-z0-9]+$/;
@@ -123,259 +83,173 @@ export function parseStartUtc(raw: string): string | null {
   return `${year}-${month}-${day} ${hour}:${minute}`;
 }
 
-/* ------------------------------------------------------------- schedule -- */
+/* --------------------------------------------------------- the season -- */
 
 /**
- * The three fields the console owns rather than the sheet.
+ * The season header, set in the console rather than read from the sheet.
  *
- * `startUtc` is canonical `YYYY-MM-DD HH:mm`, the same shape the sheet used to
- * carry and the client still expects; `finalRewardArt` is empty when there is
- * no art, which is the one value the game accepts blank.
+ * Every field here used to be a row on the Season tab, and every one of them
+ * is the same kind of thing: a decision about one live season rather than a
+ * description of the ladder. Which product buys the premium track, what the
+ * season is called, when it starts, how long it runs - these are settled in
+ * the hour before a season goes up, and half of them are IDs that have to
+ * match something in another config exactly. A spreadsheet cell can hold
+ * `shop.pass.season2.premuim` for a week without anybody noticing; a dropdown
+ * built from the live shop cannot.
+ *
+ * So the sheet keeps what a spreadsheet is good at - the ladder, thirty rows
+ * of rewards and amounts - and the console owns the header. `startUtc` is
+ * canonical `YYYY-MM-DD HH:mm` because that is what the client reads, and
+ * `finalRewardArt` is the one value the game accepts empty.
  */
-export interface BattlePassSchedule {
+export interface BattlePassSeason {
+  seasonId: string;
+  seasonName: string;
   startUtc: string;
   durationDays: number;
+  tokensPerTier: number;
+  premiumProductId: string;
+  skipTierCost: number;
+  skipCurrencyId: string;
   finalRewardArt: string;
 }
 
+/**
+ * What a tier skip is paid in.
+ *
+ * `hardCurrency` is the value the live pass uses and the only one confirmed to
+ * work in the client. The rest are the shop's own `SoldIn` values, offered
+ * because they are the currencies the game demonstrably has - and warned about
+ * when chosen, because nothing has yet confirmed the client reads them here.
+ * When that is settled with the client, this list and its warning are the two
+ * things to change.
+ */
+export const CONFIRMED_SKIP_CURRENCY = 'hardCurrency';
+
+export const SKIP_CURRENCIES: readonly string[] = [CONFIRMED_SKIP_CURRENCY, ...SHOP_SOLD_IN];
+
 /** What the panel opens on before the live season or a stored value replaces it. */
-export const EMPTY_SCHEDULE: BattlePassSchedule = {
+export const EMPTY_SEASON: BattlePassSeason = {
+  seasonId: '',
+  seasonName: '',
   startUtc: '',
   durationDays: 30,
+  tokensPerTier: 100,
+  premiumProductId: '',
+  skipTierCost: 0,
+  skipCurrencyId: CONFIRMED_SKIP_CURRENCY,
   finalRewardArt: '',
 };
 
 /**
- * Checks the console-set fields, in the same voice the sheet checks get.
+ * The season after this one: `pass.season1` -> `pass.season2`.
+ *
+ * Player progress is stored against the season ID, so a new season needs a new
+ * one, and the trailing number is how everybody here reads which season it is.
+ * An ID with no number - `pass.winter` - has no successor worth guessing, and
+ * gets null rather than an invented one.
+ */
+export function nextSeasonId(current: string): string | null {
+  const match = /^(.*?)(\d+)$/.exec(current.trim());
+  if (match === null) return null;
+  return `${match[1]}${Number(match[2]) + 1}`;
+}
+
+/**
+ * Checks the season header, in the same voice the sheet's own checks use.
  *
  * The schema gate refuses these values too, but it reports in schema language
- * after the fact. Reporting them here puts them in the page's own issue list,
- * beside the sheet's, which is where somebody looking for what is blocking the
+ * after the fact. Reporting them here puts them in the same issue list as the
+ * ladder's problems, which is where somebody looking for what is blocking the
  * publish will actually look.
  */
-export function validateSchedule(schedule: BattlePassSchedule): Issue[] {
+export function validateSeason(season: BattlePassSeason): Issue[] {
   const issues: Issue[] = [];
+  const error = (code: string, message: string) => {
+    issues.push({ severity: 'error', code, message });
+  };
+  const warn = (code: string, message: string) => {
+    issues.push({ severity: 'warning', code, message });
+  };
 
-  if (schedule.startUtc.trim() === '') {
-    issues.push({
-      severity: 'error',
-      code: 'battlepass-schedule-start-missing',
-      message: 'The season has no start time. Set it on the battle pass page.',
-    });
-  } else if (parseStartUtc(schedule.startUtc) === null) {
-    issues.push({
-      severity: 'error',
-      code: 'battlepass-schedule-start-invalid',
-      message: `The season start must be a UTC timestamp written as YYYY-MM-DD HH:mm, not ${JSON.stringify(schedule.startUtc)}.`,
-    });
-  }
-
-  if (!Number.isInteger(schedule.durationDays) || schedule.durationDays < 1) {
+  const whole = (value: number, minimum: number, code: string, title: string, unit: string) => {
+    if (Number.isInteger(value) && value >= minimum) return;
     // An empty box arrives as 0, and "not 0" would be describing the empty box
     // back at somebody rather than telling them anything.
-    const seen =
-      Number.isFinite(schedule.durationDays) && schedule.durationDays !== 0
-        ? `, not ${schedule.durationDays}`
-        : '';
-    issues.push({
-      severity: 'error',
-      code: 'battlepass-schedule-duration-invalid',
-      message: `The season duration must be a whole number of days, 1 or more${seen}. Set it on the battle pass page.`,
-    });
+    const seen = Number.isFinite(value) && value !== 0 ? `, not ${value}` : '';
+    error(code, `${title} must be ${unit} of ${minimum} or more${seen}.`);
+  };
+
+  const seasonId = season.seasonId.trim();
+  if (seasonId === '') {
+    error(
+      'battlepass-season-id-missing',
+      'The season has no ID. Player progress is stored against it, so it is also what ends one season and starts the next.',
+    );
+  } else if (!SEASON_ID_PATTERN.test(seasonId)) {
+    warn(
+      'battlepass-season-id-format',
+      `"${seasonId}" does not follow the pass.<name> pattern (lowercase letters and digits). It is what player progress is stored against, so it is worth spelling the way the client expects.`,
+    );
+  }
+
+  if (season.seasonName.trim() === '') {
+    error('battlepass-season-name-missing', 'The season has no name. It is the title the player sees on the pass.');
+  }
+
+  if (season.startUtc.trim() === '') {
+    error('battlepass-season-start-missing', 'The season has no start time.');
+  } else if (parseStartUtc(season.startUtc) === null) {
+    error(
+      'battlepass-season-start-invalid',
+      `The season start must be a UTC timestamp written as YYYY-MM-DD HH:mm, not ${JSON.stringify(season.startUtc)}.`,
+    );
+  }
+
+  whole(season.durationDays, 1, 'battlepass-season-duration-invalid', 'The season duration', 'a whole number of days');
+  whole(season.tokensPerTier, 1, 'battlepass-season-tokens-invalid', 'Tokens per tier', 'a whole number');
+
+  const productId = season.premiumProductId.trim();
+  if (productId === '') {
+    error(
+      'battlepass-product-id-missing',
+      'No premium product is set, so the premium track would be visible with no way to buy it. Pick the shop product that sells this pass.',
+    );
+  } else if (!PRODUCT_ID_PATTERN.test(productId)) {
+    warn(
+      'battlepass-product-id-format',
+      `"${productId}" does not follow the shop.<kind>.<name> pattern. The premium track is bought by exact product ID, so a mistyped one cannot be purchased.`,
+    );
+  }
+
+  // A free skip is a legitimate setting; a negative one is not.
+  whole(season.skipTierCost, 0, 'battlepass-skip-cost-invalid', 'The skip tier cost', 'a whole number');
+
+  const currency = season.skipCurrencyId.trim();
+  if (currency === '') {
+    error('battlepass-skip-currency-missing', 'No skip currency is set, so a tier skip has nothing to charge.');
+  } else if (currency !== CONFIRMED_SKIP_CURRENCY) {
+    warn(
+      'battlepass-skip-currency-unconfirmed',
+      `"${currency}" as the skip currency has not been confirmed with the client. Only "${CONFIRMED_SKIP_CURRENCY}" is known to work, so this may not be chargeable in game until somebody checks it.`,
+    );
   }
 
   return issues;
 }
 
-/** The UTC instant a season ends, or null while the schedule is unusable. */
-export function seasonEndUtc(schedule: BattlePassSchedule): string | null {
-  const start = parseStartUtc(schedule.startUtc);
-  if (start === null || !Number.isInteger(schedule.durationDays) || schedule.durationDays < 1) {
+/** The UTC instant a season ends, or null while the window is unusable. */
+export function seasonEndUtc(season: Pick<BattlePassSeason, 'startUtc' | 'durationDays'>): string | null {
+  const start = parseStartUtc(season.startUtc);
+  if (start === null || !Number.isInteger(season.durationDays) || season.durationDays < 1) {
     return null;
   }
   const [date, time] = start.split(' ');
   const [year, month, day] = date.split('-').map(Number);
   const [hour, minute] = time.split(':').map(Number);
-  const end = new Date(Date.UTC(year, month - 1, day + schedule.durationDays, hour, minute));
+  const end = new Date(Date.UTC(year, month - 1, day + season.durationDays, hour, minute));
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${end.getUTCFullYear()}-${pad(end.getUTCMonth() + 1)}-${pad(end.getUTCDate())} ${pad(end.getUTCHours())}:${pad(end.getUTCMinutes())}`;
-}
-
-interface SeasonCell {
-  raw: RawCell;
-  sheetRow: number;
-}
-
-/**
- * Reads the key/value tab into one raw cell per setting. The header row is
- * optional: a tab that starts straight into `Season ID | pass.season1` is read
- * from row 1, the same way the hero upgrade Growth tab is.
- */
-function readSeason(sheet: RawSheet, issues: Issue[]): Partial<Record<SeasonKey, SeasonCell>> {
-  const tab = `"${sheet.name}" tab`;
-  const headers = sheetHeaders(sheet);
-  let keyIndex = findColumn(headers, SETTING_LABELS);
-  let valueIndex = findColumn(headers, VALUE_LABELS);
-  const hasHeader = keyIndex !== -1 || valueIndex !== -1;
-  if (keyIndex === -1) keyIndex = valueIndex === 0 ? 1 : 0;
-  if (valueIndex === -1) valueIndex = keyIndex === 0 ? 1 : 0;
-
-  const values: Partial<Record<SeasonKey, SeasonCell>> = {};
-  for (let r = hasHeader ? 1 : 0; r < sheet.rows.length; r += 1) {
-    const row = sheet.rows[r];
-    const sheetRow = r + 1;
-    if (isBlankRow(row)) continue;
-    const name = cellText(row[keyIndex] ?? null);
-    if (name === null) {
-      issues.push({
-        severity: 'error',
-        code: 'battlepass-setting-unnamed',
-        message: `Row ${sheetRow} of the ${tab} has a value but no setting name.`,
-        sheetRow,
-      });
-      continue;
-    }
-    const resolved = SEASON_RESOLVER.resolve(name);
-    if (resolved.status === 'unknown') {
-      const hint =
-        resolved.suggestion === null
-          ? `The settings are ${SEASON_KEYS.map((key) => SEASON_TITLES[key]).join(', ')}.`
-          : `Did you mean "${SEASON_TITLES[resolved.suggestion]}"?`;
-      issues.push({
-        severity: 'error',
-        code: 'battlepass-setting-unknown',
-        message: `"${name}" on the ${tab} is not a battle pass setting the game reads. ${hint}`,
-        sheetRow,
-      });
-      continue;
-    }
-    const key = resolved.name;
-    if (isConsoleKey(key)) {
-      issues.push({
-        severity: 'warning',
-        code: 'battlepass-setting-ignored',
-        message: `"${SEASON_TITLES[key]}" on the ${tab} is ignored - the console sets it on the battle pass page now, so the sheet value has no effect. Delete the row to stop this warning.`,
-        sheetRow,
-      });
-      continue;
-    }
-    if (values[key] !== undefined) {
-      issues.push({
-        severity: 'error',
-        code: 'battlepass-setting-duplicate',
-        message: `"${SEASON_TITLES[key]}" appears twice on the ${tab} (rows ${values[key]?.sheetRow} and ${sheetRow}).`,
-        sheetRow,
-      });
-      continue;
-    }
-    values[key] = { raw: row[valueIndex] ?? null, sheetRow };
-  }
-
-  for (const key of SHEET_SEASON_KEYS) {
-    if (values[key] === undefined) {
-      issues.push({
-        severity: 'error',
-        code: 'battlepass-setting-missing',
-        message: `The ${tab} has no "${SEASON_TITLES[key]}" row.`,
-      });
-    }
-  }
-  return values;
-}
-
-/** The typed season scalars the sheet owns. A field is absent when its cell failed. */
-type SeasonValues = Partial<Record<Exclude<SeasonKey, ConsoleSeasonKey>, string | number>>;
-
-/** Types each season scalar, reporting rather than substituting on failure. */
-function typeSeason(
-  cells: Partial<Record<Exclude<SeasonKey, ConsoleSeasonKey>, SeasonCell>>,
-  sheetName: string,
-  issues: Issue[],
-): SeasonValues {
-  const tab = `"${sheetName}" tab`;
-  const values: SeasonValues = {};
-
-  const fail = (code: string, key: Exclude<SeasonKey, ConsoleSeasonKey>, message: string) => {
-    issues.push({
-      severity: 'error',
-      code,
-      message: `"${SEASON_TITLES[key]}" on the ${tab} ${message}`,
-      sheetRow: cells[key]?.sheetRow,
-    });
-  };
-
-  const text = (key: Exclude<SeasonKey, ConsoleSeasonKey>): string | null => {
-    const cell = cells[key];
-    if (cell === undefined) return null;
-    const value = cellText(cell.raw);
-    if (value === null) {
-      // A missing row was already reported; only a present but empty one is new.
-      fail('battlepass-value-missing', key, 'is empty.');
-      return null;
-    }
-    return value;
-  };
-
-  const whole = (key: Exclude<SeasonKey, ConsoleSeasonKey>, minimum: number) => {
-    const cell = cells[key];
-    if (cell === undefined) return;
-    if (isBlank(cell.raw)) {
-      fail('battlepass-value-missing', key, 'is empty.');
-      return;
-    }
-    const parsed = parseNumber(cell.raw);
-    if (!parsed.ok) {
-      fail('battlepass-value-invalid', key, `is not a number (found ${JSON.stringify(cell.raw)}).`);
-      return;
-    }
-    if (!Number.isInteger(parsed.value) || parsed.value < minimum) {
-      fail(
-        'battlepass-value-invalid',
-        key,
-        `must be a whole number of ${minimum} or more, not ${parsed.value}.`,
-      );
-      return;
-    }
-    values[key] = parsed.value;
-  };
-
-  const seasonId = text('SeasonID');
-  if (seasonId !== null) {
-    values.SeasonID = seasonId;
-    if (!SEASON_ID_PATTERN.test(seasonId)) {
-      issues.push({
-        severity: 'warning',
-        code: 'battlepass-season-id-format',
-        message: `"${seasonId}" does not follow the pass.<name> pattern (lowercase letters and digits). Player progress is stored against this ID, so it is also what ends one season and starts the next.`,
-        sheetRow: cells.SeasonID?.sheetRow,
-      });
-    }
-  }
-
-  const seasonName = text('SeasonName');
-  if (seasonName !== null) values.SeasonName = seasonName;
-
-  whole('TokensPerTier', 1);
-
-  const productId = text('PremiumProductID');
-  if (productId !== null) {
-    values.PremiumProductID = productId;
-    if (!PRODUCT_ID_PATTERN.test(productId)) {
-      issues.push({
-        severity: 'warning',
-        code: 'battlepass-product-id-format',
-        message: `"${productId}" does not follow the shop.<kind>.<name> pattern. The premium track is bought by exact product ID, so a mistyped one cannot be purchased.`,
-        sheetRow: cells.PremiumProductID?.sheetRow,
-      });
-    }
-  }
-
-  whole('SkipTierCost', 0);
-
-  const currency = text('SkipCurrencyID');
-  if (currency !== null) values.SkipCurrencyID = currency;
-
-  return values;
 }
 
 /* ---------------------------------------------------------------- tiers -- */
@@ -420,23 +294,20 @@ interface TierRow {
 /* ------------------------------------------------------------- transform -- */
 
 export interface BattlePassTransformInput {
-  /** The Season key/value tab. */
-  season: RawSheet;
   /** The Tiers tab: one row per tier. */
   tiers: RawSheet;
   /** Reward name -> reward ID, built from the Rewards lookup tab. */
   rewards: LookupTable;
-  /** The start, duration and final reward art, set in the console. */
-  schedule: BattlePassSchedule;
+  /** The whole season header, set in the console. */
+  season: BattlePassSeason;
 }
 
 /** Builds the battle pass config. Tier numbers decide the output order. */
 export function transformBattlePass(input: BattlePassTransformInput): BattlePassTransformResult {
   const issues: Issue[] = [];
 
-  const seasonCells = readSeason(input.season, issues);
-  const season = typeSeason(seasonCells, input.season.name, issues);
-  issues.push(...validateSchedule(input.schedule));
+  const season = input.season;
+  issues.push(...validateSeason(season));
 
   const sheet = input.tiers;
   const tab = `"${sheet.name}" tab`;
@@ -613,19 +484,19 @@ export function transformBattlePass(input: BattlePassTransformInput): BattlePass
     return tier;
   });
 
-  // Anything that failed to parse is left as an empty string or a zero. The
-  // error count already blocks the export, and the schema gate refuses these
-  // values too, so a partial config can never be published.
+  // An unset field is written as the empty string or the zero it already is.
+  // The issue list above already blocks the export, and the schema gate
+  // refuses these values too, so a half-filled season can never be published.
   const config: BattlePassConfig = {
-    SeasonID: String(season.SeasonID ?? ''),
-    SeasonName: String(season.SeasonName ?? ''),
-    StartUtc: parseStartUtc(input.schedule.startUtc) ?? input.schedule.startUtc,
-    DurationDays: input.schedule.durationDays,
-    TokensPerTier: Number(season.TokensPerTier ?? 0),
-    PremiumProductID: String(season.PremiumProductID ?? ''),
-    SkipTierCost: Number(season.SkipTierCost ?? 0),
-    SkipCurrencyID: String(season.SkipCurrencyID ?? ''),
-    FinalRewardArt: input.schedule.finalRewardArt,
+    SeasonID: season.seasonId.trim(),
+    SeasonName: season.seasonName.trim(),
+    StartUtc: parseStartUtc(season.startUtc) ?? season.startUtc,
+    DurationDays: season.durationDays,
+    TokensPerTier: season.tokensPerTier,
+    PremiumProductID: season.premiumProductId.trim(),
+    SkipTierCost: season.skipTierCost,
+    SkipCurrencyID: season.skipCurrencyId.trim(),
+    FinalRewardArt: season.finalRewardArt,
     Tiers: tiers,
   };
 
