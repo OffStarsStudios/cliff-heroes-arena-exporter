@@ -19,7 +19,8 @@ interface LiveOpsGanttProps {
   to: number;
   now: number;
   selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  /** A bar is the event: clicking one opens it, the way a board card does. */
+  onOpen: (entry: LiveOpsEntry) => void;
 }
 
 /**
@@ -34,7 +35,7 @@ interface LiveOpsGanttProps {
  * Everything is laid out in fractions by `layOutBars`, so this component only
  * turns numbers into percentages and never does date arithmetic of its own.
  */
-export function LiveOpsGantt({ events, from, to, now, selectedId, onSelect }: LiveOpsGanttProps) {
+export function LiveOpsGantt({ events, from, to, now, selectedId, onOpen }: LiveOpsGanttProps) {
   const lanes = useMemo(
     () =>
       (LIVEOPS_DOMAINS as readonly DomainId[]).map((domain) => ({
@@ -119,13 +120,13 @@ export function LiveOpsGantt({ events, from, to, now, selectedId, onSelect }: Li
                       ['--preview' as string]: `${bar.previewFraction * 100}%`,
                       ['--event-colour' as string]: colour,
                     }}
-                    aria-pressed={bar.entry.id === selectedId}
-                    onClick={() => onSelect(bar.entry.id === selectedId ? null : bar.entry.id)}
+                    onClick={() => onOpen(bar.entry)}
                     title={`${label}\n${CATEGORY_LABELS[bar.entry.liveops.category]} - ${PHASE_LABELS[bar.phase]}\nOpens ${localTime(
                       bar.entry.liveops.opensAt,
                     )}\nEnds ${localTime(bar.entry.endsAt)}`}
                   >
                     <span className="gantt__bar-label">{label}</span>
+                    <span className="gantt__bar-phase">{PHASE_LABELS[bar.phase]}</span>
                   </button>
                 );
               })}

@@ -202,7 +202,7 @@ function record(entry, action, ok, message) {
  * Returned as a list rather than thrown one at a time, so the form can show
  * every problem at once instead of the user fixing them in sequence.
  */
-export function checkEntry(candidate, { entries, hasDefault, hasOff, now = Date.now() }) {
+export function checkEntry(candidate, { entries, hasDefault, hasOff, now = Date.now(), started = false }) {
   const problems = [];
   const liveOps = isLiveOpsEntry(candidate);
 
@@ -219,6 +219,10 @@ export function checkEntry(candidate, { entries, hasDefault, hasOff, now = Date.
   const start = Date.parse(candidate.startsAt ?? '');
   if (Number.isNaN(start)) {
     problems.push('The start time is not a valid date.');
+  } else if (started) {
+    // An entry that is already live legitimately started in the past. It is
+    // still edited through this function, because everything else here - the
+    // overlap rule, the fallback rule - applies to it exactly as before.
   } else if (start < now - CATCH_UP_GRACE_MS) {
     problems.push(
       'The start time is in the past. A window that already ended would never run, and one that already started would jump the game forward without anyone watching, so schedule it from now on or publish it directly instead.',
@@ -315,6 +319,84 @@ export async function createEntry(input) {
   store.entries = [...store.entries, entry];
   await saveSchedule(store, sha, `Schedule ${entry.domain}: ${entry.label || entry.id}`);
   return { ok: true, entry };
+}
+
+/**
+ * Edits a window that has not finished yet.
+ *
+ * Wanted the moment a calendar exists: a season slips a week, a name is wrong,
+ * a sheet gets a fix. The alternative was cancel-and-rebook, which loses the
+ * entry's history and - for a live window - takes the feature out of the game
+ * in between.
+ *
+ * What may change depends on whether it has started. A scheduled window is not
+ * doing anything yet, so all of it is editable. A live one is already serving
+ * its payload: moving its start or swapping its config underneath the game is
+ * not an edit, it is a publish, so those are refused and the end time, the name
+ * and the note are not. Anything omitted keeps the value it had, which is what
+ * lets the form send only what somebody touched.
+ */
+export async function updateEntry(input) {
+  const { store, sha } = await loadSchedule();
+  const current = store.entries.find((entry) => entry.id === input.id);
+  if (current === undefined) return { ok: false, problems: [`No schedule with id "${input.id}".`] };
+  if (isTerminal(current)) {
+    return { ok: false, problems: [`That window is already ${current.state} and cannot be edited.`] };
+  }
+
+  const started = current.state === 'active';
+  const liveops =
+    current.liveops === null || current.liveops === undefined
+      ? null
+      : { ...current.liveops, ...(input.liveops ?? {}) };
+
+  const endsAt = input.endsAt === undefined ? current.endsAt : input.endsAt;
+  const window =
+    liveops === null
+      ? { startsAt: input.startsAt ?? current.startsAt, endsAt }
+      : windowForEvent(liveops, endsAt ?? null);
+
+  const payload = input.payload === undefined ? current.payload : input.payload;
+
+  if (started) {
+    const problems = [];
+    if (window.startsAt !== current.startsAt) {
+      problems.push(
+        'This event is already live, so its start cannot be moved. End it and book a new one if it should start again later.',
+      );
+    }
+    if (input.payload !== undefined && hashValue(toStoredValue(payload)) !== current.payloadHash) {
+      problems.push(
+        'This event is already live, so its config cannot be swapped from here. Publish the change on the config page, or end the event and book it again.',
+      );
+    }
+    if (problems.length > 0) return { ok: false, problems };
+  }
+
+  const next = {
+    ...current,
+    label: input.label ?? current.label,
+    note: input.note === undefined ? current.note : input.note,
+    environmentName: input.environmentName ?? current.environmentName,
+    payload,
+    payloadHash: hashValue(toStoredValue(payload)),
+    startsAt: window.startsAt,
+    endsAt: window.endsAt,
+    liveops,
+  };
+
+  const hasDefault = (await loadDefault(next.domain)) !== null;
+  const hasOff = liveops === null ? false : (await loadOff(next.domain)) !== null;
+  const problems = [
+    ...checkEntry(next, { entries: store.entries, hasDefault, hasOff, started }),
+    ...(liveops === null ? [] : checkEvent(liveops, { startsAt: next.startsAt, endsAt: next.endsAt })),
+  ];
+  if (problems.length > 0) return { ok: false, problems };
+
+  record(next, 'edited', true, `Rescheduled for ${next.startsAt}.`);
+  store.entries = store.entries.map((entry) => (entry.id === next.id ? next : entry));
+  await saveSchedule(store, sha, `Edit ${next.domain} schedule: ${next.label || next.id}`);
+  return { ok: true, entry: next };
 }
 
 export async function cancelEntry(id, reason) {

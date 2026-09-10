@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
+import { PixelHeart } from './PixelHeart';
 import type { RawWorkbook } from '../lib/types';
 
 /**
@@ -94,6 +95,7 @@ function labelOf(view: View): string {
 /* ---------- collapsed-section memory ---------- */
 
 const COLLAPSED_KEY = 'cliffheroes.rail.collapsed';
+const RAIL_OPEN_KEY = 'cliffheroes.rail.open';
 
 function storage(): Storage | null {
   try {
@@ -119,6 +121,23 @@ function recallCollapsed(): string[] {
 function rememberCollapsed(ids: string[]): void {
   try {
     storage()?.setItem(COLLAPSED_KEY, JSON.stringify(ids));
+  } catch {
+    // A rail that forgets is fine; a rail that throws is not.
+  }
+}
+
+/** The rail folds to icons; a board is worth the width. Remembered per browser. */
+function recallRailOpen(): boolean {
+  try {
+    return storage()?.getItem(RAIL_OPEN_KEY) !== 'closed';
+  } catch {
+    return true;
+  }
+}
+
+function rememberRailOpen(open: boolean): void {
+  try {
+    storage()?.setItem(RAIL_OPEN_KEY, open ? 'open' : 'closed');
   } catch {
     // A rail that forgets is fine; a rail that throws is not.
   }
@@ -194,6 +213,15 @@ export interface ShellSource {
   onReset: () => void;
 }
 
+/**
+ * Pages that are worked in rather than read.
+ *
+ * The 1180px column is right for a config page - a form and a diff, read top to
+ * bottom. It is wrong for a calendar and a table of events, where the width is
+ * the information: more weeks on screen, more columns without a scroll.
+ */
+const WIDE_VIEWS = new Set<View>(['liveops', 'schedule']);
+
 interface AppShellProps {
   view: View;
   onNavigate: (view: View) => void;
@@ -204,6 +232,14 @@ interface AppShellProps {
 export function AppShell({ view, onNavigate, source, children }: AppShellProps) {
   const workbook = source?.workbook ?? null;
   const [collapsed, setCollapsed] = useState<string[]>(recallCollapsed);
+  const [railOpen, setRailOpen] = useState<boolean>(recallRailOpen);
+
+  const toggleRail = useCallback(() => {
+    setRailOpen((open) => {
+      rememberRailOpen(!open);
+      return !open;
+    });
+  }, []);
 
   const activeSectionId = sectionOf(view).id;
 
@@ -232,6 +268,10 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
       type="button"
       className={`navlink${view === item.id ? ' navlink--active' : ''}`}
       aria-current={view === item.id ? 'page' : undefined}
+      // Collapsed, the icon is the only thing naming the page, so it carries
+      // the name for a pointer (title) and for a screen reader (aria-label).
+      title={railOpen ? undefined : item.label}
+      aria-label={railOpen ? undefined : item.label}
       onClick={() => onNavigate(item.id)}
     >
       <Icon name={item.icon} size={17} className="navlink__icon" />
@@ -252,14 +292,22 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
   );
 
   return (
-    <div className="shell">
+    <div className={`shell${railOpen ? '' : ' shell--rail-closed'}`}>
       <nav className="rail" aria-label="Sections">
         <div className="rail__nav">
           <div className="rail__brand">
-            <span className="rail__mark" aria-hidden="true">
-              <Icon name="braces" size={18} />
-            </span>
-            <span>
+            <button
+              type="button"
+              className="rail__mark"
+              aria-expanded={railOpen}
+              aria-label={railOpen ? 'Collapse the sidebar' : 'Expand the sidebar'}
+              title={railOpen ? 'Collapse the sidebar' : 'Expand the sidebar'}
+              onClick={toggleRail}
+            >
+              <PixelHeart size={19} className="rail__heart" />
+              <Icon name="chevron" size={14} className="rail__mark-chevron" />
+            </button>
+            <span className="rail__brand-text">
               <span className="rail__name">Cliff Heroes</span>
               <span className="rail__sub">Back office</span>
             </span>
@@ -310,7 +358,7 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
         </header>
 
         {/* Keyed on the view so each page fades in rather than snapping. */}
-        <main className="page" key={view}>
+        <main className={`page${WIDE_VIEWS.has(view) ? ' page--wide' : ''}`} key={view}>
           {children}
         </main>
       </div>

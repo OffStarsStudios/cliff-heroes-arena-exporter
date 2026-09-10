@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { EventConfigSource, type EventConfig } from './EventConfigSource';
 import { Icon } from './Icon';
+import { Portal } from './Portal';
 import { environmentName, isLiveEnvironment } from '../domains/account';
 import { DOMAIN_LABELS, type DomainId } from '../domains/types';
 import {
@@ -11,6 +12,7 @@ import {
   eventDuration,
   type EventCategory,
   type LiveOpsDomain,
+  type LiveOpsEntry,
 } from '../lib/liveops';
 import {
   ScheduleRejected,
@@ -19,11 +21,14 @@ import {
   fromLocalInput,
   saveOff,
   toLocalInput,
+  updateWindow,
   type OffState,
 } from '../lib/schedule';
 
 interface LiveOpsDialogProps {
   environmentId: string;
+  /** The event being edited, or null to book a new one. */
+  entry?: LiveOpsEntry | null;
   onClose: () => void;
   onScheduled: () => void;
 }
@@ -55,19 +60,30 @@ function defaultOpen(): Date {
  * sheet, not as something already published - so the config is loaded from its
  * link here and checked exactly as its own page would check it.
  */
-export function LiveOpsDialog({ environmentId, onClose, onScheduled }: LiveOpsDialogProps) {
-  const [domain, setDomain] = useState<LiveOpsDomain>(LIVEOPS_DOMAINS[0]);
-  const [label, setLabel] = useState('');
-  const [category, setCategory] = useState<EventCategory>('monetization');
-  const [note, setNote] = useState('');
-  const [opensAt, setOpensAt] = useState(() => toLocalInput(defaultOpen()));
-  const [endsAt, setEndsAt] = useState(() => toLocalInput(new Date(defaultOpen().getTime() + 30 * 86400000)));
+export function LiveOpsDialog({ environmentId, entry = null, onClose, onScheduled }: LiveOpsDialogProps) {
+  const editing = entry !== null;
+  const [domain, setDomain] = useState<LiveOpsDomain>(
+    (entry?.domain as LiveOpsDomain) ?? LIVEOPS_DOMAINS[0],
+  );
+  const [label, setLabel] = useState(entry?.label ?? '');
+  const [category, setCategory] = useState<EventCategory>(entry?.liveops.category ?? 'monetization');
+  const [note, setNote] = useState(entry?.note ?? '');
+  const [opensAt, setOpensAt] = useState(() =>
+    toLocalInput(entry === null ? defaultOpen() : new Date(entry.liveops.opensAt)),
+  );
+  const [endsAt, setEndsAt] = useState(() =>
+    toLocalInput(
+      entry !== null && entry.endsAt !== null
+        ? new Date(entry.endsAt)
+        : new Date(defaultOpen().getTime() + 30 * 86400000),
+    ),
+  );
   const [confirmed, setConfirmed] = useState(false);
 
   const [config, setConfig] = useState<EventConfig>({
     payload: null,
-    sourceUrl: null,
-    blocker: 'Load the sheet this event publishes.',
+    sourceUrl: entry?.liveops.sourceUrl ?? null,
+    blocker: editing ? null : 'Load the sheet this event publishes.',
   });
 
   const [off, setOff] = useState<OffState | null>(null);
@@ -135,20 +151,37 @@ export function LiveOpsDialog({ environmentId, onClose, onScheduled }: LiveOpsDi
     setError(null);
     try {
       if (opensIso === null || endsIso === null) throw new Error('Both dates are required.');
-      await createWindow({
-        domain,
-        environmentId,
-        environmentName: environmentName(environmentId),
-        label,
-        note: note === '' ? undefined : note,
-        payload: config.payload,
-        // The window and the event are now the same span: the config goes up
-        // when the event opens. Sent anyway so the request is a valid window
-        // when it is read on its own.
-        startsAt: opensIso,
-        endsAt: endsIso,
-        liveops: { category, opensAt: opensIso, sourceUrl: config.sourceUrl },
-      });
+      if (entry !== null) {
+        await updateWindow({
+          id: entry.id,
+          label,
+          note: note === '' ? null : note,
+          endsAt: endsIso,
+          // Sent only when a sheet was actually re-read. Left out, the event
+          // keeps the config it was booked with.
+          payload: config.payload === null ? undefined : config.payload,
+          liveops: {
+            category,
+            opensAt: opensIso,
+            sourceUrl: config.sourceUrl ?? entry.liveops.sourceUrl ?? null,
+          },
+        });
+      } else {
+        await createWindow({
+          domain,
+          environmentId,
+          environmentName: environmentName(environmentId),
+          label,
+          note: note === '' ? undefined : note,
+          payload: config.payload,
+          // The window and the event are now the same span: the config goes up
+          // when the event opens. Sent anyway so the request is a valid window
+          // when it is read on its own.
+          startsAt: opensIso,
+          endsAt: endsIso,
+          liveops: { category, opensAt: opensIso, sourceUrl: config.sourceUrl },
+        });
+      }
       onScheduled();
     } catch (reason) {
       if (reason instanceof ScheduleRejected) setProblems(reason.problems);
@@ -160,19 +193,39 @@ export function LiveOpsDialog({ environmentId, onClose, onScheduled }: LiveOpsDi
 
   const offReady = off !== null && off.present;
   const datesReady = opensIso !== null && endsIso !== null && duration !== null;
+
+  /**
+   * Moved dates with no fresh sheet is the one edit that cannot be saved.
+   *
+   * For a feature whose window lives inside its config - a battle pass season
+   * carries its own start and length - the booked payload stops matching the
+   * event the moment the dates move, and there is no way to rebuild it without
+   * the workbook. Better to say so than to publish a season that ends a week
+   * before its event does.
+   */
+  const windowMoved =
+    entry !== null && (opensIso !== entry.liveops.opensAt || endsIso !== entry.endsAt);
+  const staleConfig = windowMoved && config.payload === null;
+
   const ready =
     offReady &&
     datesReady &&
     label.trim() !== '' &&
-    config.payload !== null &&
+    (editing ? !staleConfig && config.blocker === null : config.payload !== null) &&
     (!targetsLive || confirmed);
 
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label="Schedule a live ops event">
+    <Portal>
+    <div
+      className="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={editing ? 'Edit a live ops event' : 'Schedule a live ops event'}
+    >
       <div className="modal__scrim" role="presentation" onClick={onClose} />
       <div className="modal__panel modal__panel--roomy">
         <div className="modal__head">
-          <h2 className="modal__title">Schedule an event</h2>
+          <h2 className="modal__title">{editing ? 'Edit the event' : 'Schedule an event'}</h2>
           <button type="button" className="btn btn--icon" aria-label="Close" onClick={onClose}>
             <Icon name="x" size={14} />
           </button>
@@ -185,7 +238,9 @@ export function LiveOpsDialog({ environmentId, onClose, onScheduled }: LiveOpsDi
               <select
                 value={domain}
                 onChange={(event) => setDomain(event.target.value as LiveOpsDomain)}
-                disabled={LIVEOPS_DOMAINS.length === 1}
+                // A booked event publishes one feature's setting key; changing
+                // that would be a different event, not an edit of this one.
+                disabled={editing || LIVEOPS_DOMAINS.length === 1}
               >
                 {LIVEOPS_DOMAINS.map((id) => (
                   <option key={id} value={id}>
@@ -250,8 +305,23 @@ export function LiveOpsDialog({ environmentId, onClose, onScheduled }: LiveOpsDi
             environmentId={environmentId}
             opensAt={opensIso}
             endsAt={endsIso}
+            booked={
+              entry === null
+                ? null
+                : { sourceUrl: entry.liveops.sourceUrl ?? null, bytes: entry.payloadBytes }
+            }
             onResult={setConfig}
           />
+
+          {staleConfig && (
+            <p className="banner banner--warn">
+              <Icon name="alert" size={14} className="banner__icon" />
+              <span>
+                The dates moved, and this feature keeps its window inside its config. Load the sheet again so the new
+                dates are what gets published.
+              </span>
+            </p>
+          )}
 
           {/* The whole point of a live ops event: what happens when it is over.
               Answered, it is one line; unanswered, it is a decision somebody has
@@ -338,21 +408,24 @@ export function LiveOpsDialog({ environmentId, onClose, onScheduled }: LiveOpsDi
                 ? 'Both dates are needed.'
                 : label.trim() === ''
                   ? 'Give the event a name.'
-                  : config.blocker !== null
-                    ? config.blocker
-                    : !offReady
-                      ? 'Record the off state first.'
-                      : 'Confirm the environment.'}
+                  : staleConfig
+                    ? 'Reload the sheet so the new dates are published.'
+                    : config.blocker !== null
+                      ? config.blocker
+                      : !offReady
+                        ? 'Record the off state first.'
+                        : 'Confirm the environment.'}
             </span>
           )}
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
           <button type="button" className="btn btn--primary" onClick={() => void submit()} disabled={!ready || busy}>
-            {busy ? 'Scheduling...' : 'Schedule it'}
+            {busy ? 'Saving...' : editing ? 'Save changes' : 'Schedule it'}
           </button>
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

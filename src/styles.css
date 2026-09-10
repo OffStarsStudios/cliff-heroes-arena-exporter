@@ -153,6 +153,60 @@ textarea {
 
 /* ---------- navigation rail ---------- */
 
+/*
+ * Folded, the rail is its icons.
+ *
+ * `--rail-w` is redefined on the shell rather than on `:root`, so everything
+ * that positions against the rail - the action bar, which is fixed - follows it
+ * without a second rule to keep in sync.
+ */
+.shell--rail-closed {
+  --rail-w: 64px;
+}
+
+.shell--rail-closed .rail {
+  align-items: center;
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.shell--rail-closed .rail__brand {
+  justify-content: center;
+  padding: var(--space-2) 0 var(--space-4);
+}
+
+.shell--rail-closed .rail__brand-text,
+.shell--rail-closed .rail__group-toggle,
+.shell--rail-closed .navlink__text,
+.shell--rail-closed .rail__source,
+.shell--rail-closed .rail__foot {
+  display: none;
+}
+
+.shell--rail-closed .rail__nav {
+  gap: var(--space-2);
+  width: 100%;
+}
+
+/* A folded group is just its links, with a hairline where its title was. */
+.shell--rail-closed .rail__group + .rail__group {
+  border-top: 1px solid var(--rail-border);
+  padding-top: var(--space-2);
+}
+
+.shell--rail-closed .navlink {
+  justify-content: center;
+  padding: 7px 0;
+}
+
+/* Folding must not leave a group hidden: a closed section still shows its
+   icons, because there is no title left to expand. */
+.shell--rail-closed .rail__group-panel {
+  height: auto !important;
+  opacity: 1;
+  visibility: visible;
+}
+
 .rail {
   background: var(--rail);
   border-right: 1px solid var(--rail-border);
@@ -177,13 +231,49 @@ textarea {
 .rail__mark {
   align-items: center;
   background: var(--accent);
+  border: 0;
   border-radius: var(--radius);
   color: #fff;
+  cursor: pointer;
   display: inline-flex;
   flex: none;
   height: 32px;
   justify-content: center;
+  padding: 0;
+  position: relative;
+  transition: background 0.15s ease;
   width: 32px;
+}
+
+.rail__mark:hover {
+  background: var(--accent-hover);
+}
+
+/* The heart is the brand; the chevron is what the button does. Swapped on
+   hover so the rail is not carrying a permanent piece of UI chrome. */
+.rail__heart,
+.rail__mark-chevron {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.rail__mark-chevron {
+  position: absolute;
+  opacity: 0;
+  transform: rotate(90deg);
+}
+
+.rail__mark:hover .rail__heart,
+.rail__mark:focus-visible .rail__heart {
+  opacity: 0;
+}
+
+.rail__mark:hover .rail__mark-chevron,
+.rail__mark:focus-visible .rail__mark-chevron {
+  opacity: 1;
+}
+
+.shell--rail-closed .rail__mark-chevron {
+  transform: rotate(-90deg);
 }
 
 .rail__name {
@@ -447,6 +537,19 @@ textarea {
   max-width: 1180px;
   padding: var(--space-6) var(--space-6) 120px;
   width: 100%;
+}
+
+/*
+ * Boards, not documents.
+ *
+ * A calendar and a table of events are worked in rather than read, and their
+ * width is information - another fortnight on screen, another column without a
+ * horizontal scroll. They get the window, minus a margin so the content never
+ * touches the edge.
+ */
+.page--wide {
+  max-width: 1760px;
+  padding-bottom: var(--space-6);
 }
 
 /*

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { IssueList } from './Summary';
 import { TabPicker } from './TabPicker';
@@ -31,6 +31,14 @@ interface EventConfigSourceProps {
   /** The event's window. Null while either date box is empty or unreadable. */
   opensAt: string | null;
   endsAt: string | null;
+  /**
+   * The config an event already carries, when one is being edited.
+   *
+   * Its link is loaded on open so the header panel and the checks work on the
+   * real sheet rather than on nothing; until that lands, the booked payload
+   * stands and this step blocks nothing.
+   */
+  booked?: { sourceUrl: string | null; bytes: number } | null;
   /** Called whenever the answer changes. Must be stable - a state setter will do. */
   onResult: (result: EventConfig) => void;
 }
@@ -61,12 +69,13 @@ export function EventConfigSource({
   environmentId,
   opensAt,
   endsAt,
+  booked = null,
   onResult,
 }: EventConfigSourceProps) {
   const definition = LIVEOPS_EXPORTERS[domain];
   const label = DOMAIN_LABELS[domain];
 
-  const [url, setUrl] = useState(() => recallSheetUrl(domain) ?? '');
+  const [url, setUrl] = useState(() => booked?.sourceUrl ?? recallSheetUrl(domain) ?? '');
   const [workbook, setWorkbook] = useState<RawWorkbook | null>(null);
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +87,8 @@ export function EventConfigSource({
   useEffect(() => {
     setSelection(workbook === null ? EMPTY_SELECTION : definition.autoSelect(workbook));
   }, [workbook, definition]);
+
+  const loadRef = useRef<() => void>(() => {});
 
   const load = useCallback(async () => {
     const trimmed = url.trim();
@@ -103,6 +114,22 @@ export function EventConfigSource({
       setBusy(false);
     }
   }, [domain, url]);
+
+  /**
+   * An event being edited opens on its own sheet, without being asked.
+   *
+   * Its window is editable here, and for a feature whose window lives inside
+   * the config - a battle pass season - moving the dates means rebuilding the
+   * payload. That needs the workbook, so it is fetched up front rather than
+   * discovered to be missing at the moment somebody presses save.
+   */
+  loadRef.current = () => void load();
+  useEffect(() => {
+    if (booked?.sourceUrl === null || booked?.sourceUrl === undefined) return;
+    loadRef.current();
+    // Once, for the event this dialog opened on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booked?.sourceUrl]);
 
   /**
    * The feature's own fields, collected here exactly as its page collects them.
@@ -186,7 +213,11 @@ export function EventConfigSource({
 
   const blocker =
     workbook === null
-      ? `Load the ${definition.title} sheet this event publishes.`
+      ? booked !== null
+        // Editing: the event already has a config, so nothing is missing until
+        // somebody moves the dates. The dialog decides that, not this step.
+        ? null
+        : `Load the ${definition.title} sheet this event publishes.`
       : result === null
         ? 'Some tabs could not be matched. Pick them in the tab mapping.'
         : errors > 0
@@ -226,6 +257,18 @@ export function EventConfigSource({
       >
         The config it publishes
       </span>
+
+      {booked !== null && workbook === null && (
+        <p className="field__note">
+          {busy ? (
+            <>
+              <span className="spinner" aria-hidden="true" /> Reading the sheet this event was booked from...
+            </>
+          ) : (
+            <>Keeping the config booked with this event ({(booked.bytes / 1024).toFixed(1)} kB).</>
+          )}
+        </p>
+      )}
 
       <div className="linkrow">
         <input
