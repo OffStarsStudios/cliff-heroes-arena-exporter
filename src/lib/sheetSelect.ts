@@ -339,33 +339,11 @@ export function autoSelectShopSheets(workbook: RawWorkbook): ShopSheetSelection 
 /* ----------------------------------------------------------- Battle pass -- */
 
 export type BattlePassSheetSelection = {
-  /** The Season key/value tab. */
-  season: string | null;
   /** The Tiers tab: one row per tier. */
   tiers: string | null;
   /** The Reward Name -> Reward ID lookup tab. */
   rewards: string | null;
 };
-
-/**
- * Scores a sheet as the season key/value tab. The setting names in the first
- * column are the strongest signal, so a differently named tab still wins and
- * another workbook's key/value tab (hero upgrades' `Growth`) does not.
- */
-function scoreSeason(sheet: RawSheet): number {
-  const words = tokens(sheet.name);
-  const headers = headerWords(sheet);
-  const firstColumn = sheet.rows.slice(0, 12).flatMap((row) => tokens(String(row[0] ?? '')));
-  let score = 0;
-  if (words.includes('season')) score += 30;
-  if (words.includes('pass') || words.includes('battle')) score += 10;
-  if (headers.includes('value') || headers.includes('values')) score += 20;
-  if (firstColumn.includes('tokens') && firstColumn.includes('skip')) score += 40;
-  // A tier table is the other tab of this same workbook.
-  if (headers.includes('free') || headers.includes('premium')) score -= 40;
-  if (sheet.rows.length >= 2) score += 3;
-  return score;
-}
 
 /** Scores a sheet as the tiers tab: a tier column beside the two tracks. */
 function scoreTiers(sheet: RawSheet): number {
@@ -381,16 +359,19 @@ function scoreTiers(sheet: RawSheet): number {
   return score;
 }
 
+/**
+ * The Season tab is deliberately not selected any more: the season header is
+ * set in the console, so a workbook that still carries the tab is simply not
+ * asked about it rather than being told its rows are ignored.
+ */
 export function autoSelectBattlePassSheets(workbook: RawWorkbook): BattlePassSheetSelection {
   const tiers = bestSheet(workbook.sheets, scoreTiers, 50);
-  const rest = workbook.sheets.filter((sheet) => sheet.name !== tiers);
-  const season = bestSheet(rest, scoreSeason, 50);
   const rewards = bestSheet(
-    rest.filter((sheet) => sheet.name !== season),
+    workbook.sheets.filter((sheet) => sheet.name !== tiers),
     (sheet) => scoreLookup(sheet, ['reward', 'rewards']),
     30,
   );
-  return { season, tiers, rewards };
+  return { tiers, rewards };
 }
 
 /* --------------------------------------------------------------- Dataset -- */
@@ -428,8 +409,10 @@ export function detectDataset(workbook: RawWorkbook): Dataset {
   const upgrade = autoSelectHeroUpgradeSheets(workbook);
   if (upgrade.growth !== null && upgrade.costs !== null) return 'heroUpgrade';
 
+  // A tier table with both tracks is unlike any other workbook's tab, so it
+  // identifies the pass on its own now that the Season tab is not read.
   const pass = autoSelectBattlePassSheets(workbook);
-  if (pass.season !== null && pass.tiers !== null) return 'battlePass';
+  if (pass.tiers !== null && pass.rewards !== null) return 'battlePass';
 
   const shop = autoSelectShopSheets(workbook);
   if (shop.products !== null && shop.rewards !== null) return 'shop';

@@ -531,6 +531,60 @@ functions per deployment and this app has ten. A deployment that exceeds the lim
 *builds* successfully and then fails at the deploy step, so the count is worth
 keeping an eye on when adding a route.
 
+## Live ops
+
+The live ops calendar (`#/liveops`) schedules the features that are **not always in
+the game**. Today that is the battle pass; rolling offers and limited-time quests are
+the same shape. The core configs - trophy road, hero stats, arenas, match trophies,
+bots, hero upgrades, shop - are deliberately not here: they are always live and are
+edited on their own pages.
+
+An event is not a second kind of record. It is a scheduling window carrying an extra
+`liveops` block, stored in the same `schedules/schedules.json`, applied by the same
+heartbeat, guarded by the same overlap and drift checks. The one thing it does
+differently is what happens at the end: an ordinary window goes back to
+`config/defaults/<domain>.json`, the last known-good version, and an event goes to
+`config/off/<domain>.json`, the payload that means *this feature is not running*.
+Restoring a default battle pass when a season ends would start last season again.
+An event cannot be booked for a feature with no off state recorded.
+
+### Booking an event
+
+The form asks four things: which feature, what to call it, when it opens and when it
+ends. Both dates are required - a window with no end never comes down - and the form
+shows the **duration they add up to**, in days and hours, calculated rather than
+typed. That is the number people actually argue about; the two dates are only how it
+is written down.
+
+The event then needs a config, and it takes it from **the sheet the feature is
+authored in**: paste the Google Sheets link, load it, and the console runs the
+feature's own exporter over it - the same parser, the same tab mapping, the same
+issue list, the same schema gate, the same cross-config check against the live game.
+A season booked three weeks out is more worth checking than one published by hand,
+because nobody is watching at the minute it goes live.
+
+The header fields the feature's page collects are collected here too, in the same
+panel, seeded from the live config - with one difference: the fields the event
+already decides are shown read-only. A battle pass season booked as an event starts
+when the event opens and runs for as long as the event runs, rounded to the whole
+days the client counts in. Asking twice could only produce two answers that disagree.
+
+What is booked is a **snapshot**. The parsed config is stored on the schedule entry
+when the event is created, so editing the sheet afterwards does not change what a
+booked event publishes; the link is kept on the event as provenance and is shown in
+the events table. Reload the sheet and book again to change it.
+
+There are no preview hours. An event's config is published when the event opens,
+which is the one date anybody has in their head. Events booked before this was
+removed still carry theirs, and the calendar still draws their preview slice.
+
+### Phases
+
+The schedule state answers "has the scheduler done its job"; the phase answers "what
+does a player see". They come apart where it matters: scheduled -> preview (config
+live, event not open) -> active -> ending soon (inside its last day) -> ended, with
+`off` for an event that was cancelled or missed and never ran.
+
 ## Cross-config validation
 
 The eight settings reference each other - the trophy road names arenas and
@@ -805,41 +859,57 @@ grants nothing at all is `{}`.
 
 ### The Battle Pass Settings sheet
 
-Three tabs. `Season` is a key/value tab - `Setting | Value` - with one row per
-season setting: Season ID, Season Name, Tokens Per Tier, Premium Product ID,
-Skip Tier Cost, Skip Currency ID. Every row must be present and carry a value.
+Two tabs. `Tiers` has one row per tier: `Tier | Free Reward | Free Amount |
+Premium Reward | Premium Amount`. Either track may be left blank on a tier, and
+the reward columns are dropdowns fed by the `Rewards` tab, the same lookup the
+shop and the trophy road use. Rows may be in any order - the tier numbers decide
+the output order - but they have to run 1 upwards with no gaps, because a gap
+would shift every tier above it.
 
-The other three season fields - **Start (UTC), Duration Days and Final Reward
-Art** - are not in the sheet. They are set on the battle pass page itself, in a
-step between loading the sheet and reviewing it. When a season starts and how
-long it runs are decisions about the live game rather than descriptions of a
-ladder, and the final reward art usually arrives after the ladder is already
-written; none of the three is worth a trip through Drive to edit a cell and
-re-export. The page remembers them per browser and seeds them from the live
+The **season header is not in the sheet at all**. Season ID, Season Name, Start
+(UTC), Duration Days, Tokens Per Tier, Premium Product ID, Skip Tier Cost, Skip
+Currency ID and Final Reward Art are set in the console, in a step between
+loading the sheet and reviewing it. They are decisions about one live season
+rather than descriptions of a ladder, and - the part a spreadsheet cannot help
+with - several of them are IDs that have to match another config exactly. So the
+panel offers what the game actually has:
+
+- **Premium product** is a dropdown of the products `shopSettings` actually
+  sells, pass products first, read live with the last published shop as the
+  fallback. A product that is not in the shop yet can still be typed in full,
+  which is the normal state when next season's product has not been published.
+  A disabled product is labelled as such and warned about.
+- **Season ID** follows the season the game is serving: the panel reads the live
+  `battlePassSettings` and offers the next number, `pass.season1` ->
+  `pass.season2`, filling it in when the box is empty and offering it when it is
+  not. It is still editable - a one-off pass that breaks the numbering is a
+  legitimate thing to type.
+- **Skip currency** is a dropdown of `hardCurrency` plus the shop's own `SoldIn`
+  values. Only `hardCurrency` is confirmed to work in the client, so it is the
+  default and every other choice publishes with a warning saying it is
+  unconfirmed. When the client's side of this is settled, `SKIP_CURRENCIES` and
+  that warning in `src/lib/battlePass.ts` are the two things to change.
+- **Final reward art** is still typed by hand and may be left empty. It is the
+  one field with nothing to check it against until the back office has an art
+  library to pick from.
+
+The panel remembers the header per browser and seeds it from the live
 `battlePassSettings` the first time, so it opens on the season the game is
 actually running rather than on a blank form.
 
-A sheet that still carries those three rows keeps working: they are ignored,
-with one warning each saying so, and the console's values are what get
-published. Delete the rows to clear the warnings.
+A sheet that still carries its old `Season` tab keeps working: the tab is not
+read, not selected and not complained about. Delete it when convenient.
 
-`Tiers` has one row per tier: `Tier | Free Reward | Free Amount | Premium Reward
-| Premium Amount`. Either track may be left blank on a tier, and the reward
-columns are dropdowns fed by the `Rewards` tab, the same lookup the shop and the
-trophy road use. Rows may be in any order - the tier numbers decide the output
-order - but they have to run 1 upwards with no gaps, because a gap would shift
-every tier above it.
-
-The start is stored and published as `YYYY-MM-DD HH:mm`, in UTC. The field on
-the page is a plain date-and-time picker with no zone of its own, and what is
-typed is taken as UTC rather than converted out of the browser's zone; the panel
-prints the resulting window back in words, end included, so it can be read at a
-glance.
+The start is stored and published as `YYYY-MM-DD HH:mm`, in UTC. The field is a
+plain date-and-time picker with no zone of its own, and what is typed is taken
+as UTC rather than converted out of the browser's zone; the panel prints the
+resulting window back in words, end included, so it can be read at a glance.
+Booked as a live ops event, the start and duration are the event's own window
+instead, and are shown read-only - see [Live ops](#live-ops).
 
 ### Battle pass validation
 
-Errors: a missing or duplicated season setting, a row with a value but no
-setting name, an unknown setting name (with a suggestion), an empty value, a
+Errors: a season header field left unset (ID, name, product, currency), a
 Tokens Per Tier that is not a whole number of 1 or more, a negative Skip Tier
 Cost, a season start that is unset or not a UTC timestamp, a duration that is
 not a whole number of 1 or more, a missing tier or reward column, a row with
@@ -849,8 +919,9 @@ define or defines twice, an amount missing or not a whole number of 1 or more,
 an amount with no reward beside it, an empty tab, and the schema gate.
 
 Warnings: a Season ID not matching `pass.<name>`, a Premium Product ID not
-matching `shop.<kind>.<name>`, a tier that grants nothing on either track, and a
-Season row the console now owns.
+matching `shop.<kind>.<name>`, a skip currency other than `hardCurrency`, and a
+tier that grants nothing on either track. The header's own errors and warnings
+are shown under the fields that cause them as well as in the review.
 
 The live-config check adds the edge to the shop: the premium product has to be a
 product `shopSettings` defines, and an existing but disabled one is a warning.

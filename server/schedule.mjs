@@ -276,10 +276,10 @@ export async function createEntry(input) {
   const hasDefault = (await loadDefault(input.domain)) !== null;
   const hasOff = liveops === null ? false : (await loadOff(input.domain)) !== null;
 
-  // A live ops event names the moment players see it, not the moment the
-  // config is written. Publishing early is what lets the client advertise a
-  // pass before it opens, so the window starts `previewHours` earlier and the
-  // event keeps its own opening time for everything that reads the calendar.
+  // A live ops event names the moment players see it, and that is now the
+  // moment its config is written: the window and the event are the same span.
+  // Entries booked while the form still asked for preview hours start that
+  // much earlier, which is why the window is worked out rather than copied.
   const window = liveops === null
     ? { startsAt: input.startsAt, endsAt: input.endsAt ?? null }
     : windowForEvent(liveops, input.endsAt ?? null);

@@ -57,10 +57,28 @@ export const CATEGORY_COLOURS: Record<EventCategory, string> = {
 
 export interface LiveOpsBlock {
   category: EventCategory;
-  /** When players see the event. The window itself starts `previewHours` earlier. */
+  /** When players see the event, and - with no preview - when its config goes up. */
   opensAt: string;
-  /** How long before it opens the config is published, so the client can advertise it. */
-  previewHours: number;
+  /**
+   * How long before it opens the config is published.
+   *
+   * No longer collected: an event's config now goes up when the event opens,
+   * which is the one date a designer already has in their head. The field
+   * stays optional so events booked while the box existed still draw their
+   * preview slice on the calendar rather than silently changing shape.
+   */
+  previewHours?: number;
+  /**
+   * The Google Sheet the config was exported from, kept so the calendar can
+   * link back to it. The payload itself is a snapshot taken when the event was
+   * booked - the link is provenance, not a promise to re-read the sheet.
+   */
+  sourceUrl?: string | null;
+}
+
+/** Preview hours, for the entries old enough to have them. */
+export function previewHoursOf(block: LiveOpsBlock): number {
+  return block.previewHours ?? 0;
 }
 
 /** A schedule entry that was booked from the calendar. */
@@ -237,13 +255,38 @@ export function ticksFor(from: number, to: number): GanttTick[] {
   return ticks;
 }
 
-/** "12 days", "6 hours" - how long an event runs, for the table. */
+export interface EventDuration {
+  /** Whole days, then the hours left over. Both rounded to the nearest hour. */
+  days: number;
+  hours: number;
+  ms: number;
+}
+
+/**
+ * How long an event runs, in the two units a designer books it in.
+ *
+ * Days and hours rather than one or the other, because both halves are
+ * decisions: a season is "four weeks", a weekend offer is "60 hours", and a
+ * season that came out as 29 days 23 hours is a mistake somebody wants to see
+ * rather than a "30 days" that rounds the mistake away.
+ */
+export function eventDuration(fromIso: string, toIso: string | null): EventDuration | null {
+  if (toIso === null) return null;
+  const ms = Date.parse(toIso) - Date.parse(fromIso);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const hours = Math.round(ms / 3600000);
+  return { days: Math.floor(hours / 24), hours: hours % 24, ms };
+}
+
+/** "30 days", "1 day 12 hours", "6 hours" - how long an event runs, spelled out. */
 export function durationLabel(fromIso: string, toIso: string | null): string {
   if (toIso === null) return 'no end';
-  const ms = Date.parse(toIso) - Date.parse(fromIso);
-  if (!Number.isFinite(ms) || ms <= 0) return '-';
-  const hours = ms / 3600000;
-  if (hours < 48) return `${Math.round(hours)} hours`;
-  const days = hours / 24;
-  return Number.isInteger(days) ? `${days} days` : `${days.toFixed(1)} days`;
+  const duration = eventDuration(fromIso, toIso);
+  if (duration === null) return '-';
+
+  const { days, hours } = duration;
+  const dayPart = days === 0 ? null : `${days} day${days === 1 ? '' : 's'}`;
+  const hourPart = hours === 0 ? null : `${hours} hour${hours === 1 ? '' : 's'}`;
+  if (dayPart === null && hourPart === null) return 'under an hour';
+  return [dayPart, hourPart].filter((part) => part !== null).join(' ');
 }

@@ -167,9 +167,14 @@ export function checkEvent(liveops, { startsAt, endsAt }) {
     problems.push('The time the event opens is not a valid date.');
   }
 
+  // Optional, and no longer collected by the form: an event's config goes up
+  // when the event opens. Entries booked while the box existed still carry
+  // one, so the range is still checked when there is something to check.
   const hours = liveops?.previewHours;
-  if (typeof hours !== 'number' || !Number.isFinite(hours) || hours < 0 || hours > 14 * 24) {
-    problems.push('Preview hours must be a number between 0 and 336 (two weeks).');
+  if (hours !== undefined && hours !== null) {
+    if (typeof hours !== 'number' || !Number.isFinite(hours) || hours < 0 || hours > 14 * 24) {
+      problems.push('Preview hours must be a number between 0 and 336 (two weeks).');
+    }
   }
 
   // An event that never ends is not an event, it is a feature. The whole
