@@ -8,10 +8,10 @@
  * Two very different callers depend on this module.
  *
  * Publishing uses it as bookkeeping. Writing to ConfigCat is the operation
- * that reaches players; recording it in `config/` is what makes the change
- * reviewable afterwards. If the token is missing or refused, the publish still
- * happens and the result says the history was not written, rather than failing
- * a live change over a commit.
+ * that reaches players; recording it in `config/` on `CONFIG_TARGET` is what
+ * makes the change reviewable afterwards. If the token is missing or refused,
+ * the publish still happens and the result says the history was not written,
+ * rather than failing a live change over a commit.
  *
  * The scheduler uses it as its database. Schedules and per-domain default
  * configs live in the repo, so a token problem there is a real failure and is
@@ -24,13 +24,28 @@ const REPO = process.env.GITHUB_REPO ?? 'OffStarsStudios/cliff-heroes-arena-expo
 const BRANCH = process.env.GITHUB_BRANCH ?? 'main';
 
 /**
+ * Where the back office's own records live: what was published, the defaults,
+ * the off payloads. Everything under `config/`.
+ *
+ * Not the deployed branch, and for the same reason the schedule is not - see
+ * `SCHEDULE_TARGET` in `schedule.mjs`. These files are a record of what went
+ * to ConfigCat; nothing in the build reads them. Writing them to `main` made
+ * every publish queue a Vercel deployment, which is a deployment spent on a
+ * build whose output cannot differ.
+ */
+export const CONFIG_TARGET = {
+  repo: process.env.GITHUB_CONFIG_REPO ?? undefined,
+  branch: process.env.GITHUB_CONFIG_BRANCH ?? 'config-history',
+};
+
+/**
  * Where a read or write lands.
  *
- * Everything defaults to the deployed branch, which is what the publish
- * records want: `config/heroes.json` beside the code it describes. The
- * scheduler passes something else, for a reason that has nothing to do with
- * git and everything to do with Vercel - see `SCHEDULE_TARGET` in
- * `schedule.mjs`.
+ * The default is the deployed branch, and by now almost nothing wants it: the
+ * schedule passes `SCHEDULE_TARGET` and the config records pass
+ * `CONFIG_TARGET`, both for the same Vercel reason. It stays the default
+ * because a caller that means the deployed branch means the branch the code
+ * is on, and should not have to name it.
  */
 function targetOf(target) {
   return { repo: target?.repo ?? REPO, branch: target?.branch ?? BRANCH };
@@ -212,11 +227,12 @@ async function currentSha(path, target) {
  * Recent commits that touched one path, for the rollback list - where the
  * question is what a config looked like before, not what it is now.
  */
-export async function fileHistory(path, limit = 20) {
+export async function fileHistory(path, limit = 20, target) {
   if (!gitAvailable()) return { available: false, commits: [], error: missingTokenReason(path) };
 
+  const { repo, branch } = targetOf(target);
   const response = await github(
-    `/repos/${REPO}/commits?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(BRANCH)}&per_page=${limit}`,
+    `/repos/${repo}/commits?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(branch)}&per_page=${limit}`,
   );
   if (!response.ok) return { available: true, commits: [], error: explainFailure(response, { path }) };
 
@@ -232,11 +248,12 @@ export async function fileHistory(path, limit = 20) {
 }
 
 /** One historical version of a file, by commit sha. */
-export async function readFileAt(path, ref) {
+export async function readFileAt(path, ref, target) {
   if (!gitAvailable()) return { ok: false, error: missingTokenReason(path) };
 
+  const { repo } = targetOf(target);
   const response = await github(
-    `/repos/${REPO}/contents/${encodePath(path)}?ref=${encodeURIComponent(ref)}`,
+    `/repos/${repo}/contents/${encodePath(path)}?ref=${encodeURIComponent(ref)}`,
   );
   if (!response.ok) return { ok: false, error: explainFailure(response, { path }) };
 
