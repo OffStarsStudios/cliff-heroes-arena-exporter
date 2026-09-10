@@ -22,7 +22,7 @@
  * A second store with its own tick would be a second thing to get wrong.
  */
 
-import { readJson, commitJson } from './git.mjs';
+import { CONFIG_TARGET, readJson, commitJson } from './git.mjs';
 
 /**
  * Domains that are scheduled as events rather than configured permanently.
@@ -81,7 +81,7 @@ export function offPath(domain) {
 
 /** The off payload for a feature, or null when none has been recorded. */
 export async function loadOff(domain) {
-  const { value, existed } = await readJson(offPath(domain), null);
+  const { value, existed } = await readJson(offPath(domain), null, CONFIG_TARGET);
   return existed ? value : null;
 }
 
@@ -92,6 +92,7 @@ export async function saveOff(domain, payload, note) {
     message: `Set the off state for ${domain}\n\n${
       note ?? 'What the game receives when no event of this feature is running.'
     }`,
+    target: CONFIG_TARGET,
   });
   if (!result.committed) {
     throw new Error(`The off state could not be saved: ${result.reason}`);

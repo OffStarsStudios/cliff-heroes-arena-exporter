@@ -38,7 +38,7 @@
 
 import { getValues } from './configcat.mjs';
 import { diffJson, describeChange, summarizeDiff } from './diff.mjs';
-import { branchName, commitJson, gitAvailable, readJson, repoName } from './git.mjs';
+import { CONFIG_TARGET, branchName, commitJson, gitAvailable, readJson, repoName } from './git.mjs';
 import {
   LIVEOPS_DOMAINS,
   checkEvent,
@@ -144,7 +144,7 @@ export async function saveSchedule(store, sha, message) {
 
 /** The fallback payload for a domain, or null when none has been recorded. */
 export async function loadDefault(domain) {
-  const { value, existed } = await readJson(defaultPath(domain), null);
+  const { value, existed } = await readJson(defaultPath(domain), null, CONFIG_TARGET);
   return existed ? value : null;
 }
 
@@ -153,6 +153,7 @@ export async function saveDefault(domain, payload, note) {
     path: defaultPath(domain),
     value: payload,
     message: `Set the default ${domain} config\n\n${note ?? 'Recorded from the back office as the fallback when no schedule is active.'}`,
+    target: CONFIG_TARGET,
   });
   if (!result.committed) {
     throw new Error(`The default config could not be saved: ${result.reason}`);

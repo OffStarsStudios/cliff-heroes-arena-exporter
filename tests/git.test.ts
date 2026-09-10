@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error - plain .mjs module shared with the production server.
-import { branchName, encodePath, explainFailure, repoName } from '../server/git.mjs';
+import { CONFIG_TARGET, branchName, encodePath, explainFailure, repoName } from '../server/git.mjs';
 
 /**
  * Two things about the GitHub client are worth pinning.
@@ -75,10 +75,11 @@ describe('failure messages', () => {
 });
 
 /**
- * The schedule is stored somewhere other than the deployed branch, so reads and
- * writes take a target. The defaults matter more than the overrides: every
- * publish record still has to land on `main` beside the code it describes, and
- * a target that silently defaulted to the wrong branch would scatter them.
+ * Neither the schedule nor the config records are stored on the deployed
+ * branch, so reads and writes take a target. What matters here is that a
+ * target says exactly what it means: one that quietly fell back to `main`
+ * would put the console's own bookkeeping on the branch Vercel builds, which
+ * is the deployment-per-publish this indirection exists to stop.
  */
 describe('read and write targets', () => {
   it('defaults to the deployed repository and branch', () => {
@@ -97,6 +98,15 @@ describe('read and write targets', () => {
   it('takes a repository too, for the day a branch is not enough', () => {
     expect(repoName({ repo: 'OffStarsStudios/schedules' })).toBe('OffStarsStudios/schedules');
     expect(branchName({ repo: 'OffStarsStudios/schedules' })).toBe('main');
+  });
+
+  it('keeps the config records off the deployed branch', () => {
+    // Every publish, default and off payload is written through this target.
+    // On `main` each one would queue a Vercel deployment for a build whose
+    // output cannot differ - none of these files are read by the build.
+    expect(CONFIG_TARGET.branch).toBe('config-history');
+    expect(branchName(CONFIG_TARGET)).not.toBe(branchName());
+    expect(repoName(CONFIG_TARGET)).toBe(repoName());
   });
 
   it('ignores an undefined field rather than treating it as a value', () => {

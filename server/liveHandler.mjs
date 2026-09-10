@@ -18,7 +18,7 @@
 
 import { ConfigCatError, getValues } from './configcat.mjs';
 import { describeChange, diffJson, summarizeDiff } from './diff.mjs';
-import { fileHistory, readFile } from './git.mjs';
+import { CONFIG_TARGET, fileHistory, readFile } from './git.mjs';
 import { GIT_PATHS, SETTING_KEYS } from './schedule.mjs';
 
 const CONFIG_ID = process.env.CONFIGCAT_CONFIG_ID ?? '08dee35e-a4d3-4e5e-8157-f96d209ff503';
@@ -74,7 +74,7 @@ export async function serveLiveConfig(req, res) {
     // is unknown.
     let baseline = { present: false, path: gitPath, json: null, error: null };
     try {
-      const file = await readFile(gitPath);
+      const file = await readFile(gitPath, CONFIG_TARGET);
       if (file.error) baseline.error = file.error;
       else if (file.exists) {
         try {
@@ -113,7 +113,7 @@ export async function serveLiveConfig(req, res) {
       };
     }
 
-    const history = await fileHistory(gitPath, 8);
+    const history = await fileHistory(gitPath, 8, CONFIG_TARGET);
 
     sendJson(res, 200, {
       domain,

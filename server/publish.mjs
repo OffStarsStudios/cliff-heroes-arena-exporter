@@ -19,7 +19,7 @@
 import { createHash } from 'crypto';
 import { ConfigCatError, getValues, tryRequest } from './configcat.mjs';
 import { describeChange, diffJson, summarizeDiff } from './diff.mjs';
-import { commitFile, gitAvailable } from './git.mjs';
+import { CONFIG_TARGET, commitFile, gitAvailable } from './git.mjs';
 
 /**
  * ConfigCat stores the minified form and git stores the pretty-printed one.
@@ -340,6 +340,11 @@ export async function applyPublish({ configId, environmentId, entries, productId
   // Record what went live. Only verified writes are committed: git is meant to
   // be the record of what is actually deployed, so writing an entry we could
   // not confirm would make the history lie.
+  //
+  // The record goes to CONFIG_TARGET rather than the deployed branch. Nothing
+  // in the build reads these files, and a commit on `main` costs a Vercel
+  // deployment - so a busy afternoon of publishing used to spend the day's
+  // allowance on builds of unchanged code.
   const commits = [];
   for (const result of results) {
     if (result.status !== 'written' || result.verified !== true) continue;
@@ -349,6 +354,7 @@ export async function applyPublish({ configId, environmentId, entries, productId
       await commitFile({
         path: entry.gitPath,
         content: toGitContent(entry.payload),
+        target: CONFIG_TARGET,
         // The same note ConfigCat's audit log got, so the two records of one
         // publish do not have to be reconciled by hand later.
         message: `Publish ${result.settingKey} to ${environmentId}\n\n${result.note ?? 'Published from the back office console.'}`,
