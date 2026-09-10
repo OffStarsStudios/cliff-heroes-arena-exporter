@@ -2,11 +2,11 @@
   "Arenas": [
     {
       "ID": "arena.lostoasis",
-      "TrackCount": 15,
+      "TrackCount": 20,
       "BotLevels": [
         "Easy",
         "Medium",
-        "Medium"
+        "Hard"
       ]
     },
     {
@@ -20,7 +20,7 @@
     },
     {
       "ID": "arena.sakuracliffs",
-      "TrackCount": 25,
+      "TrackCount": 20,
       "BotLevels": [
         "Hard",
         "Hard",
