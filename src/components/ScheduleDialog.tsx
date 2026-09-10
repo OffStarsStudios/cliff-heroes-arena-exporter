@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
+import { Portal } from './Portal';
 import { ACCOUNT, environmentName, isLiveEnvironment } from '../domains/account';
 import { DOMAIN_LABELS, SETTING_KEYS, type DomainId } from '../domains/types';
 import { fetchValues } from '../lib/liveConfig';
@@ -137,6 +138,7 @@ export function ScheduleDialog({ domain, payload, environmentId, onClose, onSche
   const canSubmit = !busy && !blockedOnDefault && (!targetsLive || confirmed);
 
   return (
+    <Portal>
     <div className="modal" role="dialog" aria-modal="true" aria-labelledby="schedule-title">
       <div className="modal__scrim" onClick={onClose} aria-hidden="true" />
       <div className="modal__panel">
@@ -291,5 +293,6 @@ export function ScheduleDialog({ domain, payload, environmentId, onClose, onSche
         </footer>
       </div>
     </div>
+    </Portal>
   );
 }

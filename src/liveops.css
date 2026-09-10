@@ -830,7 +830,7 @@
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
   display: flex;
   flex-direction: column;
-  max-height: min(88vh, 760px);
+  max-height: min(90vh, 940px);
   max-width: 560px;
   position: relative;
   width: 100%;
@@ -877,9 +877,180 @@
   text-align: left;
 }
 
-/* The booking form carries a whole config review, not just a few fields. */
+/* The booking form carries a whole config review, not just a few fields: the
+   season header alone is nine controls, and at 660px they stacked two to a row
+   under a scroll. */
 .modal__panel--roomy {
-  max-width: 660px;
+  max-width: min(1080px, 94vw);
+}
+
+
+/* ============================================================================
+   The live ops board.
+
+   The calendar and the events table are not documents to read, they are a
+   board to work: rows are cards, a row is a click target, the category is a
+   colour you find before you read anything, and the state of an event is a
+   chip rather than a sentence. Everything here is that, and nothing here is a
+   new colour system - the category hues and status tones are the ones the rest
+   of the console already uses.
+   ========================================================================== */
+
+.toolbar--board {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: var(--space-2) var(--space-3);
+}
+
+/* What is running, in two numbers, at the end of the toolbar. */
+.tally {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 12.5px;
+  gap: var(--space-4);
+  margin-left: auto;
+}
+
+.tally__item {
+  align-items: center;
+  display: flex;
+  font-weight: 600;
+  gap: 6px;
+}
+
+.tally__dot {
+  border-radius: 999px;
+  height: 8px;
+  width: 8px;
+}
+
+.tally__dot--live {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
+}
+
+.tally__dot--soon {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* ---------- the events table as a board ---------- */
+
+.tablewrap--board {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: auto;
+}
+
+.table--board {
+  border-collapse: separate;
+  border-spacing: 0;
+  /* Below this the dates start wrapping to three lines, which is when the
+     board stops being scannable. It scrolls inside its own box instead. */
+  min-width: 940px;
+  width: 100%;
+}
+
+/* Times, durations and sizes are read as single tokens, never wrapped. */
+.table--board td:nth-child(4),
+.table--board td:nth-child(5),
+.table--board td:nth-child(6),
+.table--board td:nth-child(8) {
+  white-space: nowrap;
+}
+
+/* The name column takes the slack; everything else is as wide as it reads. */
+.table--board td:first-child,
+.table--board th:first-child {
+  min-width: 220px;
+  width: 30%;
+}
+
+/* The header stays put: a board is scrolled, and a column you cannot name is
+   a column you have to count. */
+.table--board thead th {
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 10px 14px;
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.table--board td {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+  vertical-align: middle;
+}
+
+.table--board tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* The category, as a stripe down the left of the row. Found before it is read. */
+.table--board .table__row--open td:first-child {
+  border-left: 3px solid var(--event-colour, var(--border-strong));
+}
+
+.table__row--open {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.table__row--open:hover td {
+  background: var(--surface-hover);
+}
+
+.table__row--selected td {
+  background: var(--accent-soft);
+}
+
+/* The name is a real button so the row works from a keyboard too. */
+.table__open {
+  background: none;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  text-align: left;
+}
+
+.table__open:hover {
+  color: var(--accent);
+}
+
+.table__actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Actions stay quiet until the row is under the pointer - a board full of red
+   buttons reads as a board full of problems. */
+.table--board .table__actions .btn {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.table__row--open:hover .table__actions .btn,
+.table--board .table__actions .btn:focus-visible {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .table--board .table__actions .btn {
+    opacity: 1;
+  }
 }
 
 /* ---------- responsive ---------- */
@@ -1151,7 +1322,8 @@
    ========================================================================== */
 
 .gantt {
-  --gantt-head: 148px;
+  --gantt-head: 172px;
+  --gantt-row: 46px;
   position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1175,7 +1347,7 @@
 .gantt__lane-head {
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 14px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
@@ -1209,7 +1381,7 @@
 }
 
 .gantt__lane .gantt__track {
-  min-height: calc(var(--rows, 1) * 40px + 8px);
+  min-height: calc(var(--rows, 1) * var(--gantt-row) + 12px);
   padding: 8px 0;
 }
 
@@ -1239,7 +1411,10 @@
 .gantt__bar {
   position: absolute;
   top: 8px;
-  height: 32px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  height: 38px;
   min-width: 4px;
   padding: 0 8px;
   display: flex;
@@ -1259,6 +1434,24 @@
 
 .gantt__bar:hover {
   filter: brightness(1.08);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+/* The phase, under the name: what a card on a board carries. */
+.gantt__bar-phase {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+  overflow: hidden;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Too short a bar cannot hold two lines; the tooltip still has both. */
+.gantt__bar[style*="width: 0"] .gantt__bar-phase {
+  display: none;
 }
 
 /* The preview slice: the config is live but players cannot see the event yet.

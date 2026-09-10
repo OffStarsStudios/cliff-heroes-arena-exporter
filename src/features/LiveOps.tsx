@@ -54,8 +54,16 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // One dialog, two jobs. `composing` books a new event; `editing` holds the
+  // one being changed, which is what a row or a bar opens.
   const [composing, setComposing] = useState(false);
+  const [editing, setEditing] = useState<LiveOpsEntry | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const open = useCallback((entry: LiveOpsEntry) => {
+    setSelectedId(entry.id);
+    setEditing(entry);
+  }, []);
 
   const environment = liveEnvironment() ?? ENVIRONMENTS[0];
   const [environmentId, setEnvironmentId] = useState(environment.environmentId);
@@ -86,6 +94,17 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
       .sort((a, b) => Date.parse(a.liveops.opensAt) - Date.parse(b.liveops.opensAt));
   }, [view, environmentId]);
 
+  const counts = useMemo(() => {
+    let live = 0;
+    let upcoming = 0;
+    for (const entry of events) {
+      const phase = phaseOf(entry, now);
+      if (phase === 'active' || phase === 'ending' || phase === 'preview') live += 1;
+      if (phase === 'scheduled') upcoming += 1;
+    }
+    return { live, upcoming };
+  }, [events, now]);
+
   const { back, forward } = RANGES[range];
   const from = now - back * DAY_MS;
   const to = now + forward * DAY_MS;
@@ -114,7 +133,7 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
   );
 
   return (
-    <section className="page stack-md">
+    <section className="stack-md">
       <header className="page__head">
         <div>
           <h1 className="page__title">
@@ -135,7 +154,7 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
         </button>
       </header>
 
-      <div className="toolbar">
+      <div className="toolbar toolbar--board">
         <Segmented
           label="View"
           value={mode}
@@ -163,6 +182,18 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
             ))}
           </select>
         </label>
+
+        {/* The two numbers a live ops board is opened to check. */}
+        <div className="tally" aria-live="polite">
+          <span className="tally__item">
+            <span className="tally__dot tally__dot--live" aria-hidden="true" />
+            {counts.live} live
+          </span>
+          <span className="tally__item">
+            <span className="tally__dot tally__dot--soon" aria-hidden="true" />
+            {counts.upcoming} upcoming
+          </span>
+        </div>
       </div>
 
       {view?.unavailable !== undefined && (
@@ -201,20 +232,33 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
             to={to}
             now={now}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onOpen={open}
           />
           <Legend />
         </>
       ) : (
-        <EventTable events={events} now={now} busyId={busyId} onCancel={cancel} onNavigate={onNavigate} />
+        <EventTable
+          events={events}
+          now={now}
+          busyId={busyId}
+          selectedId={selectedId}
+          onOpen={open}
+          onCancel={cancel}
+          onNavigate={onNavigate}
+        />
       )}
 
-      {composing && (
+      {(composing || editing !== null) && (
         <LiveOpsDialog
           environmentId={environmentId}
-          onClose={() => setComposing(false)}
+          entry={editing}
+          onClose={() => {
+            setComposing(false);
+            setEditing(null);
+          }}
           onScheduled={() => {
             setComposing(false);
+            setEditing(null);
             void load();
           }}
         />
@@ -244,12 +288,16 @@ function EventTable({
   events,
   now,
   busyId,
+  selectedId,
+  onOpen,
   onCancel,
   onNavigate,
 }: {
   events: LiveOpsEntry[];
   now: number;
   busyId: string | null;
+  selectedId: string | null;
+  onOpen: (entry: LiveOpsEntry) => void;
   onCancel: (entry: LiveOpsEntry) => void;
   onNavigate: (view: View) => void;
 }) {
@@ -262,8 +310,8 @@ function EventTable({
   }
 
   return (
-    <div className="tablewrap">
-      <table className="table">
+    <div className="tablewrap tablewrap--board">
+      <table className="table table--board">
         <thead>
           <tr>
             <th scope="col">Event</th>
@@ -280,18 +328,32 @@ function EventTable({
         <tbody>
           {events.map((entry) => {
             const phase: EventPhase = phaseOf(entry, now);
-            const open = phase === 'scheduled' || phase === 'preview' || phase === 'active' || phase === 'ending';
+            const running = phase === 'scheduled' || phase === 'preview' || phase === 'active' || phase === 'ending';
+            const name = entry.label === '' ? DOMAIN_LABELS[entry.domain] : entry.label;
             return (
-              <tr key={entry.id}>
+              // The whole row opens the event, the way a board card does. The
+              // name inside it is a real button, so this works from a keyboard
+              // as well as from a pointer.
+              <tr
+                key={entry.id}
+                className={`table__row--open${entry.id === selectedId ? ' table__row--selected' : ''}`}
+                style={{ ['--event-colour' as string]: CATEGORY_COLOURS[entry.liveops.category] }}
+                onClick={() => onOpen(entry)}
+              >
                 <td>
-                  <span className="table__strong">{entry.label === '' ? DOMAIN_LABELS[entry.domain] : entry.label}</span>
+                  <button type="button" className="table__open" onClick={() => onOpen(entry)}>
+                    {name}
+                  </button>
                   {entry.note !== null && entry.note !== '' && <span className="table__sub">{entry.note}</span>}
                 </td>
                 <td>
                   <button
                     type="button"
                     className="linklike"
-                    onClick={() => onNavigate(FEATURE_SOURCE[entry.domain as keyof typeof FEATURE_SOURCE] as View)}
+                    onClick={(mouse) => {
+                      mouse.stopPropagation();
+                      onNavigate(FEATURE_SOURCE[entry.domain as keyof typeof FEATURE_SOURCE] as View);
+                    }}
                   >
                     {DOMAIN_LABELS[entry.domain]}
                   </button>
@@ -329,18 +391,26 @@ function EventTable({
                       when the event was booked. */}
                   {typeof entry.liveops.sourceUrl === 'string' && entry.liveops.sourceUrl !== '' && (
                     <span className="table__sub">
-                      <a href={entry.liveops.sourceUrl} target="_blank" rel="noreferrer">
+                      <a
+                        href={entry.liveops.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(mouse) => mouse.stopPropagation()}
+                      >
                         from the sheet
                       </a>
                     </span>
                   )}
                 </td>
-                <td>
-                  {open && (
+                <td className="table__actions">
+                  {running && (
                     <button
                       type="button"
                       className="btn btn--sm btn--danger"
-                      onClick={() => onCancel(entry)}
+                      onClick={(mouse) => {
+                        mouse.stopPropagation();
+                        onCancel(entry);
+                      }}
                       disabled={busyId === entry.id}
                     >
                       {phase === 'scheduled' ? 'Cancel' : 'End it now'}

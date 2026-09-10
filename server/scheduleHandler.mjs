@@ -14,6 +14,7 @@ import {
   DOMAINS,
   cancelEntry,
   createEntry,
+  updateEntry,
   describeSchedule,
   loadDefault,
   previewEntry,
@@ -129,6 +130,36 @@ async function serveCreate(req, res) {
       return;
     }
     sendJson(res, 201, { entry: { ...result.entry, payload: undefined } });
+  } catch (error) {
+    fail(res, error);
+  }
+}
+
+/**
+ * `POST /api/schedule/update` - edit a window that has not finished.
+ *
+ * Only the fields present in the body change, so the form can send what
+ * somebody touched and leave the config it already booked alone.
+ */
+async function serveUpdate(req, res) {
+  try {
+    const body = await readJsonBody(req);
+    if (typeof body.id !== 'string' || body.id === '') throw new Error('"id" is required.');
+    const result = await updateEntry({
+      id: body.id,
+      label: body.label,
+      note: body.note,
+      environmentName: body.environmentName,
+      startsAt: body.startsAt,
+      endsAt: body.endsAt,
+      payload: body.payload,
+      liveops: body.liveops ?? undefined,
+    });
+    if (!result.ok) {
+      sendJson(res, 422, { error: 'This window was not changed.', problems: result.problems });
+      return;
+    }
+    sendJson(res, 200, { entry: { ...result.entry, payload: undefined } });
   } catch (error) {
     fail(res, error);
   }
@@ -268,6 +299,7 @@ const ROUTES = {
   '/api/schedule': (req, res) =>
     req.method === 'POST' ? serveCreate(req, res) : serveList(req, res),
   '/api/schedule/cancel': serveCancel,
+  '/api/schedule/update': serveUpdate,
   '/api/schedule/default': serveDefault,
   '/api/schedule/off': serveOff,
   '/api/schedule/preview': servePreview,
@@ -283,4 +315,14 @@ export async function handleScheduleRequest(req, res) {
   return true;
 }
 
-export { serveCancel, serveCreate, serveDefault, serveGitStatus, serveList, serveOff, servePreview, serveTick };
+export {
+  serveCancel,
+  serveCreate,
+  serveDefault,
+  serveGitStatus,
+  serveList,
+  serveOff,
+  servePreview,
+  serveTick,
+  serveUpdate,
+};

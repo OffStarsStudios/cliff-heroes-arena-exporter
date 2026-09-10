@@ -121,6 +121,31 @@ describe('booking a window', () => {
   });
 });
 
+describe('editing a window that has already started', () => {
+  /**
+   * The same guardrails run on an edit as on a booking, with one exception:
+   * a live window legitimately started in the past, and refusing it for that
+   * would make an event impossible to extend once it was running.
+   */
+  it('keeps the past start it legitimately has', () => {
+    const live = entry({ startsAt: iso(-2 * HOUR), endsAt: iso(5 * HOUR), state: 'active' });
+    expect(check(live).join(' ')).toMatch(/in the past/i);
+    expect(check(live, { started: true })).toEqual([]);
+  });
+
+  it('is still held to every other rule', () => {
+    const backwards = entry({ startsAt: iso(-2 * HOUR), endsAt: iso(-3 * HOUR), state: 'active' });
+    expect(check(backwards, { started: true }).join(' ')).toMatch(/not after the start/i);
+
+    const clashing = entry({ startsAt: iso(-2 * HOUR), endsAt: iso(5 * HOUR), state: 'active' });
+    const problems = check(clashing, {
+      started: true,
+      entries: [entry({ id: 'sch_b', startsAt: iso(HOUR), endsAt: iso(9 * HOUR) })],
+    });
+    expect(problems.join(' ')).toMatch(/overlaps/i);
+  });
+});
+
 describe('what should be live at an instant', () => {
   const open = entry({ id: 'sch_open', startsAt: iso(-HOUR), endsAt: iso(HOUR) });
   const future = entry({ id: 'sch_future', startsAt: iso(HOUR), endsAt: iso(2 * HOUR) });

@@ -183,6 +183,28 @@ export function createWindow(input: NewWindow): Promise<{ entry: ScheduleEntry }
   });
 }
 
+/**
+ * An edit to a booked window. Everything but the id is optional, and what is
+ * left out keeps the value it had - so a form can send what somebody touched
+ * and leave the config the window already carries alone.
+ */
+export interface WindowEdit {
+  id: string;
+  label?: string;
+  note?: string | null;
+  startsAt?: string;
+  endsAt?: string | null;
+  payload?: unknown;
+  liveops?: Partial<LiveOpsBlock>;
+}
+
+export function updateWindow(input: WindowEdit): Promise<{ entry: ScheduleEntry }> {
+  return call<{ entry: ScheduleEntry }>('/api/schedule/update', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export function cancelWindow(id: string, reason?: string): Promise<{ entry: ScheduleEntry }> {
   return call<{ entry: ScheduleEntry }>('/api/schedule/cancel', {
     method: 'POST',

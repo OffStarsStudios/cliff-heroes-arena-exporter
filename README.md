@@ -517,6 +517,7 @@ schedule looks like.
 | `GET /api/schedule` | Every window, the fallbacks, and the heartbeat's health |
 | `POST /api/schedule` | Book a window. Refused with the full list of failed guardrails. |
 | `POST /api/schedule/cancel` | Stop a window; if it is live, put the config back first |
+| `POST /api/schedule/update` | Edit a window that has not finished. Only the fields sent change. |
 | `GET|POST /api/schedule/default` | Read or record a config's fallback |
 | `GET /api/schedule/preview?id=` | What one window would change if it ran now |
 | `GET|POST /api/schedule/tick` | The heartbeat. GET as well, because Vercel Cron issues one. |
@@ -577,6 +578,20 @@ the events table. Reload the sheet and book again to change it.
 There are no preview hours. An event's config is published when the event opens,
 which is the one date anybody has in their head. Events booked before this was
 removed still carry theirs, and the calendar still draws their preview slice.
+
+### Editing a booked event
+
+Clicking a row in the events table, or a bar on the calendar, opens that event in
+the same form it was booked with. A window that has not started yet is editable in
+full; one that is already live keeps its start and its config - moving those is a
+publish, not an edit - and still takes a new end time, name and note. The entry keeps
+its id and its history, so an event that slipped a week reads as one event that
+slipped rather than as a cancellation and a new booking.
+
+An event whose window lives inside its config (a battle pass season carries its own
+start and length) reloads its sheet when the form opens, so moving the dates rebuilds
+the payload. If that sheet cannot be read, the dates are refused rather than saved
+against a config that would publish the old window.
 
 ### Phases
 
