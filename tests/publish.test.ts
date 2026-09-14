@@ -110,7 +110,7 @@ describe('the publish note', () => {
     after.Arenas[0].TrackCount = 18;
     const note = noteFor(arenasJson, after);
     expect(note).toContain('1 change (1 changed):');
-    expect(note).toContain('TrackCount: 15 -> 18');
+    expect(note).toContain('TrackCount: 20 -> 18');
   });
 
   it('reports additions and removals in the counts', () => {

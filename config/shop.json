@@ -3,6 +3,7 @@
     {
       "ID": "shop.featured.cinder",
       "SoldIn": "RealMoney",
+      "PriceTier": 5,
       "IsEnabled": true,
       "BadgeLabel": "SALE",
       "OfferDurationHours": 6,
@@ -20,6 +21,7 @@
     {
       "ID": "shop.featured.starter",
       "SoldIn": "RealMoney",
+      "PriceTier": 10,
       "IsEnabled": true,
       "BadgeLabel": "LIMITED",
       "OfferDurationHours": 12,
@@ -35,11 +37,29 @@
       ]
     },
     {
-      "ID": "shop.pass.season1.premium",
+      "ID": "shop.pass.premium",
       "SoldIn": "Gems",
+      "PriceTier": 10,
       "IsEnabled": true,
       "IsListed": false,
       "PriceInCurrency": 1100,
+      "Contents": []
+    },
+    {
+      "ID": "shop.pass.season1.tier1",
+      "SoldIn": "RealMoney",
+      "PriceTier": 10,
+      "IsEnabled": true,
+      "IsListed": false,
+      "BadgeLabel": "SEASON 1",
+      "Contents": []
+    },
+    {
+      "ID": "shop.pass.season1.tier2",
+      "SoldIn": "RealMoney",
+      "PriceTier": 15,
+      "IsEnabled": true,
+      "IsListed": false,
       "BadgeLabel": "SEASON 1",
       "Contents": []
     },
@@ -70,6 +90,7 @@
     {
       "ID": "shop.gems.tier1",
       "SoldIn": "RealMoney",
+      "PriceTier": 1,
       "IsEnabled": true,
       "Contents": [
         {
@@ -81,6 +102,7 @@
     {
       "ID": "shop.gems.tier2",
       "SoldIn": "RealMoney",
+      "PriceTier": 2,
       "IsEnabled": true,
       "Contents": [
         {
@@ -92,6 +114,7 @@
     {
       "ID": "shop.gems.tier3",
       "SoldIn": "RealMoney",
+      "PriceTier": 5,
       "IsEnabled": true,
       "Contents": [
         {
@@ -103,6 +126,7 @@
     {
       "ID": "shop.gems.tier4",
       "SoldIn": "RealMoney",
+      "PriceTier": 10,
       "IsEnabled": true,
       "Contents": [
         {
@@ -114,6 +138,7 @@
     {
       "ID": "shop.gems.tier5",
       "SoldIn": "RealMoney",
+      "PriceTier": 20,
       "IsEnabled": true,
       "Contents": [
         {
@@ -125,6 +150,7 @@
     {
       "ID": "shop.gems.tier6",
       "SoldIn": "RealMoney",
+      "PriceTier": 50,
       "IsEnabled": true,
       "Contents": [
         {
@@ -208,6 +234,7 @@
     {
       "ID": "shop.cards.tier1",
       "SoldIn": "RealMoney",
+      "PriceTier": 1,
       "IsEnabled": true,
       "Contents": [
         {
@@ -219,6 +246,7 @@
     {
       "ID": "shop.cards.tier2",
       "SoldIn": "RealMoney",
+      "PriceTier": 2,
       "IsEnabled": true,
       "Contents": [
         {
@@ -230,6 +258,7 @@
     {
       "ID": "shop.cards.tier3",
       "SoldIn": "RealMoney",
+      "PriceTier": 5,
       "IsEnabled": true,
       "Contents": [
         {
@@ -241,6 +270,7 @@
     {
       "ID": "shop.cards.tier4",
       "SoldIn": "RealMoney",
+      "PriceTier": 10,
       "IsEnabled": true,
       "Contents": [
         {
@@ -252,6 +282,7 @@
     {
       "ID": "shop.cards.tier5",
       "SoldIn": "RealMoney",
+      "PriceTier": 20,
       "IsEnabled": true,
       "Contents": [
         {
@@ -263,6 +294,7 @@
     {
       "ID": "shop.cards.tier6",
       "SoldIn": "RealMoney",
+      "PriceTier": 50,
       "IsEnabled": true,
       "Contents": [
         {
@@ -287,7 +319,7 @@
       "ID": "shop.rv.lootbox.common",
       "SoldIn": "Ad",
       "IsEnabled": true,
-      "DailyLimit": 2,
+      "DailyLimit": 5,
       "Contents": [
         {
           "RewardID": "reward.lootbox.common",

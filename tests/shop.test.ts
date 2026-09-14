@@ -6,6 +6,8 @@ import { runAnalysis } from '../src/exporters/analysis';
 import { SHOP_EXPORTER } from '../src/exporters/shop';
 import { buildLookup } from '../src/lib/lookups';
 import { autoSelectShopSheets, detectDataset } from '../src/lib/sheetSelect';
+import { CURRENCY_NAMES } from '../src/lib/currencies';
+import { PRICE_TIERS } from '../src/lib/priceTiers';
 import { findRewardSlots, transformShop } from '../src/lib/shop';
 import { serializeShopConfig, validateShopConfig } from '../src/lib/validateShop';
 import { readWorkbookBytes } from '../src/lib/workbook';
@@ -39,6 +41,7 @@ const HEADER: RawCell[] = [
   'Enabled',
   'Listed',
   'Price',
+  'Price Tier',
   'Badge Label',
   'Offer Duration Hours',
   'Cooldown Hours',
@@ -47,37 +50,40 @@ const HEADER: RawCell[] = [
   'Amount 1',
   'Reward 2',
   'Amount 2',
+  'Sort Override',
 ];
 
 // The live shop, row for row. `_` marks a blank cell.
 const _ = null;
 const LIVE_ROWS: RawCell[][] = [
   HEADER,
-  ['shop.featured.cinder', 'RealMoney', true, true, _, 'SALE', 6, _, _, 'Hero_Cinder', 1, 'Coins', 3500],
-  ['shop.featured.starter', 'RealMoney', true, true, _, 'LIMITED', 12, _, _, 'Coins', 8000, 'Upgrade_Cards', 320],
-  ['shop.pass.season1.premium', 'Gems', true, false, 1100, 'SEASON 1', _, _, _, _, _, _, _],
-  ['shop.skin.cliff.halloween', 'Gems', true, true, 500, _, _, _, _, 'Skin_Cliff_Halloween', 1, _, _],
-  ['shop.skin.tank.flower', 'Gems', true, true, 500, _, _, _, _, 'Skin_Tank_Flower', 1, _, _],
-  ['shop.gems.tier1', 'RealMoney', true, true, _, _, _, _, _, 'Gems', 80, _, _],
-  ['shop.gems.tier2', 'RealMoney', true, true, _, _, _, _, _, 'Gems', 170, _, _],
-  ['shop.gems.tier3', 'RealMoney', true, true, _, _, _, _, _, 'Gems', 500, _, _],
-  ['shop.gems.tier4', 'RealMoney', true, true, _, _, _, _, _, 'Gems', 1100, _, _],
-  ['shop.gems.tier5', 'RealMoney', true, true, _, _, _, _, _, 'Gems', 2400, _, _],
-  ['shop.gems.tier6', 'RealMoney', true, true, _, _, _, _, _, 'Gems', 6500, _, _],
-  ['shop.coins.tier1', 'Gems', true, true, 80, _, _, _, _, 'Coins', 500, _, _],
-  ['shop.coins.tier2', 'Gems', true, true, 170, _, _, _, _, 'Coins', 1200, _, _],
-  ['shop.coins.tier3', 'Gems', true, true, 500, _, _, _, _, 'Coins', 3750, _, _],
-  ['shop.coins.tier4', 'Gems', true, true, 1100, _, _, _, _, 'Coins', 8800, _, _],
-  ['shop.coins.tier5', 'Gems', true, true, 2400, _, _, _, _, 'Coins', 20400, _, _],
-  ['shop.coins.tier6', 'Gems', true, true, 6500, _, _, _, _, 'Coins', 58500, _, _],
-  ['shop.cards.tier1', 'RealMoney', true, true, _, _, _, _, _, 'Upgrade_Cards', 20, _, _],
-  ['shop.cards.tier2', 'RealMoney', true, true, _, _, _, _, _, 'Upgrade_Cards', 50, _, _],
-  ['shop.cards.tier3', 'RealMoney', true, true, _, _, _, _, _, 'Upgrade_Cards', 140, _, _],
-  ['shop.cards.tier4', 'RealMoney', true, true, _, _, _, _, _, 'Upgrade_Cards', 320, _, _],
-  ['shop.cards.tier5', 'RealMoney', true, true, _, _, _, _, _, 'Upgrade_Cards', 760, _, _],
-  ['shop.cards.tier6', 'RealMoney', true, true, _, _, _, _, _, 'Upgrade_Cards', 2200, _, _],
-  ['shop.free.coins', 'Free', true, true, _, _, _, 24, _, 'Coins', 100, _, _],
-  ['shop.rv.lootbox.common', 'Ad', true, true, _, _, _, _, 2, 'Lootbox_Common', 1, _, _],
+  ['shop.featured.cinder', 'RealMoney', true, true, _, 5, 'SALE', 6, _, _, 'Hero_Cinder', 1, 'Coins', 3500, _],
+  ['shop.featured.starter', 'RealMoney', true, true, _, 10, 'LIMITED', 12, _, _, 'Coins', 8000, 'Upgrade_Cards', 320, _],
+  ['shop.pass.premium', 'Gems', true, false, 1100, 10, _, _, _, _, _, _, _, _, _],
+  ['shop.pass.season1.tier1', 'RealMoney', true, false, _, 10, 'SEASON 1', _, _, _, _, _, _, _, _],
+  ['shop.pass.season1.tier2', 'RealMoney', true, false, _, 15, 'SEASON 1', _, _, _, _, _, _, _, _],
+  ['shop.skin.cliff.halloween', 'Gems', true, true, 500, _, _, _, _, _, 'Skin_Cliff_Halloween', 1, _, _, _],
+  ['shop.skin.tank.flower', 'Gems', true, true, 500, _, _, _, _, _, 'Skin_Tank_Flower', 1, _, _, _],
+  ['shop.gems.tier1', 'RealMoney', true, true, _, 1, _, _, _, _, 'Gems', 80, _, _, _],
+  ['shop.gems.tier2', 'RealMoney', true, true, _, 2, _, _, _, _, 'Gems', 170, _, _, _],
+  ['shop.gems.tier3', 'RealMoney', true, true, _, 5, _, _, _, _, 'Gems', 500, _, _, _],
+  ['shop.gems.tier4', 'RealMoney', true, true, _, 10, _, _, _, _, 'Gems', 1100, _, _, _],
+  ['shop.gems.tier5', 'RealMoney', true, true, _, 20, _, _, _, _, 'Gems', 2400, _, _, _],
+  ['shop.gems.tier6', 'RealMoney', true, true, _, 50, _, _, _, _, 'Gems', 6500, _, _, _],
+  ['shop.coins.tier1', 'Gems', true, true, 80, _, _, _, _, _, 'Coins', 500, _, _, _],
+  ['shop.coins.tier2', 'Gems', true, true, 170, _, _, _, _, _, 'Coins', 1200, _, _, _],
+  ['shop.coins.tier3', 'Gems', true, true, 500, _, _, _, _, _, 'Coins', 3750, _, _, _],
+  ['shop.coins.tier4', 'Gems', true, true, 1100, _, _, _, _, _, 'Coins', 8800, _, _, _],
+  ['shop.coins.tier5', 'Gems', true, true, 2400, _, _, _, _, _, 'Coins', 20400, _, _, _],
+  ['shop.coins.tier6', 'Gems', true, true, 6500, _, _, _, _, _, 'Coins', 58500, _, _, _],
+  ['shop.cards.tier1', 'RealMoney', true, true, _, 1, _, _, _, _, 'Upgrade_Cards', 20, _, _, _],
+  ['shop.cards.tier2', 'RealMoney', true, true, _, 2, _, _, _, _, 'Upgrade_Cards', 50, _, _, _],
+  ['shop.cards.tier3', 'RealMoney', true, true, _, 5, _, _, _, _, 'Upgrade_Cards', 140, _, _, _],
+  ['shop.cards.tier4', 'RealMoney', true, true, _, 10, _, _, _, _, 'Upgrade_Cards', 320, _, _, _],
+  ['shop.cards.tier5', 'RealMoney', true, true, _, 20, _, _, _, _, 'Upgrade_Cards', 760, _, _, _],
+  ['shop.cards.tier6', 'RealMoney', true, true, _, 50, _, _, _, _, 'Upgrade_Cards', 2200, _, _, _],
+  ['shop.free.coins', 'Free', true, true, _, _, _, _, 24, _, 'Coins', 100, _, _, _],
+  ['shop.rv.lootbox.common', 'Ad', true, true, _, _, _, _, _, 5, 'Lootbox_Common', 1, _, _, _],
 ];
 
 function run(rows: RawCell[][], rewards: RawSheet = REWARDS): ShopTransformResult {
@@ -102,7 +108,7 @@ function featured(patch: Partial<Record<number, RawCell>> = {}): RawCell[] {
 }
 
 function gems(patch: Partial<Record<number, RawCell>> = {}): RawCell[] {
-  const row = LIVE_ROWS[12].slice();
+  const row = LIVE_ROWS[14].slice();
   for (const [index, value] of Object.entries(patch)) row[Number(index)] = value as RawCell;
   return row;
 }
@@ -113,13 +119,17 @@ describe('the live shop payload', () => {
     expect(errors(result)).toEqual([]);
     expect(result.config).toEqual(shopJson);
     expect(validateShopConfig(result.config)).toEqual([]);
-    expect(result.stats.products).toBe(25);
+    expect(result.stats.products).toBe(27);
   });
 
-  it('warns only about the pass, which grants nothing', () => {
+  it('warns only about the three pass products, which grant nothing', () => {
     const result = run(LIVE_ROWS);
-    expect(result.issues.map((issue) => issue.code)).toEqual(['shop-no-contents']);
-    expect(result.issues[0].message).toContain('shop.pass.season1.premium');
+    expect(result.issues.map((issue) => issue.code)).toEqual([
+      'shop-no-contents',
+      'shop-no-contents',
+      'shop-no-contents',
+    ]);
+    expect(result.issues.map((issue) => issue.message).join(' ')).toContain('shop.pass.season1.tier2');
   });
 
   it('serialises to the git-tracked baseline', () => {
@@ -130,11 +140,21 @@ describe('the live shop payload', () => {
   it('emits optional keys in schema order and omits unused ones', () => {
     const result = run(LIVE_ROWS);
     const byId = new Map(result.config.Products.map((product) => [product.ID, Object.keys(product)]));
-    expect(byId.get('shop.featured.cinder')).toEqual(['ID', 'SoldIn', 'IsEnabled', 'BadgeLabel', 'OfferDurationHours', 'Contents']);
-    expect(byId.get('shop.pass.season1.premium')).toEqual(['ID', 'SoldIn', 'IsEnabled', 'IsListed', 'PriceInCurrency', 'BadgeLabel', 'Contents']);
-    expect(byId.get('shop.gems.tier1')).toEqual(['ID', 'SoldIn', 'IsEnabled', 'Contents']);
+    expect(byId.get('shop.featured.cinder')).toEqual(['ID', 'SoldIn', 'PriceTier', 'IsEnabled', 'BadgeLabel', 'OfferDurationHours', 'Contents']);
+    // The premium pass carries both a gem price and a dollar tier, which is how
+    // it is moved between the two without being re-sent.
+    expect(byId.get('shop.pass.premium')).toEqual(['ID', 'SoldIn', 'PriceTier', 'IsEnabled', 'IsListed', 'PriceInCurrency', 'Contents']);
+    expect(byId.get('shop.pass.season1.tier2')).toEqual(['ID', 'SoldIn', 'PriceTier', 'IsEnabled', 'IsListed', 'BadgeLabel', 'Contents']);
+    expect(byId.get('shop.gems.tier1')).toEqual(['ID', 'SoldIn', 'PriceTier', 'IsEnabled', 'Contents']);
     expect(byId.get('shop.free.coins')).toEqual(['ID', 'SoldIn', 'IsEnabled', 'CooldownHours', 'Contents']);
     expect(byId.get('shop.rv.lootbox.common')).toEqual(['ID', 'SoldIn', 'IsEnabled', 'DailyLimit', 'Contents']);
+  });
+
+  it('prices every real-money product, since the tier is the SKU it is charged through', () => {
+    const result = run(LIVE_ROWS);
+    const money = result.config.Products.filter((product) => product.SoldIn === 'RealMoney');
+    expect(money.length).toBeGreaterThan(0);
+    for (const product of money) expect(PRICE_TIERS).toContain(product.PriceTier as (typeof PRICE_TIERS)[number]);
   });
 });
 
@@ -231,32 +251,75 @@ describe('row validation', () => {
     expect(run([HEADER, featured({ 3: false })]).config.Products[0].IsListed).toBe(false);
   });
 
-  it('requires a price for gem products and refuses one elsewhere', () => {
+  it('requires a currency price when sold in a currency, and refuses one otherwise', () => {
     expect(codes(run([HEADER, gems({ 4: null })]))).toContain('shop-price-missing');
     expect(codes(run([HEADER, featured({ 4: 99 })]))).toContain('shop-price-unexpected');
     expect(codes(run([HEADER, gems({ 4: 'cheap' })]))).toContain('shop-price-invalid');
     expect(codes(run([HEADER, gems({ 4: 12.5 })]))).toContain('shop-price-invalid');
   });
 
-  it('requires a cooldown for free products and a daily limit for ad products, and refuses them elsewhere', () => {
-    const free = LIVE_ROWS[24].slice();
-    const ad = LIVE_ROWS[25].slice();
-    free[7] = null;
-    ad[8] = null;
+  it('sells in any currency the player holds, not only gems', () => {
+    for (const currency of CURRENCY_NAMES) {
+      const result = run([HEADER, gems({ 1: currency })]);
+      expect(errors(result)).toEqual([]);
+      expect(result.config.Products[0].SoldIn).toBe(currency);
+    }
+  });
+
+  it('takes a currency ID as well as its display name, exporting the name', () => {
+    const result = run([HEADER, gems({ 1: 'hardCurrency' })]);
+    expect(errors(result)).toEqual([]);
+    expect(codes(result)).toContain('shop-sold-in-spelling');
+    expect(result.config.Products[0].SoldIn).toBe('Gems');
+  });
+
+  it('takes RewardedAd as the client does, exporting Ad', () => {
+    const ad = LIVE_ROWS[27].slice();
+    ad[1] = 'RewardedAd';
+    const result = run([HEADER, ad]);
+    expect(errors(result)).toEqual([]);
+    expect(result.config.Products[0].SoldIn).toBe('Ad');
+  });
+
+  it('requires a price tier for real money, and only from the ladder the stores stock', () => {
+    expect(codes(run([HEADER, featured({ 5: null })]))).toContain('shop-price-tier-missing');
+    const offLadder = run([HEADER, featured({ 5: 12 })]);
+    expect(codes(offLadder)).toContain('shop-price-tier-invalid');
+    expect(errors(offLadder)[0]).toContain('$10 and $15');
+    // Allowed where it is not what the product is charged in: a tier parked
+    // beside a gem price is how one is moved to real money without a re-send.
+    expect(errors(run([HEADER, gems({ 5: 10 })]))).toEqual([]);
+  });
+
+  it('carries a sort override when the sheet names one', () => {
+    const result = run([HEADER, featured({ 14: -2.5 })]);
+    expect(errors(result)).toEqual([]);
+    expect(result.config.Products[0].SortOverride).toBe(-2.5);
+  });
+
+  it('only warns about a missing cooldown or daily limit, and allows them anywhere', () => {
+    const free = LIVE_ROWS[26].slice();
+    const ad = LIVE_ROWS[27].slice();
+    free[8] = null;
+    ad[9] = null;
     expect(codes(run([HEADER, free]))).toContain('shop-cooldown-missing');
+    expect(errors(run([HEADER, free]))).toEqual([]);
     expect(codes(run([HEADER, ad]))).toContain('shop-daily-limit-missing');
-    expect(codes(run([HEADER, featured({ 7: 24 })]))).toContain('shop-cooldown-unexpected');
-    expect(codes(run([HEADER, featured({ 8: 2 })]))).toContain('shop-daily-limit-unexpected');
-    expect(codes(run([HEADER, featured({ 6: -1 })]))).toContain('shop-offer-hours-invalid');
+    expect(errors(run([HEADER, ad]))).toEqual([]);
+    // The client applies each of these on its own, so neither is tied to a way
+    // of paying.
+    expect(errors(run([HEADER, featured({ 8: 24 })]))).toEqual([]);
+    expect(errors(run([HEADER, featured({ 9: 2 })]))).toEqual([]);
+    expect(codes(run([HEADER, featured({ 7: -1 })]))).toContain('shop-offer-hours-invalid');
   });
 
   it('resolves rewards through the lookup and rejects unknown, duplicated or unpriced ones', () => {
-    expect(codes(run([HEADER, featured({ 9: 'Diamonds' })]))).toContain('shop-reward-unknown');
-    expect(codes(run([HEADER, featured({ 11: 'Hero_Cinder' })]))).toContain('shop-reward-duplicate');
-    expect(codes(run([HEADER, featured({ 10: null })]))).toContain('shop-reward-amount-missing');
-    expect(codes(run([HEADER, featured({ 10: 0 })]))).toContain('shop-reward-amount-invalid');
-    expect(codes(run([HEADER, featured({ 10: 1.5 })]))).toContain('shop-reward-amount-invalid');
-    expect(codes(run([HEADER, featured({ 9: null })]))).toContain('shop-reward-orphan-amount');
+    expect(codes(run([HEADER, featured({ 10: 'Diamonds' })]))).toContain('shop-reward-unknown');
+    expect(codes(run([HEADER, featured({ 12: 'Hero_Cinder' })]))).toContain('shop-reward-duplicate');
+    expect(codes(run([HEADER, featured({ 11: null })]))).toContain('shop-reward-amount-missing');
+    expect(codes(run([HEADER, featured({ 11: 0 })]))).toContain('shop-reward-amount-invalid');
+    expect(codes(run([HEADER, featured({ 11: 1.5 })]))).toContain('shop-reward-amount-invalid');
+    expect(codes(run([HEADER, featured({ 10: null })]))).toContain('shop-reward-orphan-amount');
   });
 
   it('rejects an ambiguous reward name', () => {
@@ -269,7 +332,7 @@ describe('row validation', () => {
   });
 
   it('warns about a product that grants nothing', () => {
-    const result = run([HEADER, gems({ 9: null, 10: null })]);
+    const result = run([HEADER, gems({ 10: null, 11: null })]);
     expect(codes(result)).toContain('shop-no-contents');
     expect(errors(result)).toEqual([]);
     expect(result.config.Products[0].Contents).toEqual([]);
@@ -291,6 +354,9 @@ describe('the shop schema gate', () => {
     expect(gate({ Products: [] })).toContain('no-products');
     const [first] = live.Products;
     expect(gate({ Products: [{ ...first, SoldIn: 'Cash' }] })).toContain('schema-sold-in');
+    expect(gate({ Products: [{ ...first, PriceTier: 12 }] })).toContain('schema-price-tier');
+    const { PriceTier: _tier, ...untiered } = first;
+    expect(gate({ Products: [untiered] })).toContain('schema-price-tier-missing');
     expect(gate({ Products: [{ ...first, IsEnabled: 'yes' }] })).toContain('schema-enabled');
     expect(gate({ Products: [{ ...first, IsListed: true }] })).toContain('schema-listed');
     expect(gate({ Products: [{ ...first, Contents: [{ Amount: 1, RewardID: 'x' }] }] })).toContain('schema-content-keys');

@@ -62,7 +62,7 @@ const SEASON: BattlePassSeason = {
   startUtc: '2026-09-01 00:00',
   durationDays: 30,
   tokensPerTier: 100,
-  premiumProductId: 'shop.pass.season1.premium',
+  premiumProductId: 'shop.pass.season1.tier2',
   skipTierCost: 75,
   skipCurrencyId: 'hardCurrency',
   finalRewardArt: '',
@@ -452,7 +452,7 @@ describe('the pass against the shop', () => {
   it('warns when the product exists but is switched off', () => {
     const disabled: ShopConfig = {
       Products: shop.Products.map((product) =>
-        product.ID === 'shop.pass.season1.premium' ? { ...product, IsEnabled: false } : product,
+        product.ID === 'shop.pass.season1.tier2' ? { ...product, IsEnabled: false } : product,
       ),
     };
     const report = validateGraph({ battlePass: battlePassJson as BattlePassConfig, shop: disabled });

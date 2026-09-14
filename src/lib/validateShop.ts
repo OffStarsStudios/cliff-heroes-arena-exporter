@@ -1,4 +1,6 @@
-import { SHOP_PRODUCT_KEYS, SHOP_SOLD_IN } from './shop';
+import { CURRENCY_NAMES, SHOP_SOLD_IN, isCurrencySoldIn, isShopSoldIn } from './currencies';
+import { PRICE_TIERS, isPriceTier } from './priceTiers';
+import { SHOP_PRODUCT_KEYS } from './shop';
 import type { Issue, ShopConfig } from './types';
 
 const CONTENT_KEYS = ['RewardID', 'Amount'];
@@ -76,11 +78,39 @@ export function validateShopConfig(config: ShopConfig): Issue[] {
       seen.add(record.ID);
     }
 
-    if (!(SHOP_SOLD_IN as readonly unknown[]).includes(record.SoldIn)) {
+    if (!isShopSoldIn(record.SoldIn)) {
       issues.push({
         severity: 'error',
         code: 'schema-sold-in',
         message: `${position}: "SoldIn" must be one of ${SHOP_SOLD_IN.join(', ')}, not ${JSON.stringify(record.SoldIn)}.`,
+      });
+    } else if (record.SoldIn === 'RealMoney' && !('PriceTier' in record)) {
+      // The tier is the SKU. Without one the client reads the product as real
+      // money with nothing to charge against and refuses to sell it at all.
+      issues.push({
+        severity: 'error',
+        code: 'schema-price-tier-missing',
+        message: `${position}: "SoldIn" is RealMoney, so "PriceTier" is required - it is both the dollar price and the store SKU.`,
+      });
+    } else if (isCurrencySoldIn(record.SoldIn) && !('PriceInCurrency' in record)) {
+      issues.push({
+        severity: 'error',
+        code: 'schema-price-missing',
+        message: `${position}: "SoldIn" is ${record.SoldIn}, so "PriceInCurrency" is required.`,
+      });
+    }
+    if ('PriceInCurrency' in record && isShopSoldIn(record.SoldIn) && !isCurrencySoldIn(record.SoldIn)) {
+      issues.push({
+        severity: 'error',
+        code: 'schema-price-unexpected',
+        message: `${position}: "PriceInCurrency" is set but "SoldIn" is ${record.SoldIn}, which is not one of the currencies the player holds (${CURRENCY_NAMES.join(', ')}).`,
+      });
+    }
+    if ('PriceTier' in record && !isPriceTier(record.PriceTier)) {
+      issues.push({
+        severity: 'error',
+        code: 'schema-price-tier',
+        message: `${position}: "PriceTier" must be one of the dollar prices the stores stock (${PRICE_TIERS.join(', ')}), not ${JSON.stringify(record.PriceTier)}.`,
       });
     }
     if (typeof record.IsEnabled !== 'boolean') {
@@ -89,7 +119,7 @@ export function validateShopConfig(config: ShopConfig): Issue[] {
     if ('IsListed' in record && record.IsListed !== false) {
       issues.push({ severity: 'error', code: 'schema-listed', message: `${position}: "IsListed" is only written when false; omit it otherwise.` });
     }
-    for (const key of ['PriceInCurrency', 'OfferDurationHours', 'CooldownHours', 'DailyLimit']) {
+    for (const key of ['PriceInCurrency', 'OfferDurationHours', 'CooldownHours', 'DailyLimit', 'SortOverride']) {
       if (key in record && !isFiniteNumber(record[key])) {
         issues.push({ severity: 'error', code: 'schema-product-number', message: `${position}: "${key}" must be a number, not ${JSON.stringify(record[key])}.` });
       }

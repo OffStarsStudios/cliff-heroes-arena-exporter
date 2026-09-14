@@ -168,10 +168,31 @@ describe('the growth tab', () => {
     expect(result.config.CardsGrowth).toBe(0.9);
   });
 
-  it('rejects a reference rarity that no Costs row prices', () => {
+  it('rejects a reference rarity that is not a rarity the game has', () => {
     const result = run(growthWith({ 'Reference Rarity': 'Ultra' }));
+    expect(codes(result)).toContain('heroupgrade-reference-rarity-unknown');
+    expect(errors(result)[0]).toContain('Common, Uncommon, Rare, Epic, Legendary, Mythic');
+  });
+
+  it('rejects a reference rarity that no Costs row prices', () => {
+    const costs = COSTS.filter((row) => row[0] !== 'Mythic');
+    const result = run(growthWith({ 'Reference Rarity': 'Mythic' }), costs);
     expect(codes(result)).toContain('heroupgrade-reference-rarity-unpriced');
     expect(errors(result)[0]).toContain('Priced rarities: Common, Uncommon');
+  });
+
+  it('rejects a Costs rarity the game does not have', () => {
+    const result = run(GROWTH, [...COSTS, ['Ultra', 900, 45, 1, 1]]);
+    expect(codes(result)).toContain('heroupgrade-rarity-unknown');
+    expect(errors(result)[0]).toContain('"Ultra" on the "Costs" tab');
+  });
+
+  it('exports a Costs rarity under the spelling the game uses', () => {
+    const costs = COSTS.map((row) => (row[0] === 'Legendary' ? ['legendary', ...row.slice(1)] : row));
+    const result = run(GROWTH, costs);
+    expect(errors(result)).toEqual([]);
+    expect(codes(result)).toContain('heroupgrade-rarity-spelling');
+    expect(result.config.Costs.map((cost) => cost.Rarity)).toContain('Legendary');
   });
 
   it('emits the reference rarity with the Costs spelling', () => {

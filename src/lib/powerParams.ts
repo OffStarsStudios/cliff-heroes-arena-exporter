@@ -4,13 +4,18 @@ import { makeNameResolver, type NameResolution } from './nameResolve';
  * Every parameter name a hero `Power` block is allowed to contain, with the
  * value type it must hold.
  *
- * This is the schema, transcribed from the live ConfigCat hero config - it is
- * deliberately a constant rather than something inferred from the sheet,
- * because inferring the allowed names from the same cells we are checking
- * would validate nothing. A typo in the sheet must fail against this list.
+ * This is the schema, transcribed field for field from `PowerRemoteSettings`
+ * in the game - it is deliberately a constant rather than something inferred
+ * from the sheet, because inferring the allowed names from the same cells we
+ * are checking would validate nothing. A typo in the sheet must fail against
+ * this list.
  *
- * When the game gains a new power parameter, add it here. That is the only
- * edit required; the sheet can then use it immediately.
+ * The game reads the fetched power block into one flat class and each
+ * `PowerData` picks out only the fields it uses, so a name absent from that
+ * class is silently dropped rather than refused - which is exactly why the
+ * list has to be kept level with it. When the game gains a new power
+ * parameter, add it here. That is the only edit required; the sheet can then
+ * use it immediately.
  */
 const POWER_PARAM_TYPES = {
   // Present on every hero, read from their own dedicated columns.
@@ -34,12 +39,18 @@ const POWER_PARAM_TYPES = {
   NextHitPenaltyMultiplier: 'number',
   // Tank
   Radius: 'number',
-  AbsorbedHits: 'number',
+  AbsorbedHits: 'integer',
   HitPenaltyMultiplier: 'number',
-} as const satisfies Record<string, 'number' | 'boolean'>;
+  SwitchInTime: 'number',
+  SwitchOutTime: 'number',
+} as const satisfies Record<string, PowerParamType>;
 
+/**
+ * `integer` is a number the game holds in an `int` rather than a `float`, so a
+ * fractional value would be silently truncated on the way in.
+ */
+export type PowerParamType = 'number' | 'integer' | 'boolean';
 export type PowerParamName = keyof typeof POWER_PARAM_TYPES;
-export type PowerParamType = 'number' | 'boolean';
 
 /** Canonical parameter names, in schema order. */
 export const POWER_PARAM_NAMES = Object.keys(POWER_PARAM_TYPES) as PowerParamName[];

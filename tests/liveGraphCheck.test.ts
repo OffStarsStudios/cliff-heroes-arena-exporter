@@ -40,11 +40,25 @@ describe('candidate substitution', () => {
 });
 
 describe('report comparison', () => {
-  it('classes the ever-present difficulty-mapping warning as pre-existing', () => {
+  it('reports nothing either way when the candidate is the live config again', () => {
     const comparison = compareGraphReports(report(live), report(withCandidate(live, 'arenas', clone(arenasJson))));
     expect(comparison.introduced).toEqual([]);
     expect(comparison.resolved).toEqual([]);
-    expect(comparison.preexisting.map((issue) => issue.code)).toContain('graph-bot-difficulty-unmapped');
+  });
+
+  it('flags a difficulty an arena is moved to that bots does not tune', () => {
+    const candidate = clone(arenasJson) as ArenasConfig;
+    // VeryEasy is a difficulty the game has but the live bots table does tune,
+    // so reach for one past the end of it instead by dropping a tuned level.
+    const bots = clone(live.bots) as BotsConfig;
+    bots.Bots = bots.Bots.filter((bot) => bot.Level !== 3);
+    const comparison = compareGraphReports(
+      report({ ...live, bots }),
+      report(withCandidate({ ...live, bots }, 'arenas', candidate)),
+    );
+    expect([...comparison.introduced, ...comparison.preexisting].map((issue) => issue.code)).toContain(
+      'graph-bot-difficulty-untuned',
+    );
   });
 
   it('flags a fourth bot as an introduced places mismatch', () => {

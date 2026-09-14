@@ -12,6 +12,7 @@
  * workspace reports what it can rather than drowning the real findings.
  */
 
+import { ARENA_BOT_DIFFICULTIES, botLevelName } from '../lib/arenaDifficulties';
 import type { Issue } from '../lib/types';
 import type { ConfigSet, DomainId } from '../domains/types';
 import { canCheck, canCheckRewardsFor, emptyRegistry, type IdRegistry } from './registry';
@@ -140,12 +141,12 @@ function checkArenaReferences(set: ConfigSet, issues: Issue[]): void {
 /**
  * arenas.BotLevels[] -> bots.Bots[].Level.
  *
- * These two configs speak different languages: arenas name difficulties
- * ("Easy", "VeryHard") while bots number them (0..4). The mapping between them
- * is declared in no config and lives only in the Unity client, so the strongest
- * available check is on cardinality. The unmapped state is reported every run,
- * not because something is wrong today, but because the missing mapping is
- * itself the risk.
+ * The two configs write the same thing two ways: arenas name a difficulty
+ * ("Easy", "VeryHard") and bots number it, and both are read into the game's
+ * one `BotLevel` enum. The mapping is therefore not unknown - it is the enum's
+ * own order, which `ARENA_BOT_DIFFICULTIES` carries - so this checks the real
+ * join rather than guessing at cardinality: every difficulty an arena races at
+ * must be tuned in botsSettings under the number that names it.
  */
 function checkBotDifficulties(set: ConfigSet, issues: Issue[]): void {
   if (!set.arenas || !set.bots) return;
@@ -158,26 +159,26 @@ function checkBotDifficulties(set: ConfigSet, issues: Issue[]): void {
   }
   if (names.size === 0) return;
 
-  const levels = (set.bots.Bots ?? [])
-    .map((bot) => bot?.Level)
-    .filter((level): level is number => typeof level === 'number');
+  const tuned = new Set(
+    (set.bots.Bots ?? []).map((bot) => bot?.Level).filter((level): level is number => typeof level === 'number'),
+  );
 
-  if (names.size > levels.length) {
-    issues.push(
-      error(
-        'graph-bot-difficulty-count',
-        `arenasSettings uses ${names.size} distinct difficulty names (${summarize([...names])}) but botsSettings defines only ${levels.length} levels. At least one difficulty cannot map to a bot.`,
-      ),
-    );
-    return;
+  const untuned: string[] = [];
+  for (const name of names) {
+    const level = (ARENA_BOT_DIFFICULTIES as readonly string[]).indexOf(name);
+    // A name outside the enum is arenasSettings' own problem, and its schema
+    // gate has already said so. Here it is only not a difficulty to tune.
+    if (level !== -1 && !tuned.has(level)) untuned.push(`${name} (level ${level})`);
   }
 
-  issues.push(
-    warning(
-      'graph-bot-difficulty-unmapped',
-      `The mapping from difficulty names (${summarize([...names])}) to bot levels (${levels.join(', ')}) is declared in no config - only the Unity client knows it. Renaming a difficulty or adding a bot level cannot be checked here. Consider carrying the mapping in botsSettings.`,
+  if (untuned.length > 0) {
+    issues.push(
+      error(
+        'graph-bot-difficulty-untuned',
+        `arenasSettings races bots at ${summarize(untuned)}, which botsSettings does not tune. The game keeps the tuning compiled into the build for a difficulty it cannot find here.`,
       ),
-  );
+    );
+  }
 }
 
 /** arenas.BotLevels.length + 1 = matchTrophy.TrophiesByPlace.length */
@@ -211,7 +212,7 @@ function checkRarities(set: ConfigSet, issues: Issue[]): void {
   if (priced.size === 0) return;
 
   const reference = set.heroUpgrade.ReferenceRarity;
-  if (typeof reference === 'string' && reference !== '' && !priced.has(reference)) {
+  if (typeof reference === 'string' && !priced.has(reference)) {
     issues.push(
       error(
         'graph-reference-rarity',
@@ -223,7 +224,7 @@ function checkRarities(set: ConfigSet, issues: Issue[]): void {
   if (!set.heroes) return;
   const unpriced = new Map<string, string[]>();
   for (const hero of set.heroes.Heroes ?? []) {
-    if (typeof hero?.Rarity !== 'string' || hero.Rarity === '') continue;
+    if (typeof hero?.Rarity !== 'string') continue;
     if (priced.has(hero.Rarity)) continue;
     const list = unpriced.get(hero.Rarity) ?? [];
     list.push(hero.ID);
@@ -239,7 +240,14 @@ function checkRarities(set: ConfigSet, issues: Issue[]): void {
   }
 }
 
-/** bots.BotLevel = max(Level), and Level runs 0..N with no gaps or duplicates. */
+/**
+ * bots.Bots[].Level covers the game's `BotLevel` enum exactly once each.
+ *
+ * The client reads the level into that enum and then looks each difficulty up
+ * by value, keeping the tuning compiled into the build for anything it does not
+ * find. So a level past the end of the enum tunes nothing, and a level left out
+ * is a difficulty quietly still running on the build's own numbers.
+ */
 function checkBotLevels(set: ConfigSet, issues: Issue[]): void {
   if (!set.bots) return;
 
@@ -247,16 +255,6 @@ function checkBotLevels(set: ConfigSet, issues: Issue[]): void {
     .map((bot) => bot?.Level)
     .filter((level): level is number => typeof level === 'number');
   if (levels.length === 0) return;
-
-  const max = Math.max(...levels);
-  if (typeof set.bots.BotLevel === 'number' && set.bots.BotLevel !== max) {
-    issues.push(
-      error(
-        'graph-botlevel-header',
-        `botsSettings declares BotLevel ${set.bots.BotLevel}, but the highest level defined in Bots is ${max}.`,
-      ),
-    );
-  }
 
   const seen = new Set<number>();
   const duplicates = new Set<number>();
@@ -273,13 +271,24 @@ function checkBotLevels(set: ConfigSet, issues: Issue[]): void {
     );
   }
 
-  const missing: number[] = [];
-  for (let level = 0; level <= max; level += 1) if (!seen.has(level)) missing.push(level);
+  const unknown = [...seen].filter((level) => botLevelName(level) === null);
+  if (unknown.length > 0) {
+    issues.push(
+      error(
+        'graph-bot-level-unknown',
+        `botsSettings tunes level ${summarize(unknown.map(String))}, which names no difficulty the game has. Its levels are ${ARENA_BOT_DIFFICULTIES.map((name, level) => `${level} ${name}`).join(', ')}.`,
+      ),
+    );
+  }
+
+  const missing = ARENA_BOT_DIFFICULTIES.filter((_, level) => !seen.has(level)).map(
+    (name) => `${name} (level ${(ARENA_BOT_DIFFICULTIES as readonly string[]).indexOf(name)})`,
+  );
   if (missing.length > 0) {
     issues.push(
       error(
         'graph-bot-level-gap',
-        `botsSettings is missing bot level ${summarize(missing.map(String))}. Levels must run 0..${max} with no gaps, the same rule hero levels follow.`,
+        `botsSettings does not tune ${summarize(missing)}. All ${ARENA_BOT_DIFFICULTIES.length} difficulties are tuned in one table, since the game keeps the build's own values for any it cannot find.`,
       ),
     );
   }

@@ -1,5 +1,10 @@
 /** Shared domain types for the spreadsheet -> JSON pipeline. */
 
+import type { ShopSoldIn } from './currencies';
+import type { Rarity } from './rarities';
+
+export type { ShopSoldIn };
+
 /** A worksheet reduced to a rectangular grid of raw cell values. */
 export interface RawSheet {
   name: string;
@@ -90,10 +95,20 @@ export interface RewardMilestone {
   Amount: number;
 }
 
+/**
+ * One card an arena opens with. `Amount` is omitted where the sheet names no
+ * figure, which the client reads as "pay whatever the reward is authored to
+ * pay" - the same as zero, and how every unlock in the live config is written.
+ */
+export interface ArenaUnlock {
+  RewardID: string;
+  Amount?: number;
+}
+
 export interface ArenaMilestone {
   Trophies: number;
   ArenaID: string;
-  Unlocks?: { RewardID: string }[];
+  Unlocks?: ArenaUnlock[];
 }
 
 export type Milestone = RewardMilestone | ArenaMilestone;
@@ -160,7 +175,8 @@ export interface HeroEntry {
   ID: string;
   MaxSpeed: number;
   SpeedIncreasePerSecond: number;
-  Rarity: string;
+  /** One of `RARITIES`: the client reads it into an enum that throws on anything else. */
+  Rarity: Rarity;
   PowerCooldown: number;
   Levels: HeroLevel[];
   Power: HeroPower;
@@ -174,7 +190,7 @@ export interface HeroesConfig {
 export interface HeroPreviewRow {
   name: string;
   id: string;
-  rarity: string;
+  rarity: Rarity;
   maxSpeed: number;
   levelCount: number;
   first: HeroLevel | null;
@@ -256,7 +272,10 @@ export interface MatchTrophyTransformResult {
 
 /* ------------------------------------------------------------------ Bots -- */
 
-/** One difficulty step. Levels are numeric and run 0..N. */
+/**
+ * One difficulty step. `Level` is the game's `BotLevel` enum as a number, so it
+ * runs 0 (`VeryEasy`) to 4 (`VeryHard`) and every one of them is tuned.
+ */
 export interface BotTuning {
   Level: number;
   MinJumpInterval: number;
@@ -270,13 +289,13 @@ export interface BotTuning {
 }
 
 export interface BotsConfig {
-  /** Highest defined level. Must equal the maximum `Level` in `Bots`. */
-  BotLevel: number;
   Bots: BotTuning[];
 }
 
 export interface BotPreviewRow {
   level: number;
+  /** The name the game's `BotLevel` enum gives this level, e.g. `Medium`. */
+  name: string;
   jump: [number, number];
   dodge: [number, number];
   raycast: [number, number];
@@ -298,7 +317,7 @@ export interface BotsTransformResult {
 /* ---------------------------------------------------------- Hero upgrades -- */
 
 export interface RarityCost {
-  Rarity: string;
+  Rarity: Rarity;
   CoinsBase: number;
   CardsBase: number;
   CostModifier: number;
@@ -314,13 +333,13 @@ export interface HeroUpgradeConfig {
   CardsGrowth: number;
   CoinsRounding: number;
   CardsRounding: number;
-  ReferenceRarity: string;
+  ReferenceRarity: Rarity;
   CardsPayoutModifier: number;
   Costs: RarityCost[];
 }
 
 export interface HeroUpgradePreviewRow {
-  rarity: string;
+  rarity: Rarity;
   coinsBase: number;
   cardsBase: number;
   costModifier: number;
@@ -341,22 +360,28 @@ export interface HeroUpgradeTransformResult {
 
 /* ------------------------------------------------------------------ Shop -- */
 
-export type ShopSoldIn = 'RealMoney' | 'Gems' | 'Free' | 'Ad';
-
 export interface ShopContent {
   RewardID: string;
   Amount: number;
 }
 
 /**
- * Which optional fields a product carries follows from how it is sold:
- * `Gems` products carry `PriceInCurrency`, `Free` products `CooldownHours`,
- * `Ad` products `DailyLimit`; real-money products are priced store-side.
+ * One product as the client reads it.
+ *
+ * Every field but `ID` is applied independently and only when present, so the
+ * fields a product carries are not dictated by how it is sold - a product can
+ * hold a gem price and a dollar tier at once, which is how it is moved between
+ * the two without a re-send. Two pairings do matter, because without them the
+ * client has nothing to charge: real money needs a `PriceTier` (the tier is the
+ * SKU) and a currency needs a `PriceInCurrency`.
+ *
  * `IsListed` is written only when false.
  */
 export interface ShopProduct {
   ID: string;
   SoldIn: ShopSoldIn;
+  /** Dollars, and the store SKU charged: one of `PRICE_TIERS`. */
+  PriceTier?: number;
   IsEnabled: boolean;
   IsListed?: boolean;
   PriceInCurrency?: number;
@@ -364,6 +389,8 @@ export interface ShopProduct {
   OfferDurationHours?: number;
   CooldownHours?: number;
   DailyLimit?: number;
+  /** Overrides where the card sits in its section. */
+  SortOverride?: number;
   Contents: ShopContent[];
 }
 
@@ -376,7 +403,10 @@ export interface ShopPreviewRow {
   soldIn: ShopSoldIn;
   enabled: boolean;
   listed: boolean;
+  /** The currency price, where it is sold in one. */
   price: number | null;
+  /** The dollar tier, where it is sold for money. */
+  priceTier: number | null;
   badge: string | null;
   /** "Coins x3500" per granted reward. */
   contents: string[];

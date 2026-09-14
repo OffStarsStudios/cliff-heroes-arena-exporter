@@ -1,3 +1,4 @@
+import { ARENA_BOT_DIFFICULTIES, botLevelName } from './arenaDifficulties';
 import { requireNumber, resolveColumns, type ColumnSpec } from './columns';
 import { isBlankRow } from './normalize';
 import type { BotTuning, BotsConfig, BotsTransformResult, BotPreviewRow, Issue, RawSheet } from './types';
@@ -6,10 +7,17 @@ import type { BotTuning, BotsConfig, BotsTransformResult, BotPreviewRow, Issue, 
  * Turns the Bots tab into `botsSettings`.
  *
  * One row per bot level: the level number and the eight tuning values the
- * client reads. `BotLevel` is never authored - it is the highest level in the
- * table, which is the only value the field can hold without contradicting the
- * rows below it. Levels must run 0..N with no gaps or duplicates, the same rule
- * hero levels follow.
+ * client reads.
+ *
+ * The level is not a free number. The client reads it into the same `BotLevel`
+ * enum the arenas config names its bots by, so the only levels that mean
+ * anything are 0 (`VeryEasy`) through 4 (`VeryHard`) - see
+ * `ARENA_BOT_DIFFICULTIES`, which is that enum in its declared order. The
+ * client then looks each difficulty up in this table by value rather than
+ * indexing into it, so a level outside the enum matches nothing and a
+ * difficulty left out of the table is one the client logs and leaves authored.
+ * Both are refused here: every difficulty is tuned exactly once, or nothing is
+ * exported.
  */
 
 const COLUMN_LABELS = {
@@ -96,11 +104,16 @@ export function transformBots(input: BotsTransformInput): BotsTransformResult {
 
     const level = requireNumber(row, index.level, `Row ${sheetRow} of the ${tab}: Level`, sheetRow, issues, NUMBER_CODES);
     if (level === null) continue;
-    if (!Number.isInteger(level) || level < 0) {
+    const highest = ARENA_BOT_DIFFICULTIES.length - 1;
+    if (!Number.isInteger(level) || level < 0 || level > highest) {
       issues.push({
         severity: 'error',
         code: 'bots-level-invalid',
-        message: `Row ${sheetRow} of the ${tab}: Level must be a whole number of 0 or more, not ${level}.`,
+        message:
+          `Row ${sheetRow} of the ${tab}: Level must be a whole number from 0 to ${highest}, not ${level}. ` +
+          `The game has ${ARENA_BOT_DIFFICULTIES.length} difficulties - ` +
+          `${ARENA_BOT_DIFFICULTIES.map((name, i) => `${i} ${name}`).join(', ')} - ` +
+          'and a level outside them tunes no bot at all.',
         sheetRow,
       });
       continue;
@@ -111,13 +124,13 @@ export function transformBots(input: BotsTransformInput): BotsTransformResult {
       issues.push({
         severity: 'error',
         code: 'bots-level-duplicate',
-        message: `Level ${level} appears twice on the ${tab} (rows ${earlier} and ${sheetRow}). Each level is tuned once.`,
+        message: `${botLevelName(level)} (level ${level}) is tuned twice on the ${tab} (rows ${earlier} and ${sheetRow}). Each difficulty is tuned once.`,
         sheetRow,
       });
       continue;
     }
     rowsByLevel.set(level, sheetRow);
-    const where = `Level ${level} on the ${tab}`;
+    const where = `${botLevelName(level)} (level ${level}) on the ${tab}`;
 
     const values: Partial<Record<FieldName, number>> = {};
     let complete = true;
@@ -163,6 +176,7 @@ export function transformBots(input: BotsTransformInput): BotsTransformResult {
     bots.push(tuning);
     preview.push({
       level,
+      name: botLevelName(level) as string,
       jump: [tuning.MinJumpInterval, tuning.MaxJumpInterval],
       dodge: [tuning.MinDodgeChance, tuning.MaxDodgeChance],
       raycast: [tuning.RaycastDistance, tuning.RaycastInterval],
@@ -174,21 +188,21 @@ export function transformBots(input: BotsTransformInput): BotsTransformResult {
   bots.sort((a, b) => a.Level - b.Level);
   preview.sort((a, b) => a.level - b.level);
 
-  // Levels must be a complete 0..N run: the client indexes into this table.
-  let sequenceOk = true;
-  bots.forEach((bot, i) => {
-    if (bot.Level !== i) {
-      if (sequenceOk) {
-        issues.push({
-          severity: 'error',
-          code: 'bots-level-gap',
-          message: `The ${tab} skips level ${i}: expected level ${i} but found ${bot.Level}. Levels must run 0 to ${bots.length - 1} with no gaps.`,
-          sheetRow: preview[i].sheetRow,
-        });
-      }
-      sequenceOk = false;
-    }
-  });
+  // Every difficulty the game declares must be tuned: it looks each one up in
+  // this table by value, and logs an error and keeps the authored tuning for
+  // any it cannot find.
+  const missing = ARENA_BOT_DIFFICULTIES.filter((_, level) => !rowsByLevel.has(level));
+  const sequenceOk = missing.length === 0 && dataRows > 0;
+  if (missing.length > 0 && dataRows > 0) {
+    issues.push({
+      severity: 'error',
+      code: 'bots-level-gap',
+      message:
+        `The ${tab} tunes no ${missing.map((name) => `${name} (level ${ARENA_BOT_DIFFICULTIES.indexOf(name)})`).join(' or ')}. ` +
+        `All ${ARENA_BOT_DIFFICULTIES.length} difficulties are tuned in one table, since the game keeps the values ` +
+        'built into the build for any it does not find here.',
+    });
+  }
 
   if (sequenceOk) {
     for (let i = 1; i < bots.length; i += 1) {
@@ -198,7 +212,7 @@ export function transformBots(input: BotsTransformInput): BotsTransformResult {
         issues.push({
           severity: 'warning',
           code: 'bots-not-harder',
-          message: `Level ${harder.Level} dodges less or fires slower than level ${easier.Level}. Higher levels are usually harder.`,
+          message: `${botLevelName(harder.Level)} dodges less or fires slower than ${botLevelName(easier.Level)}. Higher difficulties are usually harder.`,
           sheetRow: preview[i].sheetRow,
         });
       }
@@ -210,10 +224,9 @@ export function transformBots(input: BotsTransformInput): BotsTransformResult {
   }
 
   const exported = sequenceOk ? bots : [];
-  const config: BotsConfig = {
-    BotLevel: exported.length === 0 ? 0 : exported[exported.length - 1].Level,
-    Bots: exported,
-  };
+  // `Bots` and nothing beside it: the client's own config class holds only this
+  // list, so a summary field such as the highest level would be read by nothing.
+  const config: BotsConfig = { Bots: exported };
   const errors = issues.filter((issue) => issue.severity === 'error').length;
   return {
     config,

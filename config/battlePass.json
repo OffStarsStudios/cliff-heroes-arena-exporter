@@ -4,7 +4,7 @@
   "StartUtc": "2026-09-01 00:00",
   "DurationDays": 30,
   "TokensPerTier": 100,
-  "PremiumProductID": "shop.pass.season1.premium",
+  "PremiumProductID": "shop.pass.season1.tier2",
   "SkipTierCost": 75,
   "SkipCurrencyID": "hardCurrency",
   "FinalRewardArt": "",

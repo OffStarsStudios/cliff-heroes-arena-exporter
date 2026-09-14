@@ -3,6 +3,7 @@ import { resolveLookup } from './lookups';
 import type {
   ArenaMilestone,
   ArenaProgressConfig,
+  ArenaUnlock,
   ColumnMapping,
   Issue,
   LookupTable,
@@ -144,10 +145,13 @@ function lookupFailureMessage(
 /**
  * Turns parsed rows into the final milestone list.
  *
- * - The first row of each arena becomes an arena milestone. Its reward slots
- *   that carry no amount become `Unlocks` entries - any number of them.
- * - Every other populated reward slot becomes a `Trophies` / `RewardID` /
- *   `Amount` milestone, in sheet order.
+ * - The first row of each arena becomes an arena milestone, and every reward
+ *   slot on that row becomes one of its `Unlocks` - the cards the arena opens
+ *   with. An amount rides along where the sheet gives one; left blank, the
+ *   entry carries none and the client pays whatever the reward is authored to
+ *   pay, which is how every unlock in the live config is written.
+ * - Every populated reward slot on any other row becomes a `Trophies` /
+ *   `RewardID` / `Amount` milestone, in sheet order.
  */
 export function transform(input: TransformInput): TransformResult {
   const { progression, headerRowIndex, mapping, arenas, rewards } = input;
@@ -194,18 +198,14 @@ export function transform(input: TransformInput): TransformResult {
       previousTrophies = trophies.value;
     }
 
-    // On an arena row, reward slots with no amount are unlocks; anything that
-    // carries an amount stays a regular reward milestone.
-    const unlockRewards: ParsedReward[] = [];
-    const amountRewards: ParsedReward[] = [];
-    for (const reward of row.rewards) {
-      if (row.isArenaMilestone && isBlank(reward.amountRaw)) unlockRewards.push(reward);
-      else amountRewards.push(reward);
-    }
+    // An arena row's rewards are the cards that arena opens with, whether or not
+    // an amount is written beside them. Every other row's are road tiles.
+    const unlockRewards: ParsedReward[] = row.isArenaMilestone ? row.rewards : [];
+    const amountRewards: ParsedReward[] = row.isArenaMilestone ? [] : row.rewards;
 
     if (row.isArenaMilestone && row.arenaName !== null) {
       const arenaLookup = resolveLookup(arenas, row.arenaName);
-      const unlocks: { RewardID: string }[] = [];
+      const unlocks: ArenaUnlock[] = [];
 
       for (const reward of unlockRewards) {
         const rewardLookup = resolveLookup(rewards, reward.name);
@@ -220,7 +220,36 @@ export function transform(input: TransformInput): TransformResult {
           });
           continue;
         }
-        unlocks.push({ RewardID: rewardLookup.id });
+
+        // Omitted rather than written as zero where the sheet is blank: the
+        // client reads a missing amount and a zero one the same way - pay what
+        // the reward is authored to pay - and every unlock in the live config
+        // is written without one.
+        if (isBlank(reward.amountRaw)) {
+          unlocks.push({ RewardID: rewardLookup.id } as ArenaUnlock);
+          continue;
+        }
+
+        const unlockAmount = parseNumber(reward.amountRaw);
+        if (!unlockAmount.ok) {
+          issues.push({
+            severity: 'error',
+            code: 'invalid-amount',
+            message: `Arena unlock "${reward.name}" on row ${row.sheetRow} has a non-numeric amount ("${String(reward.amountRaw)}").`,
+            sheetRow: row.sheetRow,
+          });
+          continue;
+        }
+        if (!Number.isInteger(unlockAmount.value) || unlockAmount.value < 1) {
+          issues.push({
+            severity: 'error',
+            code: 'invalid-amount',
+            message: `Arena unlock "${reward.name}" on row ${row.sheetRow} must have a whole amount of 1 or more, not ${unlockAmount.value}. Leave it blank to pay what the reward is authored to pay.`,
+            sheetRow: row.sheetRow,
+          });
+          continue;
+        }
+        unlocks.push({ RewardID: rewardLookup.id, Amount: unlockAmount.value });
       }
 
       if (!arenaLookup.ok) {
@@ -246,22 +275,16 @@ export function transform(input: TransformInput): TransformResult {
       preview.push({
         trophies: trophies.ok ? trophies.value : null,
         type: unlockRewards.length > 0 ? 'Arena Unlock' : 'Arena',
-        label: [row.arenaName, ...unlockRewards.map((r) => r.name)].join(' + '),
+        label: [
+          row.arenaName,
+          ...unlockRewards.map((r) => (isBlank(r.amountRaw) ? r.name : `${r.name} x${String(r.amountRaw)}`)),
+        ].join(' + '),
         amount: null,
         sheetRow: row.sheetRow,
       });
     }
 
     for (const reward of amountRewards) {
-      if (row.isArenaMilestone) {
-        issues.push({
-          severity: 'warning',
-          code: 'unlock-with-amount',
-          message: `Row ${row.sheetRow} pairs arena unlock "${reward.name}" with an amount. Unlock entries carry no amount, so it was emitted as a separate reward milestone.`,
-          sheetRow: row.sheetRow,
-        });
-      }
-
       const rewardLookup = resolveLookup(rewards, reward.name);
       if (!rewardLookup.ok) {
         issues.push({

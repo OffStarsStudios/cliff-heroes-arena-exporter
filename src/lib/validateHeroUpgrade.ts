@@ -1,3 +1,4 @@
+import { RARITIES, isRarity } from './rarities';
 import type { HeroUpgradeConfig, Issue } from './types';
 
 const ROOT_KEYS = [
@@ -55,6 +56,12 @@ export function validateHeroUpgradeConfig(config: HeroUpgradeConfig): Issue[] {
   }
   if (!isNonEmptyString(record.ReferenceRarity)) {
     issues.push({ severity: 'error', code: 'schema-reference-rarity', message: '"ReferenceRarity" must be a non-empty string.' });
+  } else if (!isRarity(record.ReferenceRarity)) {
+    issues.push({
+      severity: 'error',
+      code: 'schema-reference-rarity',
+      message: `"ReferenceRarity" is "${record.ReferenceRarity}", which is not one of ${RARITIES.join(', ')}.`,
+    });
   }
 
   const costs = record.Costs;
@@ -80,6 +87,15 @@ export function validateHeroUpgradeConfig(config: HeroUpgradeConfig): Issue[] {
     }
     if (!isNonEmptyString(entry.Rarity)) {
       issues.push({ severity: 'error', code: 'schema-cost-rarity', message: `${position}: "Rarity" must be a non-empty string.` });
+    } else if (!isRarity(entry.Rarity)) {
+      // Both rarities here land in the same enum the client parses strictly,
+      // and this is a config the game will not start without: an unknown name
+      // is a launch stuck on the loading screen, not a mistuned curve.
+      issues.push({
+        severity: 'error',
+        code: 'schema-cost-rarity',
+        message: `${position}: "Rarity" is "${entry.Rarity}", which is not one of ${RARITIES.join(', ')}.`,
+      });
     } else if (seen.has(entry.Rarity.toLowerCase())) {
       issues.push({ severity: 'error', code: 'schema-cost-rarity-duplicate', message: `${position}: "${entry.Rarity}" is priced more than once.` });
     } else {
