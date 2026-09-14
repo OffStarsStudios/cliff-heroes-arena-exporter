@@ -22,6 +22,12 @@ export interface EventConfig {
   sourceUrl: string | null;
   /** One sentence saying what is missing, or null when the config is ready. */
   blocker: string | null;
+  /**
+   * The entry inside the payload this sheet describes, for a config whose
+   * payload is a list. Recorded on the event so ending it can remove exactly
+   * this entry. Null for a feature whose payload is wholly its own.
+   */
+  subjectId: string | null;
 }
 
 interface EventConfigSourceProps {
@@ -234,9 +240,11 @@ export function EventConfigSource({
 
   const payload = blocker === null ? exportable.config : null;
 
+  const subjectId = exportable.config === null ? null : (result?.subject ?? null);
+
   const answer = useMemo<EventConfig>(
-    () => ({ payload, sourceUrl: loadedUrl, blocker }),
-    [payload, loadedUrl, blocker],
+    () => ({ payload, sourceUrl: loadedUrl, blocker, subjectId }),
+    [payload, loadedUrl, blocker, subjectId],
   );
 
   useEffect(() => {

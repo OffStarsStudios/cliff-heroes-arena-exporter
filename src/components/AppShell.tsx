@@ -20,6 +20,8 @@ export type View =
   | 'heroUpgrade'
   | 'shop'
   | 'battlePass'
+  | 'rollingOffer'
+  | 'rewards'
   | 'reference';
 
 interface NavItem {
@@ -66,7 +68,10 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: 'monetization',
     title: 'Monetization',
-    items: [{ id: 'shop', label: 'Shop', icon: 'cart' }],
+    items: [
+      { id: 'shop', label: 'Shop', icon: 'cart' },
+      { id: 'rollingOffer', label: 'Rolling offers', icon: 'zap' },
+    ],
   },
   {
     id: 'liveops',
@@ -76,7 +81,10 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     id: 'reference',
     title: 'Reference',
-    items: [{ id: 'reference', label: 'Power parameters', icon: 'book' }],
+    items: [
+      { id: 'rewards', label: 'Reward library', icon: 'medal' },
+      { id: 'reference', label: 'Power parameters', icon: 'book' },
+    ],
   },
 ];
 

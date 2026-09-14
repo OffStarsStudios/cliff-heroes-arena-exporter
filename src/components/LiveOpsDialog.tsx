@@ -84,6 +84,7 @@ export function LiveOpsDialog({ environmentId, entry = null, onClose, onSchedule
     payload: null,
     sourceUrl: entry?.liveops.sourceUrl ?? null,
     blocker: editing ? null : 'Load the sheet this event publishes.',
+    subjectId: entry?.liveops.subjectId ?? null,
   });
 
   const [off, setOff] = useState<OffState | null>(null);
@@ -164,6 +165,7 @@ export function LiveOpsDialog({ environmentId, entry = null, onClose, onSchedule
             category,
             opensAt: opensIso,
             sourceUrl: config.sourceUrl ?? entry.liveops.sourceUrl ?? null,
+            subjectId: config.subjectId ?? entry.liveops.subjectId ?? null,
           },
         });
       } else {
@@ -179,7 +181,7 @@ export function LiveOpsDialog({ environmentId, entry = null, onClose, onSchedule
           // when it is read on its own.
           startsAt: opensIso,
           endsAt: endsIso,
-          liveops: { category, opensAt: opensIso, sourceUrl: config.sourceUrl },
+          liveops: { category, opensAt: opensIso, sourceUrl: config.sourceUrl, subjectId: config.subjectId },
         });
       }
       onScheduled();
@@ -240,7 +242,7 @@ export function LiveOpsDialog({ environmentId, entry = null, onClose, onSchedule
                 onChange={(event) => setDomain(event.target.value as LiveOpsDomain)}
                 // A booked event publishes one feature's setting key; changing
                 // that would be a different event, not an edit of this one.
-                disabled={editing || LIVEOPS_DOMAINS.length === 1}
+                disabled={editing}
               >
                 {LIVEOPS_DOMAINS.map((id) => (
                   <option key={id} value={id}>

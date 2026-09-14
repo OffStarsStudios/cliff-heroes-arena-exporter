@@ -377,8 +377,70 @@ export function autoSelectBattlePassSheets(workbook: RawWorkbook): BattlePassShe
 /* --------------------------------------------------------------- Dataset -- */
 
 /** Which exporter a freshly loaded workbook looks like it is for. */
+/* --------------------------------------------------------- Rolling offer -- */
+
+export type RollingOfferSheetSelection = {
+  /** The Offer key/value tab: the offer's own header. */
+  offer: string | null;
+  /** The Steps tab: one row per rung of the chain. */
+  steps: string | null;
+  /** The Reward Name -> Reward ID lookup tab. */
+  rewards: string | null;
+};
+
+/** Scores a sheet as the Steps tab: a Sold In column beside reward columns. */
+function scoreSteps(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  const headers = headerWords(sheet);
+  let score = 0;
+  if (words.includes('step') || words.includes('steps')) score += 30;
+  if (headers.includes('sold') && headers.includes('reward')) score += 50;
+  if (headers.includes('step')) score += 10;
+  if (sheet.rows.length >= 2) score += 3;
+  return score;
+}
+
+/**
+ * Scores a sheet as the Offer tab.
+ *
+ * It is a key/value tab, so its headers say almost nothing - what identifies it
+ * is the settings named down its first column, which is also what the
+ * transformer reads.
+ */
+function scoreOffer(sheet: RawSheet): number {
+  const words = tokens(sheet.name);
+  let score = 0;
+  if (words.includes('offer')) score += 30;
+
+  const labels = new Set<string>();
+  for (const row of sheet.rows.slice(0, 20)) {
+    const first = row[0];
+    if (typeof first === 'string') labels.add(first.trim().toLowerCase());
+  }
+  for (const wanted of ['offer id', 'display name', 'completion reward', 'completion text']) {
+    if (labels.has(wanted)) score += 15;
+  }
+  return score;
+}
+
+export function autoSelectRollingOfferSheets(workbook: RawWorkbook): RollingOfferSheetSelection {
+  const steps = bestSheet(workbook.sheets, scoreSteps, 50);
+  const offer = bestSheet(
+    workbook.sheets.filter((sheet) => sheet.name !== steps),
+    scoreOffer,
+    30,
+  );
+  const rewards = bestSheet(
+    workbook.sheets.filter((sheet) => sheet.name !== steps && sheet.name !== offer),
+    (sheet) => scoreLookup(sheet, ['reward', 'rewards']),
+    30,
+  );
+  return { offer, steps, rewards };
+}
+
 export type Dataset =
   | 'arena'
+  | 'rollingOffer'
   | 'heroes'
   | 'arenas'
   | 'matchTrophy'
@@ -413,6 +475,11 @@ export function detectDataset(workbook: RawWorkbook): Dataset {
   // identifies the pass on its own now that the Season tab is not read.
   const pass = autoSelectBattlePassSheets(workbook);
   if (pass.tiers !== null && pass.rewards !== null) return 'battlePass';
+
+  // Before the shop: an offer's Steps tab carries Sold In and reward columns
+  // too, so the more specific shape is tried first.
+  const offer = autoSelectRollingOfferSheets(workbook);
+  if (offer.offer !== null && offer.steps !== null && offer.rewards !== null) return 'rollingOffer';
 
   const shop = autoSelectShopSheets(workbook);
   if (shop.products !== null && shop.rewards !== null) return 'shop';

@@ -28,6 +28,7 @@ const VIEW_FOR_DATASET: Record<Dataset, { view: View; label: string }> = {
   matchTrophy: { view: 'matchTrophy', label: 'match trophies' },
   bots: { view: 'bots', label: 'bots' },
   heroUpgrade: { view: 'heroUpgrade', label: 'hero upgrades' },
+  rollingOffer: { view: 'rollingOffer', label: 'rolling offers' },
   shop: { view: 'shop', label: 'shop' },
   battlePass: { view: 'battlePass', label: 'battle pass' },
 };

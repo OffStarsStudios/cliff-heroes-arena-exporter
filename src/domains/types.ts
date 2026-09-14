@@ -24,6 +24,9 @@ import type {
   ShopContent,
   ShopProduct,
   ShopSoldIn,
+  RollingOffer,
+  RollingOfferConfig,
+  RollingOfferStep,
 } from '../lib/types';
 
 export type {
@@ -43,6 +46,9 @@ export type {
   ShopContent,
   ShopProduct,
   ShopSoldIn,
+  RollingOffer,
+  RollingOfferConfig,
+  RollingOfferStep,
 };
 
 /* ------------------------------------------------------------- the set -- */
@@ -55,7 +61,8 @@ export type DomainId =
   | 'matchTrophy'
   | 'arenas'
   | 'shop'
-  | 'battlePass';
+  | 'battlePass'
+  | 'rollingOffer';
 
 /** Domains that have an exporter page, and therefore their own workbook. */
 export type ExporterDomain =
@@ -66,7 +73,8 @@ export type ExporterDomain =
   | 'bots'
   | 'heroUpgrade'
   | 'shop'
-  | 'battlePass';
+  | 'battlePass'
+  | 'rollingOffer';
 
 export const EXPORTER_DOMAINS: ExporterDomain[] = [
   'heroes',
@@ -77,6 +85,7 @@ export const EXPORTER_DOMAINS: ExporterDomain[] = [
   'heroUpgrade',
   'shop',
   'battlePass',
+  'rollingOffer',
 ];
 
 /** The ConfigCat setting key each domain publishes to. */
@@ -88,6 +97,7 @@ export const SETTING_KEYS: Record<DomainId, string> = {
   matchTrophy: 'matchTrophySettings',
   arenas: 'arenasSettings',
   shop: 'shopSettings',
+  rollingOffer: 'rollingOfferSettings',
   battlePass: 'battlePassSettings',
 };
 
@@ -100,6 +110,7 @@ export const GIT_PATHS: Record<DomainId, string> = {
   matchTrophy: 'config/matchTrophy.json',
   arenas: 'config/arenas.json',
   shop: 'config/shop.json',
+  rollingOffer: 'config/rollingOffer.json',
   battlePass: 'config/battlePass.json',
 };
 
@@ -111,6 +122,7 @@ export const DOMAIN_LABELS: Record<DomainId, string> = {
   matchTrophy: 'Match trophies',
   arenas: 'Arenas',
   shop: 'Shop',
+  rollingOffer: 'Rolling offers',
   battlePass: 'Battle pass',
 };
 
@@ -127,5 +139,6 @@ export interface ConfigSet {
   matchTrophy?: MatchTrophyConfig;
   arenas?: ArenasConfig;
   shop?: ShopConfig;
+  rollingOffer?: RollingOfferConfig;
   battlePass?: BattlePassConfig;
 }

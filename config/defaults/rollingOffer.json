@@ -1,0 +1,183 @@
+{
+  "DefaultBackgroundArt": "",
+  "DefaultTopBarArt": "",
+  "DefaultRewardArt": "",
+  "DefaultButtonArt": "",
+  "Offers": [
+    {
+      "OfferID": "offer.roll.1",
+      "DisplayName": "ROLL FOR REWARDS",
+      "Subtitle": "Claim each step to unlock the next.",
+      "IsTimed": true,
+      "StartUtc": "2026-09-01 00:00",
+      "DurationHours": 336,
+      "BackgroundArt": "FlickGhostOfferBG",
+      "TopBarArt": "FlickGhostOfferTop",
+      "RewardArt": "",
+      "ButtonArt": "FlickGhostOfferButton",
+      "CompletionText": "COMPLETE ALL STEPS TO UNLOCK {0}!",
+      "CompletionReward": {
+        "RewardID": "reward.skin.flick.ghost",
+        "Amount": 1
+      },
+      "Steps": [
+        {
+          "SoldIn": "Free",
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.coins",
+              "Amount": 500
+            }
+          ]
+        },
+        {
+          "SoldIn": "Gems",
+          "Price": 80,
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.cards",
+              "Amount": 25
+            }
+          ]
+        },
+        {
+          "SoldIn": "Free",
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.coins",
+              "Amount": 750
+            },
+            {
+              "RewardID": "reward.currency.cards",
+              "Amount": 15
+            }
+          ]
+        },
+        {
+          "SoldIn": "RealMoney",
+          "PriceTier": 2,
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.cards",
+              "Amount": 60
+            },
+            {
+              "RewardID": "reward.currency.coins",
+              "Amount": 2500
+            }
+          ]
+        },
+        {
+          "SoldIn": "Ad",
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.gems",
+              "Amount": 25
+            },
+            {
+              "RewardID": "reward.currency.coins",
+              "Amount": 500
+            }
+          ]
+        },
+        {
+          "SoldIn": "RealMoney",
+          "PriceTier": 3,
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.gems",
+              "Amount": 300
+            },
+            {
+              "RewardID": "reward.currency.cards",
+              "Amount": 120
+            }
+          ]
+        },
+        {
+          "SoldIn": "Gems",
+          "Price": 450,
+          "Rewards": [
+            {
+              "RewardID": "reward.lootbox.common",
+              "Amount": 2
+            }
+          ]
+        },
+        {
+          "SoldIn": "RealMoney",
+          "PriceTier": 5,
+          "Rewards": [
+            {
+              "RewardID": "reward.hero.glint",
+              "Amount": 1
+            },
+            {
+              "RewardID": "reward.currency.coins",
+              "Amount": 6000
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "OfferID": "offer.roll.2",
+      "DisplayName": "SPACE RUN",
+      "Subtitle": "Claim each step to unlock the next.",
+      "IsTimed": false,
+      "BackgroundArt": "GuySuperSpaceBG",
+      "TopBarArt": "GuySuperSpaceTop",
+      "RewardArt": "",
+      "ButtonArt": "GuySuperSpaceButton",
+      "CompletionText": "COMPLETE ALL STEPS TO UNLOCK {0}!",
+      "CompletionReward": {
+        "RewardID": "reward.skin.guy.superspace",
+        "Amount": 1
+      },
+      "Steps": [
+        {
+          "SoldIn": "Free",
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.coins",
+              "Amount": 300
+            }
+          ]
+        },
+        {
+          "SoldIn": "Ad",
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.cards",
+              "Amount": 10
+            }
+          ]
+        },
+        {
+          "SoldIn": "Gems",
+          "Price": 150,
+          "Rewards": [
+            {
+              "RewardID": "reward.lootbox.common",
+              "Amount": 1
+            }
+          ]
+        },
+        {
+          "SoldIn": "RealMoney",
+          "PriceTier": 3,
+          "Rewards": [
+            {
+              "RewardID": "reward.currency.coins",
+              "Amount": 1500
+            },
+            {
+              "RewardID": "reward.currency.cards",
+              "Amount": 40
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

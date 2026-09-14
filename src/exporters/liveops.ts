@@ -1,5 +1,6 @@
 import type { LiveOpsDomain } from '../lib/liveops';
 import { BATTLE_PASS_EXPORTER } from './battlePass';
+import { ROLLING_OFFER_EXPORTER } from './rollingOffer';
 import type { ExporterDefinition } from './types';
 
 /**
@@ -28,4 +29,5 @@ export type AnyExporter = ExporterDefinition<any, any, any, any>;
 
 export const LIVEOPS_EXPORTERS: Record<LiveOpsDomain, AnyExporter> = {
   battlePass: BATTLE_PASS_EXPORTER,
+  rollingOffer: ROLLING_OFFER_EXPORTER,
 };

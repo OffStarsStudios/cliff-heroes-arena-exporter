@@ -45,6 +45,19 @@ export interface AnalysisResult<TConfig, TRow> {
    * check can judge references the published configs alone cannot.
    */
   registry?: IdRegistry;
+  /**
+   * The one entity inside the payload that this workbook describes, where the
+   * payload holds several.
+   *
+   * Only meaningful for a config whose sheet is one entry of a list the client
+   * takes whole - a rolling offer, whose workbook is one offer among all the
+   * offers published. An event booking such a config records this, because
+   * ending the event has to remove that entry rather than restore a payload:
+   * there is no "off" version of a list, only a list without one member.
+   *
+   * Absent for a config whose sheet describes the whole payload.
+   */
+  subject?: string;
 }
 
 /**

@@ -43,7 +43,9 @@ import {
   LIVEOPS_DOMAINS,
   checkEvent,
   isLiveOpsEntry,
+  isListPayload,
   loadOff,
+  withoutEntry,
   phaseOf,
   windowForEvent,
 } from './liveops.mjs';
@@ -248,7 +250,19 @@ export function checkEntry(candidate, { entries, hasDefault, hasOff, now = Date.
   // kind of window it is - a core config goes back to its last known-good
   // version, a live ops feature goes away entirely - so the question is the
   // same one and the answer is not.
-  if (end !== null && !Number.isNaN(end) && !(liveOps ? hasOff : hasDefault)) {
+  // A feature whose payload is a list needs no off state and could not have
+  // one: ending its event removes its entry from what is live. What it does
+  // need is to know which entry that is, which comes from the sheet it was
+  // booked from.
+  const listPayload = liveOps && isListPayload(candidate.domain);
+  if (end !== null && !Number.isNaN(end) && listPayload) {
+    if (candidate.liveops?.subjectId == null || candidate.liveops.subjectId === '') {
+      problems.push(
+        'This event does not record which offer it publishes, so there would be nothing to remove when ' +
+          'it ends. Load the offer sheet so the booking knows which one it owns.',
+      );
+    }
+  } else if (end !== null && !Number.isNaN(end) && !(liveOps ? hasOff : hasDefault)) {
     problems.push(
       liveOps
         ? 'This feature has no off state recorded, so there would be nothing to publish when the event ends and the feature would stay in the game after it was over. Record the off state first.'
@@ -498,15 +512,33 @@ async function endWindow(entry, store, becauseOf) {
   // feature has no previous version to want - the season is over - so it goes
   // back to the payload that means "not running". Getting this wrong would
   // restart last season the moment this one ended.
+  //
+  // A feature whose payload is a list has neither. There is no off state for a
+  // rolling offer schedule, because the schedule is every offer: ending one
+  // event means publishing what is live without that one entry, and what is
+  // live is only knowable now. So that fallback is computed below, after the
+  // live value has been read.
   const liveOps = isLiveOpsEntry(entry);
-  const fallback =
-    successor !== null
-      ? successor.payload
-      : liveOps
-        ? await loadOff(entry.domain)
-        : await loadDefault(entry.domain);
+  const listPayload = liveOps && isListPayload(entry.domain);
 
-  if (fallback === null || fallback === undefined) {
+  let fallback = null;
+  if (successor !== null) fallback = successor.payload;
+  else if (listPayload) fallback = undefined;
+  else if (liveOps) fallback = await loadOff(entry.domain);
+  else fallback = await loadDefault(entry.domain);
+
+  if (listPayload && successor === null && entry.liveops?.subjectId == null) {
+    record(
+      entry,
+      'end-skipped',
+      false,
+      'The event ended but it does not record which offer it owns, so there is nothing safe to remove. ' +
+        'Re-book it from its sheet, or take the offer out by hand.',
+    );
+    return { reverted: false, reason: 'no-subject' };
+  }
+
+  if (fallback === null) {
     record(
       entry,
       'end-skipped',
@@ -532,12 +564,42 @@ async function endWindow(entry, store, becauseOf) {
     return { reverted: false, reason: 'changed-by-hand' };
   }
 
+  if (fallback === undefined) {
+    // Computed now rather than at booking time: what else is live decides it,
+    // and that can have changed since.
+    const without = withoutEntry(entry.domain, live?.value ?? null, entry.liveops.subjectId);
+    if (without === null) {
+      record(
+        entry,
+        'end-skipped',
+        false,
+        'The event ended but the live value is not the shape this feature expects, so nothing was removed.',
+      );
+      return { reverted: false, reason: 'unreadable-live-value' };
+    }
+    if (without.payload === null) {
+      record(
+        entry,
+        'end-skipped',
+        false,
+        without.reason === 'would-empty'
+          ? `"${entry.liveops.subjectId}" is the only entry live, and a payload with none is one the client ` +
+            'refuses rather than applies - so it was left running. Book its replacement, or take it out by hand.'
+          : `"${entry.liveops.subjectId}" is not in the live payload any more, so there was nothing to remove.`,
+      );
+      return { reverted: without.reason === 'not-listed', reason: without.reason };
+    }
+    fallback = without.payload;
+  }
+
   const target =
     successor !== null
       ? `the "${successor.label || successor.id}" window`
-      : liveOps
-        ? 'the off state, so the feature is no longer in the game'
-        : 'the default config';
+      : listPayload
+        ? `the schedule without "${entry.liveops.subjectId}", so that offer is retired and the rest carry on`
+        : liveOps
+          ? 'the off state, so the feature is no longer in the game'
+          : 'the default config';
   const { result } = await publishPayload({
     entry,
     environmentId: entry.environmentId,
