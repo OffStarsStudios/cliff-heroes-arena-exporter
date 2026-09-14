@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error - plain .mjs module shared with the production server.
 import * as serverLiveOps from '../server/liveops.mjs';
 // @ts-expect-error - plain .mjs module shared with the production server.
-import { checkEntry } from '../server/schedule.mjs';
+import { GIT_PATHS as SERVER_GIT_PATHS, SETTING_KEYS as SERVER_SETTING_KEYS, checkEntry } from '../server/schedule.mjs';
 import { BATTLE_PASS_EXPORTER } from '../src/exporters/battlePass';
 import { EMPTY_SEASON } from '../src/lib/battlePass';
+import { GIT_PATHS, SETTING_KEYS } from '../src/domains/types';
 import {
   EVENT_CATEGORIES,
   LIVEOPS_DOMAINS,
@@ -83,6 +84,20 @@ describe('the server and the client agree', () => {
 
   it('offers the same categories', () => {
     expect([...EVENT_CATEGORIES]).toEqual([...SERVER_CATEGORIES]);
+  });
+
+  /**
+   * Adding a config means writing it into both tables, and forgetting the
+   * server half is silent until somebody opens the page: publishing, scheduling
+   * and the live view all answer "not a config this console knows about".
+   * That is exactly what happened when rolling offers were added.
+   */
+  it('publishes the same configs to the same setting keys', () => {
+    expect(SERVER_SETTING_KEYS).toEqual(SETTING_KEYS);
+  });
+
+  it('records them under the same paths', () => {
+    expect(SERVER_GIT_PATHS).toEqual(GIT_PATHS);
   });
 
   it('agrees on the phase of an event', () => {
