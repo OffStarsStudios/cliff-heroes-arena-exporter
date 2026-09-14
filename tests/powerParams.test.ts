@@ -7,14 +7,16 @@ import {
 } from '../src/lib/powerParams';
 
 describe('power parameter names', () => {
-  it('covers every parameter used by the live hero config', () => {
-    // Transcribed from the ConfigCat hero config, hero by hero.
+  it("covers every field of the game's PowerRemoteSettings", () => {
+    // Transcribed field for field from PowerRemoteSettings, in its own order.
     const used = [
       'ActivationDelay', 'Duration',
-      'SpeedMultiplier', 'EvasionExtension', 'MaxDuration', 'EvasionCheckDistance', 'EndsOnObstacleHit',
-      'DropDistance', 'FloatDistance', 'SlowdownDuration', 'SlowdownStrength', 'Damage', 'DamageInterval',
+      'DropDistance', 'FloatDistance',
+      'Damage', 'DamageInterval',
+      'SlowdownDuration', 'SlowdownStrength',
       'WeightDuration', 'AccelerationMultiplier', 'NextHitPenaltyMultiplier',
-      'Radius', 'AbsorbedHits', 'HitPenaltyMultiplier',
+      'Radius', 'AbsorbedHits', 'HitPenaltyMultiplier', 'SwitchInTime', 'SwitchOutTime',
+      'SpeedMultiplier', 'EvasionExtension', 'MaxDuration', 'EvasionCheckDistance', 'EndsOnObstacleHit',
     ];
     for (const name of used) expect(POWER_PARAM_NAMES).toContain(name);
     expect(POWER_PARAM_NAMES).toHaveLength(used.length);
@@ -23,6 +25,11 @@ describe('power parameter names', () => {
   it('types EndsOnObstacleHit as the only boolean', () => {
     const booleans = POWER_PARAM_NAMES.filter((name) => powerParamType(name) === 'boolean');
     expect(booleans).toEqual(['EndsOnObstacleHit']);
+  });
+
+  it("types AbsorbedHits as the only integer, matching the game's int field", () => {
+    const integers = POWER_PARAM_NAMES.filter((name) => powerParamType(name) === 'integer');
+    expect(integers).toEqual(['AbsorbedHits']);
   });
 
   it('accepts exact spellings', () => {

@@ -7,6 +7,7 @@ import {
 } from './columns';
 import { cellText, isBlank, normalizeName, parseNumber } from './normalize';
 import { resolveLookup } from './lookups';
+import { RARITIES, resolveRarity, type Rarity } from './rarities';
 import {
   FIXED_POWER_PARAMS,
   powerParamType,
@@ -119,7 +120,7 @@ interface BaseStats {
   MaxSpeed: number;
   SpeedIncreasePerSecond: number;
   PowerCooldown: number;
-  Rarity: string;
+  Rarity: Rarity;
   sheetRow: number;
 }
 
@@ -161,7 +162,7 @@ function readBaseStats(sheet: RawSheet, issues: Issue[]): BaseStats[] {
       issues,
     );
     const cooldown = requireNumber(row, index.powerCooldown, `${where}: Powerup Cooldown`, sheetRow, issues);
-    const rarity = index.rarity === undefined ? null : cellText(row[index.rarity]);
+    let rarity = index.rarity === undefined ? null : cellText(row[index.rarity]);
 
     if (rarity === null) {
       issues.push({
@@ -170,6 +171,34 @@ function readBaseStats(sheet: RawSheet, issues: Issue[]): BaseStats[] {
         message: `${where}: Rarity is empty.`,
         sheetRow,
       });
+    } else {
+      // Refused rather than exported: the client reads this into an enum that
+      // throws on an unknown name, and a heroesSettings that will not parse
+      // holds the game on its loading screen.
+      const resolved = resolveRarity(rarity);
+      if (resolved.status === 'unknown') {
+        const hint =
+          resolved.suggestion === null
+            ? `The rarities are ${RARITIES.join(', ')}.`
+            : `Did you mean "${resolved.suggestion}"?`;
+        issues.push({
+          severity: 'error',
+          code: 'hero-rarity-unknown',
+          message: `${where}: "${rarity}" is not a rarity the game knows. ${hint}`,
+          sheetRow,
+        });
+        rarity = null;
+      } else {
+        if (resolved.status === 'corrected') {
+          issues.push({
+            severity: 'warning',
+            code: 'hero-rarity-spelling',
+            message: `${where}: "${rarity}" is spelled differently from the game's own name for it and is exported as "${resolved.name}".`,
+            sheetRow,
+          });
+        }
+        rarity = resolved.name;
+      }
     }
     if (
       health === null ||
@@ -191,7 +220,7 @@ function readBaseStats(sheet: RawSheet, issues: Issue[]): BaseStats[] {
       MaxSpeed: maxSpeed,
       SpeedIncreasePerSecond: increase,
       PowerCooldown: cooldown,
-      Rarity: rarity,
+      Rarity: rarity as Rarity,
       sheetRow,
     });
   }
@@ -389,6 +418,17 @@ function readPower(sheet: RawSheet, issues: Issue[]): Map<string, HeroPower> {
             severity: 'error',
             code: 'hero-param-type',
             message: `${where}: "${canonical}" must be a number, not ${JSON.stringify(valueCell)}.`,
+            sheetRow,
+          });
+          continue;
+        }
+        // The game holds this one in an `int`, so a fraction would be truncated
+        // on the way in rather than refused. Better to say so here.
+        if (expected === 'integer' && !Number.isInteger(parsed.value)) {
+          issues.push({
+            severity: 'error',
+            code: 'hero-param-type',
+            message: `${where}: "${canonical}" must be a whole number, not ${parsed.value}.`,
             sheetRow,
           });
           continue;

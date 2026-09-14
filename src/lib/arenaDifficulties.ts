@@ -1,19 +1,30 @@
 import { makeNameResolver, type NameResolution } from './nameResolve';
 
 /**
- * Every bot difficulty name an arena's `BotLevels` may contain.
+ * Every bot difficulty name an arena's `BotLevels` may contain, in the order
+ * the game declares them.
  *
- * Transcribed from the live ConfigCat arenas config. The mapping from these
- * names to `botsSettings` levels lives only in the Unity client, so this list
- * is the strongest check available: a name the client does not know would
- * silently fall back to some default bot.
+ * These are the members of the game's `BotLevel` enum, and the order is what
+ * gives each one its number: `VeryEasy` is 0 through `VeryHard` at 4. Both
+ * `arenasSettings` (which names them) and `botsSettings` (which numbers them)
+ * are read into that same enum, so this list is the one vocabulary behind both.
  *
- * When the game gains a difficulty, add it here. The sheet's dropdown should
- * be updated to match, but the exporter is the authority.
+ * The game parses it strictly: a name outside this list throws inside
+ * Newtonsoft rather than falling back to a default bot, and a number outside
+ * it matches no authored difficulty at all.
+ *
+ * When the game gains a difficulty, add it here in its enum position. The
+ * sheet's dropdown should be updated to match, but the exporter is the
+ * authority.
  */
-export const ARENA_BOT_DIFFICULTIES = ['Easy', 'Medium', 'Hard', 'VeryHard'] as const;
+export const ARENA_BOT_DIFFICULTIES = ['VeryEasy', 'Easy', 'Medium', 'Hard', 'VeryHard'] as const;
 
 export type ArenaBotDifficulty = (typeof ARENA_BOT_DIFFICULTIES)[number];
+
+/** The name the game's `BotLevel` enum gives this number, or null past its end. */
+export function botLevelName(level: number): ArenaBotDifficulty | null {
+  return ARENA_BOT_DIFFICULTIES[level] ?? null;
+}
 
 export type DifficultyResolution = NameResolution<ArenaBotDifficulty>;
 

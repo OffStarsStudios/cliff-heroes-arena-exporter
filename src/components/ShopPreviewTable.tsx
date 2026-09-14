@@ -1,11 +1,31 @@
 import type { ShopPreviewRow, ShopSoldIn } from '../lib/types';
 
-const SOLD_IN_LABEL: Record<ShopSoldIn, string> = {
+/**
+ * Only the three ways of paying need rewording. A currency is already shown to
+ * the player under the name it is exported as, so it stands as it is.
+ */
+const KIND_LABEL: Record<string, string> = {
   RealMoney: 'Real money',
-  Gems: 'Gems',
   Free: 'Free',
   Ad: 'Rewarded ad',
 };
+
+function soldInLabel(soldIn: ShopSoldIn): string {
+  return KIND_LABEL[soldIn] ?? soldIn;
+}
+
+/**
+ * What the product costs, in the one currency it is charged in. A dollar tier
+ * is shown as the dollars it is - that is exactly what the tier means - and a
+ * product carrying both is priced both ways, which is how one is moved between
+ * real money and gems without being re-sent.
+ */
+function priceLabel(row: ShopPreviewRow): string {
+  const parts: string[] = [];
+  if (row.priceTier !== null) parts.push(`$${row.priceTier}`);
+  if (row.price !== null) parts.push(row.price.toLocaleString());
+  return parts.length === 0 ? '-' : parts.join(' / ');
+}
 
 /** The parsed products, in sheet order. */
 export function ShopPreviewTable({ rows }: { rows: ShopPreviewRow[] }) {
@@ -33,7 +53,7 @@ export function ShopPreviewTable({ rows }: { rows: ShopPreviewRow[] }) {
           {rows.map((row) => (
             <tr key={row.id}>
               <td className="mono">{row.id}</td>
-              <td>{SOLD_IN_LABEL[row.soldIn]}</td>
+              <td>{soldInLabel(row.soldIn)}</td>
               <td>
                 <span className="param-list">
                   <span className={`tag ${row.enabled ? 'tag--bot-easy' : 'tag--bot-veryhard'}`}>
@@ -42,7 +62,7 @@ export function ShopPreviewTable({ rows }: { rows: ShopPreviewRow[] }) {
                   {!row.listed && <span className="tag tag--reward">unlisted</span>}
                 </span>
               </td>
-              <td className="num mono">{row.price === null ? '-' : row.price.toLocaleString()}</td>
+              <td className="num mono">{priceLabel(row)}</td>
               <td>{row.badge ?? '-'}</td>
               <td>
                 {row.contents.length === 0 ? (

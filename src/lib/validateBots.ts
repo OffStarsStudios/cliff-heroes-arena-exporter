@@ -1,6 +1,7 @@
+import { ARENA_BOT_DIFFICULTIES, botLevelName } from './arenaDifficulties';
 import type { BotsConfig, Issue } from './types';
 
-const ROOT_KEYS = ['BotLevel', 'Bots'];
+const ROOT_KEYS = ['Bots'];
 const BOT_KEYS = [
   'Level',
   'MinJumpInterval',
@@ -73,24 +74,32 @@ export function validateBotsConfig(config: BotsConfig): Issue[] {
     if (isFiniteNumber(record.Level)) levels.push(record.Level);
   });
 
+  // One entry per member of the game's BotLevel enum, in its declared order.
+  // The client looks each difficulty up by value and keeps the tuning compiled
+  // into the build for any it cannot find, so a short table is a silent partial
+  // publish rather than an error the game reports.
+  if (bots.length > 0 && levels.length !== ARENA_BOT_DIFFICULTIES.length) {
+    issues.push({
+      severity: 'error',
+      code: 'schema-level-sequence',
+      message: `"Bots" must tune all ${ARENA_BOT_DIFFICULTIES.length} difficulties the game declares (${ARENA_BOT_DIFFICULTIES.join(', ')}), not ${levels.length}.`,
+    });
+  }
   levels.forEach((level, index) => {
     if (level !== index) {
       issues.push({
         severity: 'error',
         code: 'schema-level-sequence',
-        message: `Bot ${index + 1} has level ${level}; levels must run 0, 1, 2... in order.`,
+        message: `Bot ${index + 1} has level ${level}; levels must run 0, 1, 2... in order, matching ${ARENA_BOT_DIFFICULTIES.join(', ')}.`,
+      });
+    } else if (botLevelName(level) === null) {
+      issues.push({
+        severity: 'error',
+        code: 'schema-level-unknown',
+        message: `Bot ${index + 1} has level ${level}, which names no difficulty the game declares (0 to ${ARENA_BOT_DIFFICULTIES.length - 1}).`,
       });
     }
   });
-
-  const max = levels.length === 0 ? 0 : Math.max(...levels);
-  if (!isFiniteNumber(config.BotLevel) || config.BotLevel !== max) {
-    issues.push({
-      severity: 'error',
-      code: 'schema-botlevel',
-      message: `"BotLevel" must equal the highest level in Bots (${max}), not ${JSON.stringify(config.BotLevel)}.`,
-    });
-  }
 
   return issues;
 }

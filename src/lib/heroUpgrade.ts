@@ -1,6 +1,7 @@
 import { findColumn, requireNumber, resolveColumns, sheetHeaders, type ColumnSpec } from './columns';
 import { makeNameResolver } from './nameResolve';
-import { cellText, isBlank, isBlankRow, normalizeName, parseNumber } from './normalize';
+import { cellText, isBlank, isBlankRow, parseNumber } from './normalize';
+import { RARITIES, resolveRarity, type Rarity } from './rarities';
 import type {
   HeroUpgradeConfig,
   HeroUpgradePreviewRow,
@@ -162,8 +163,8 @@ function readCosts(sheet: RawSheet, issues: Issue[]): { costs: RarityCost[]; pre
     if (isBlankRow(row)) continue;
     dataRows += 1;
 
-    const rarity = index.rarity === undefined ? null : cellText(row[index.rarity]);
-    if (rarity === null) {
+    const rawRarity = index.rarity === undefined ? null : cellText(row[index.rarity]);
+    if (rawRarity === null) {
       if (index.rarity !== undefined) {
         issues.push({
           severity: 'error',
@@ -174,7 +175,34 @@ function readCosts(sheet: RawSheet, issues: Issue[]): { costs: RarityCost[]; pre
       }
       continue;
     }
-    const key = normalizeName(rarity);
+    // Refused rather than exported, and canonicalised rather than passed
+    // through: the client reads every rarity here into an enum that throws on
+    // an unknown name, and heroUpgradeSettings is a config the game will not
+    // start without.
+    const resolvedRarity = resolveRarity(rawRarity);
+    if (resolvedRarity.status === 'unknown') {
+      const hint =
+        resolvedRarity.suggestion === null
+          ? `The rarities are ${RARITIES.join(', ')}.`
+          : `Did you mean "${resolvedRarity.suggestion}"?`;
+      issues.push({
+        severity: 'error',
+        code: 'heroupgrade-rarity-unknown',
+        message: `"${rawRarity}" on the ${tab} is not a rarity the game knows. ${hint}`,
+        sheetRow,
+      });
+      continue;
+    }
+    if (resolvedRarity.status === 'corrected') {
+      issues.push({
+        severity: 'warning',
+        code: 'heroupgrade-rarity-spelling',
+        message: `"${rawRarity}" on the ${tab} is spelled differently from the game's own name for it and is exported as "${resolvedRarity.name}".`,
+        sheetRow,
+      });
+    }
+    const rarity: Rarity = resolvedRarity.name;
+    const key = rarity;
     const earlier = rowsByRarity.get(key);
     if (earlier !== undefined) {
       issues.push({
@@ -286,24 +314,34 @@ export function transformHeroUpgrade(input: HeroUpgradeTransformInput): HeroUpgr
     }
   }
 
-  let referenceRarity: string | null = null;
+  let referenceRarity: Rarity | null = null;
   const reference = growth.values.ReferenceRarity;
   if (reference !== undefined) {
     const text = cellText(reference.raw as never);
     if (text === null) {
       issues.push({ severity: 'error', code: 'heroupgrade-missing-value', message: `"Reference Rarity" on the ${growthTab} has no value.`, sheetRow: reference.sheetRow });
     } else {
-      const priced = costs.find((cost) => normalizeName(cost.Rarity) === normalizeName(text));
-      if (priced === undefined) {
+      const resolved = resolveRarity(text);
+      if (resolved.status === 'unknown') {
+        const hint =
+          resolved.suggestion === null
+            ? `The rarities are ${RARITIES.join(', ')}.`
+            : `Did you mean "${resolved.suggestion}"?`;
+        issues.push({
+          severity: 'error',
+          code: 'heroupgrade-reference-rarity-unknown',
+          message: `"Reference Rarity" is "${text}", which is not a rarity the game knows. ${hint}`,
+          sheetRow: reference.sheetRow,
+        });
+      } else if (!costs.some((cost) => cost.Rarity === resolved.name)) {
         issues.push({
           severity: 'error',
           code: 'heroupgrade-reference-rarity-unpriced',
-          message: `"Reference Rarity" is "${text}", but the Costs tab has no row for that rarity.${costs.length > 0 ? ` Priced rarities: ${costs.map((cost) => cost.Rarity).join(', ')}.` : ''}`,
+          message: `"Reference Rarity" is "${resolved.name}", but the Costs tab has no row for that rarity.${costs.length > 0 ? ` Priced rarities: ${costs.map((cost) => cost.Rarity).join(', ')}.` : ''}`,
           sheetRow: reference.sheetRow,
         });
       } else {
-        // The exact spelling from the Costs tab is what the client compares against.
-        referenceRarity = priced.Rarity;
+        referenceRarity = resolved.name;
       }
     }
   }
@@ -319,13 +357,15 @@ export function transformHeroUpgrade(input: HeroUpgradeTransformInput): HeroUpgr
     cardsPayoutModifier !== null;
 
   // Every field is non-null when `complete`; the fallbacks only fill a config
-  // that the error count already keeps from being exported.
+  // that the error count already keeps from being exported. `Common` stands in
+  // for a reference rarity that never resolved, since the field is typed to the
+  // game's enum and an empty string is not one of its names.
   const config: HeroUpgradeConfig = {
     CoinsGrowth: coinsGrowth ?? 0,
     CardsGrowth: cardsGrowth ?? 0,
     CoinsRounding: coinsRounding ?? 0,
     CardsRounding: cardsRounding ?? 0,
-    ReferenceRarity: referenceRarity ?? '',
+    ReferenceRarity: referenceRarity ?? 'Common',
     CardsPayoutModifier: cardsPayoutModifier ?? 0,
     Costs: costs,
   };

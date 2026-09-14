@@ -13,6 +13,7 @@ export function BotsPreviewTable({ rows }: { rows: BotPreviewRow[] }) {
       <table>
         <thead>
           <tr>
+            <th scope="col">Difficulty</th>
             <th scope="col" className="num">
               Level
             </th>
@@ -28,6 +29,7 @@ export function BotsPreviewTable({ rows }: { rows: BotPreviewRow[] }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.level}>
+              <td>{row.name}</td>
               <td className="num">{row.level}</td>
               <td className="mono">{range(row.jump, 's')}</td>
               <td className="mono">{range(row.dodge)}</td>

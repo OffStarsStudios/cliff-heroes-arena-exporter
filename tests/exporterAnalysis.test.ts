@@ -13,9 +13,9 @@ const WORKBOOK = workbookFromGrids('arenas.xlsx', {
   ],
   'Arena Settings': [
     ['Arena Name', 'Track Count', 'Bot 1 Level', 'Bot 2 Level', 'Bot 3 Level'],
-    ['Lost Oasis', 15, 'Easy', 'Medium', 'Medium'],
+    ['Lost Oasis', 20, 'Easy', 'Medium', 'Hard'],
     ['Mystic Forest', 20, 'Medium', 'Medium', 'Hard'],
-    ['Sakura Cliffs', 25, 'Hard', 'Hard', 'VeryHard'],
+    ['Sakura Cliffs', 20, 'Hard', 'Hard', 'VeryHard'],
   ],
 });
 

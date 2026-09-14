@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   ARENA_BOT_DIFFICULTIES,
+  botLevelName,
   isArenaBotDifficulty,
   resolveDifficulty,
 } from '../src/lib/arenaDifficulties';
 
 describe('bot difficulty names', () => {
-  it('covers every difficulty the live arenas config uses', () => {
-    for (const name of ['Easy', 'Medium', 'Hard', 'VeryHard']) {
-      expect(ARENA_BOT_DIFFICULTIES).toContain(name);
-    }
+  it("covers every member of the game's BotLevel enum, in its declared order", () => {
+    expect([...ARENA_BOT_DIFFICULTIES]).toEqual(['VeryEasy', 'Easy', 'Medium', 'Hard', 'VeryHard']);
+  });
+
+  it('numbers each difficulty the way the enum does', () => {
+    expect(botLevelName(0)).toBe('VeryEasy');
+    expect(botLevelName(4)).toBe('VeryHard');
+    expect(botLevelName(5)).toBeNull();
   });
 
   it('accepts exact spellings', () => {
@@ -20,6 +25,8 @@ describe('bot difficulty names', () => {
 
   it('accepts case, spacing and punctuation variants, emitting the canonical name', () => {
     const variants = [
+      ['very easy', 'VeryEasy'],
+      ['VERYEASY', 'VeryEasy'],
       ['very hard', 'VeryHard'],
       ['VERYHARD', 'VeryHard'],
       ['Very_Hard', 'VeryHard'],

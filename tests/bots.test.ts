@@ -69,7 +69,7 @@ describe('the live bots payload', () => {
 
   it('emits keys in the order the client reads', () => {
     const result = run(LIVE_ROWS);
-    expect(Object.keys(result.config)).toEqual(['BotLevel', 'Bots']);
+    expect(Object.keys(result.config)).toEqual(['Bots']);
     expect(Object.keys(result.config.Bots[0])).toEqual([
       'Level',
       'MinJumpInterval',
@@ -88,9 +88,9 @@ describe('the live bots payload', () => {
     expect(serializeBotsConfig(run(LIVE_ROWS).config) + '\n').toBe(baseline.replace(/\r\n/g, '\n'));
   });
 
-  it('derives BotLevel from the highest level', () => {
-    const result = run(LIVE_ROWS.slice(0, 4));
-    expect(result.config.BotLevel).toBe(2);
+  it('carries nothing beside Bots, since the client reads nothing else', () => {
+    const result = run(LIVE_ROWS);
+    expect(result.config).not.toHaveProperty('BotLevel');
   });
 });
 
@@ -119,9 +119,9 @@ describe('the real Bots Settings workbook', () => {
 
 describe('row validation', () => {
   it('orders by level whatever the row order', () => {
-    const result = run([HEADER, row(2), row(0), row(1)]);
+    const result = run([HEADER, row(2), row(0), row(1), row(4), row(3)]);
     expect(result.issues).toEqual([]);
-    expect(result.config.Bots.map((bot) => bot.Level)).toEqual([0, 1, 2]);
+    expect(result.config.Bots.map((bot) => bot.Level)).toEqual([0, 1, 2, 3, 4]);
   });
 
   it('reports a missing column by name', () => {
@@ -137,25 +137,33 @@ describe('row validation', () => {
     expect(errors(result)[0]).toContain('Raycast Distance');
   });
 
-  it('rejects a fractional or negative level', () => {
+  it('rejects a fractional, negative, or past-the-enum level', () => {
     expect(codes(run([HEADER, row(0, { 0: 0.5 })]))).toContain('bots-level-invalid');
     expect(codes(run([HEADER, row(0, { 0: -1 })]))).toContain('bots-level-invalid');
+    // The game has five difficulties, so 5 names none of them and would tune
+    // no bot at all.
+    const past = run([HEADER, row(0, { 0: 5 })]);
+    expect(codes(past)).toContain('bots-level-invalid');
+    expect(errors(past)[0]).toContain('VeryHard');
   });
 
   it('rejects a duplicated level', () => {
     const result = run([HEADER, row(0), row(1, { 0: 0 })]);
     expect(codes(result)).toContain('bots-level-duplicate');
+    expect(errors(result)[0]).toContain('VeryEasy');
   });
 
-  it('rejects a gap in the level sequence and exports nothing', () => {
+  it('rejects a table that leaves a difficulty untuned and exports nothing', () => {
     const result = run([HEADER, row(0), row(2)]);
     expect(codes(result)).toContain('bots-level-gap');
-    expect(errors(result)[0]).toContain('expected level 1 but found 2');
-    expect(result.config).toEqual({ BotLevel: 0, Bots: [] });
+    expect(errors(result)[0]).toContain('Easy (level 1)');
+    expect(result.config).toEqual({ Bots: [] });
   });
 
-  it('rejects a sequence that does not start at level 0', () => {
-    expect(codes(run([HEADER, row(1), row(2)]))).toContain('bots-level-gap');
+  it('rejects a table that does not tune the easiest difficulty', () => {
+    const result = run([HEADER, row(1), row(2), row(3), row(4)]);
+    expect(codes(result)).toContain('bots-level-gap');
+    expect(errors(result)[0]).toContain('VeryEasy (level 0)');
   });
 
   it('rejects intervals and distances that are not positive', () => {
@@ -167,7 +175,9 @@ describe('row validation', () => {
   it('rejects a dodge chance outside 0..1', () => {
     expect(codes(run([HEADER, row(0, { 4: 1.5 })]))).toContain('bots-chance-out-of-range');
     expect(codes(run([HEADER, row(0, { 3: -0.1 })]))).toContain('bots-chance-out-of-range');
-    expect(run([HEADER, row(0, { 3: 0, 4: 1 })]).issues).toEqual([]);
+    expect(codes(run([HEADER, row(0, { 3: 0, 4: 1 }), ...LIVE_ROWS.slice(2)]))).not.toContain(
+      'bots-chance-out-of-range',
+    );
   });
 
   it('rejects a minimum above its maximum', () => {
@@ -177,14 +187,15 @@ describe('row validation', () => {
     expect(codes(run([HEADER, row(0, { 7: 5 })]))).toContain('bots-min-above-max');
   });
 
-  it('warns when a higher level is easier than the one below', () => {
-    const result = run([HEADER, row(0), row(1, { 3: 0.05, 4: 0.1 })]);
+  it('warns when a higher difficulty is easier than the one below', () => {
+    const result = run([HEADER, row(0), row(1, { 3: 0.05, 4: 0.1 }), ...LIVE_ROWS.slice(3)]);
     expect(codes(result)).toContain('bots-not-harder');
     expect(errors(result)).toEqual([]);
   });
 
   it('skips blank rows and reports an empty tab', () => {
-    expect(run([HEADER, [null, null, null, null, null, null, null, null, null], row(0)]).issues).toEqual([]);
+    const blank: RawCell[] = [null, null, null, null, null, null, null, null, null];
+    expect(run([HEADER, blank, ...LIVE_ROWS.slice(1)]).issues).toEqual([]);
     expect(codes(run([HEADER]))).toContain('bots-empty');
   });
 });
@@ -192,14 +203,15 @@ describe('row validation', () => {
 describe('the bots schema gate', () => {
   const gate = (config: unknown) => validateBotsConfig(config as BotsConfig).map((issue) => issue.code);
 
-  it('pins root and bot key order, numeric values, the level run and BotLevel', () => {
+  it('pins root and bot key order, numeric values and full difficulty coverage', () => {
     expect(gate({ Bots: [], BotLevel: 0 })).toContain('schema-root');
-    expect(gate({ BotLevel: 0, Bots: [] })).toContain('no-bots');
+    expect(gate({ Bots: [] })).toContain('no-bots');
     const bot = { ...botsJson.Bots[0] };
-    expect(gate({ BotLevel: 0, Bots: [{ ...bot, Extra: 1 }] })).toContain('schema-bot-keys');
-    expect(gate({ BotLevel: 0, Bots: [{ ...bot, MinJumpInterval: '4' }] })).toContain('schema-bot-value');
-    expect(gate({ BotLevel: 1, Bots: [{ ...bot, Level: 1 }] })).toContain('schema-level-sequence');
-    expect(gate({ BotLevel: 3, Bots: [bot] })).toContain('schema-botlevel');
+    expect(gate({ Bots: [{ ...bot, Extra: 1 }] })).toContain('schema-bot-keys');
+    expect(gate({ Bots: [{ ...bot, MinJumpInterval: '4' }] })).toContain('schema-bot-value');
+    expect(gate({ Bots: [{ ...bot, Level: 1 }] })).toContain('schema-level-sequence');
+    // One difficulty short of the enum, even with the levels in order.
+    expect(gate({ Bots: botsJson.Bots.slice(0, 4) })).toContain('schema-level-sequence');
     expect(gate(botsJson)).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
 import { FIXED_POWER_PARAMS, POWER_PARAM_NAMES, powerParamType, type PowerParamName } from './powerParams';
+import { RARITIES, isRarity } from './rarities';
 import type { HeroesConfig, Issue } from './types';
 
 const HERO_KEYS = ['ID', 'MaxSpeed', 'SpeedIncreasePerSecond', 'Rarity', 'PowerCooldown', 'Levels', 'Power'];
@@ -102,6 +103,15 @@ export function validateHeroesConfig(config: HeroesConfig): Issue[] {
         code: 'schema-hero-rarity',
         message: `${position}: "Rarity" must be a non-empty string.`,
       });
+    } else if (!isRarity(record.Rarity)) {
+      // The client reads this into an enum that throws on an unknown name, and
+      // a heroesSettings that will not parse holds the game on its loading
+      // screen - so the gate refuses it rather than letting it be published.
+      issues.push({
+        severity: 'error',
+        code: 'schema-hero-rarity',
+        message: `${position}: "Rarity" is "${record.Rarity}", which is not one of ${RARITIES.join(', ')}.`,
+      });
     }
 
     const levels = record.Levels;
@@ -182,11 +192,17 @@ export function validateHeroesConfig(config: HeroesConfig): Issue[] {
           message: `${position}: "${key}" must be a boolean, not ${JSON.stringify(value)}.`,
         });
       }
-      if (expected === 'number' && !isFiniteNumber(value)) {
+      if (expected !== 'boolean' && !isFiniteNumber(value)) {
         issues.push({
           severity: 'error',
           code: 'schema-power-type',
           message: `${position}: "${key}" must be a number, not ${JSON.stringify(value)}.`,
+        });
+      } else if (expected === 'integer' && !Number.isInteger(value)) {
+        issues.push({
+          severity: 'error',
+          code: 'schema-power-type',
+          message: `${position}: "${key}" must be a whole number, not ${JSON.stringify(value)}.`,
         });
       }
     }

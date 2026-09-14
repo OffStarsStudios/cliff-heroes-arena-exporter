@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { validateGraph } from '../src/workspace/graph';
 import { emptyRegistry, mergeRegistries, registryFromConfigs, type IdRegistry } from '../src/workspace/registry';
 import type { ArenasConfig, BattlePassConfig, BotsConfig, ConfigSet, DomainId, HeroUpgradeConfig, MatchTrophyConfig, ShopConfig } from '../src/domains/types';
+import type { Rarity } from '../src/lib/rarities';
 import type { ArenaProgressConfig, HeroEntry, HeroesConfig } from '../src/lib/types';
 
 import arenasJson from '../config/arenas.json';
@@ -33,7 +34,7 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function hero(id: string, rarity: string): HeroEntry {
+function hero(id: string, rarity: Rarity): HeroEntry {
   return {
     ID: id,
     MaxSpeed: 24.8,
@@ -77,8 +78,8 @@ describe('the live config set', () => {
     expect(report.errors).toBe(0);
   });
 
-  it('reports the undeclared difficulty mapping, since no config carries it', () => {
-    expect(codes(live)).toContain('graph-bot-difficulty-unmapped');
+  it('no longer reports the difficulty mapping as undeclared, now that the enum declares it', () => {
+    expect(codes(live)).not.toContain('graph-bot-difficulty-unmapped');
   });
 
   it('says which domains it could not check', () => {
@@ -130,25 +131,30 @@ describe('racer count', () => {
 });
 
 describe('bot difficulties', () => {
-  it('errors when more difficulty names are used than there are bot levels', () => {
+  it('flags a difficulty an arena races at that bots does not tune', () => {
     const bots = clone(live.bots);
-    bots.Bots = bots.Bots.slice(0, 2);
-    bots.BotLevel = 1;
-    expect(codes({ ...live, bots })).toContain('graph-bot-difficulty-count');
+    // Drop Hard (level 3), which the live arenas do race at.
+    bots.Bots = bots.Bots.filter((bot) => bot.Level !== 3);
+    const issues = codes({ ...live, bots });
+    expect(issues).toContain('graph-bot-difficulty-untuned');
+  });
+
+  it('accepts the live pair, where every difficulty raced at is tuned', () => {
+    expect(codes(live)).not.toContain('graph-bot-difficulty-untuned');
   });
 });
 
 describe('bot levels', () => {
-  it('flags a BotLevel header that disagrees with the array', () => {
-    const bots = clone(live.bots);
-    bots.BotLevel = 5;
-    expect(codes({ ...live, bots })).toContain('graph-botlevel-header');
-  });
-
-  it('flags a gap in the level sequence', () => {
+  it('flags a difficulty left untuned', () => {
     const bots = clone(live.bots);
     bots.Bots.splice(2, 1);
     expect(codes({ ...live, bots })).toContain('graph-bot-level-gap');
+  });
+
+  it('flags a level past the end of the enum', () => {
+    const bots = clone(live.bots);
+    bots.Bots.push({ ...clone(bots.Bots[4]), Level: 5 });
+    expect(codes({ ...live, bots })).toContain('graph-bot-level-unknown');
   });
 
   it('flags a duplicated level', () => {
@@ -159,8 +165,15 @@ describe('bot levels', () => {
 });
 
 describe('rarities', () => {
+  /** The live costs with one rarity's row taken out, so something is unpriced. */
+  function withoutCostsFor(rarity: Rarity) {
+    const heroUpgrade = clone(live.heroUpgrade);
+    heroUpgrade.Costs = heroUpgrade.Costs.filter((cost) => cost.Rarity !== rarity);
+    return heroUpgrade;
+  }
+
   it('flags a hero whose rarity has no upgrade cost row', () => {
-    const set = { ...live, heroes: heroes(hero('heroes.cliff', 'Ultra')) };
+    const set = { ...live, heroes: heroes(hero('heroes.cliff', 'Mythic')), heroUpgrade: withoutCostsFor('Mythic') };
     expect(codes(set)).toContain('graph-rarity-unpriced');
   });
 
@@ -170,8 +183,8 @@ describe('rarities', () => {
   });
 
   it('flags a ReferenceRarity with no Costs row', () => {
-    const heroUpgrade = clone(live.heroUpgrade);
-    heroUpgrade.ReferenceRarity = 'Ultra';
+    const heroUpgrade = withoutCostsFor('Mythic');
+    heroUpgrade.ReferenceRarity = 'Mythic';
     expect(codes({ ...live, heroUpgrade })).toContain('graph-reference-rarity');
   });
 });

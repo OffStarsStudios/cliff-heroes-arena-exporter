@@ -1,7 +1,8 @@
 import { findColumn, resolveColumns, sheetHeaders, type ColumnSpec } from './columns';
+import { CURRENCY_NAMES, SHOP_SOLD_IN, isCurrencySoldIn, resolveSoldIn } from './currencies';
 import { resolveLookup } from './lookups';
-import { makeNameResolver } from './nameResolve';
 import { cellText, headerTokens, isBlank, isBlankRow, parseNumber } from './normalize';
+import { PRICE_TIERS, isPriceTier, nearestPriceTiers } from './priceTiers';
 import type {
   Issue,
   LookupTable,
@@ -18,26 +19,31 @@ import type {
 /**
  * Turns the Products tab into `shopSettings`.
  *
- * One row per product: its ID, how it is sold, whether it is enabled and
- * listed, the fields that only some kinds of product carry (price, badge,
- * offer duration, cooldown, daily limit), and repeating `Reward N` /
- * `Amount N` pairs for what it grants. Reward names are resolved through the
- * Rewards lookup tab; IDs are never constructed from names.
+ * One row per product: its ID, how it is sold, what it costs, whether it is
+ * enabled and listed, the presentation and limit fields, and repeating
+ * `Reward N` / `Amount N` pairs for what it grants. Reward names are resolved
+ * through the Rewards lookup tab; IDs are never constructed from names.
  *
- * Which optional fields a product may carry follows from how it is sold:
- * gem-priced products need a price, real-money products are priced by the
- * store and must not carry one, free products need a cooldown, and ad
- * products need a daily limit. Those rules are the shape of the live config.
+ * **What a product costs is authored here, real money included.** A dollar
+ * price travels as `Price Tier`: the tier is the dollar figure and also the
+ * store SKU, since one consumable product per price point is registered on the
+ * stores and everything costing five dollars charges the same `tier5`. Nothing
+ * about a price lives on the store dashboard, so a real-money product exported
+ * without a tier is one the client cannot charge for and refuses outright.
+ *
+ * The client applies each field on its own and only when present, so a product
+ * may carry both a dollar tier and a currency price - that is how it is moved
+ * between the two without re-sending it. What it may not do is name a way of
+ * paying with no price behind it, and those two pairings are all this checks.
  */
 
-export const SHOP_SOLD_IN = ['RealMoney', 'Gems', 'Free', 'Ad'] as const;
+export { SHOP_SOLD_IN };
 
-const SOLD_IN_RESOLVER = makeNameResolver(SHOP_SOLD_IN);
-
-/** Product key order, exactly as the client reads it. Optional keys are omitted, not nulled. */
+/** Product key order, exactly as the live config carries it. Optional keys are omitted, not nulled. */
 const PRODUCT_KEYS = [
   'ID',
   'SoldIn',
+  'PriceTier',
   'IsEnabled',
   'IsListed',
   'PriceInCurrency',
@@ -45,6 +51,7 @@ const PRODUCT_KEYS = [
   'OfferDurationHours',
   'CooldownHours',
   'DailyLimit',
+  'SortOverride',
   'Contents',
 ] as const;
 
@@ -59,10 +66,12 @@ const COLUMN_LABELS = {
   enabled: ['enabled', 'is enabled', 'active'],
   listed: ['listed', 'is listed', 'visible', 'shown'],
   price: ['price', 'price in currency', 'price in gems', 'gems price', 'gem price'],
+  priceTier: ['price tier', 'tier', 'dollars', 'usd', 'price usd', 'dollar price'],
   badge: ['badge label', 'badge'],
   offerHours: ['offer duration hours', 'offer duration', 'offer hours', 'duration hours'],
   cooldownHours: ['cooldown hours', 'cooldown'],
   dailyLimit: ['daily limit', 'limit per day', 'per day'],
+  sortOverride: ['sort override', 'sort', 'sort order', 'order'],
 } as const;
 
 type FieldName = keyof typeof COLUMN_LABELS;
@@ -73,14 +82,25 @@ const TITLES: Record<FieldName, string> = {
   enabled: 'Enabled',
   listed: 'Listed',
   price: 'Price',
+  priceTier: 'Price Tier',
   badge: 'Badge Label',
   offerHours: 'Offer Duration Hours',
   cooldownHours: 'Cooldown Hours',
   dailyLimit: 'Daily Limit',
+  sortOverride: 'Sort Override',
 };
 
 const REQUIRED_FIELDS: FieldName[] = ['productId', 'soldIn', 'enabled'];
-const OPTIONAL_FIELDS: FieldName[] = ['listed', 'price', 'badge', 'offerHours', 'cooldownHours', 'dailyLimit'];
+const OPTIONAL_FIELDS: FieldName[] = [
+  'listed',
+  'price',
+  'priceTier',
+  'badge',
+  'offerHours',
+  'cooldownHours',
+  'dailyLimit',
+  'sortOverride',
+];
 
 const COLUMN_SPEC: ColumnSpec<FieldName> = {
   labels: COLUMN_LABELS,
@@ -170,6 +190,18 @@ const wholeAtLeastOne = (value: number) =>
   Number.isInteger(value) && value >= 1 ? null : `must be a whole number of 1 or more, not ${value}.`;
 const wholeAtLeastZero = (value: number) =>
   Number.isInteger(value) && value >= 0 ? null : `must be a whole number of 0 or more, not ${value}.`;
+const anyNumber = () => null;
+/**
+ * A tier off the ladder has no SKU registered behind it, and the client then
+ * reads the product as real money with nothing to charge against and refuses
+ * it - so an unstocked figure is worse than a merely wrong one.
+ */
+const onThePriceLadder = (value: number) => {
+  if (isPriceTier(value)) return null;
+  const near = nearestPriceTiers(value);
+  const hint = near.length > 0 ? ` The nearest stocked prices are $${near.join(' and $')}.` : '';
+  return `must be one of the dollar prices the stores stock (${PRICE_TIERS.join(', ')}), not ${value}.${hint}`;
+};
 
 /* ------------------------------------------------------------- transform -- */
 
@@ -268,9 +300,12 @@ export function transformShop(input: ShopTransformInput): ShopTransformResult {
     if (soldInText === null) {
       if (index.soldIn !== undefined) fail('shop-sold-in-missing', 'Sold In is empty.');
     } else {
-      const resolved = SOLD_IN_RESOLVER.resolve(soldInText);
+      const resolved = resolveSoldIn(soldInText);
       if (resolved.status === 'unknown') {
-        const hint = resolved.suggestion === null ? `The options are ${SHOP_SOLD_IN.join(', ')}.` : `Did you mean "${resolved.suggestion}"?`;
+        const hint =
+          resolved.suggestion === null
+            ? `The options are ${SHOP_SOLD_IN.join(', ')} - either a way of paying or one of the player's currencies.`
+            : `Did you mean "${resolved.suggestion}"?`;
         fail('shop-sold-in-unknown', `"${soldInText}" is not a way the store sells things. ${hint}`);
       } else {
         soldIn = resolved.name;
@@ -307,32 +342,47 @@ export function transformShop(input: ShopTransformInput): ShopTransformResult {
     const offerHours = optionalNumber(cellOf('offerHours'), 'Offer Duration Hours', positive, 'shop-offer-hours-invalid', context);
     const cooldown = optionalNumber(cellOf('cooldownHours'), 'Cooldown Hours', positive, 'shop-cooldown-invalid', context);
     const dailyLimit = optionalNumber(cellOf('dailyLimit'), 'Daily Limit', wholeAtLeastOne, 'shop-daily-limit-invalid', context);
+    const priceTier = optionalNumber(cellOf('priceTier'), 'Price Tier', onThePriceLadder, 'shop-price-tier-invalid', context);
+    const sortOverride = optionalNumber(cellOf('sortOverride'), 'Sort Override', anyNumber, 'shop-sort-override-invalid', context);
     if (price.invalid || offerHours.invalid || cooldown.invalid || dailyLimit.invalid) valid = false;
+    if (priceTier.invalid || sortOverride.invalid) valid = false;
     const badge = cellText(cellOf('badge'));
 
+    // The only rule the client actually has: whatever a product is sold in must
+    // have a price behind it, or there is nothing to charge and the product is
+    // refused outright. Every other field is applied on its own, so a dollar
+    // tier beside a gem price - the pass premium is exactly that - is allowed.
     if (soldIn !== null) {
-      if (soldIn === 'Gems' && price.value === null && !price.invalid) {
-        fail('shop-price-missing', 'Price is empty, but a product sold for gems needs one.');
+      if (soldIn === 'RealMoney' && priceTier.value === null && !priceTier.invalid) {
+        fail(
+          'shop-price-tier-missing',
+          'Price Tier is empty, but a product sold for real money is charged through the tier - it is both the dollar price and the store SKU. Without one the game cannot sell it.',
+        );
       }
-      if (soldIn !== 'Gems' && price.value !== null) {
+      if (isCurrencySoldIn(soldIn) && price.value === null && !price.invalid) {
+        fail('shop-price-missing', `Price is empty, but a product sold for ${soldIn} needs one.`);
+      }
+      if (!isCurrencySoldIn(soldIn) && price.value !== null) {
         fail(
           'shop-price-unexpected',
-          soldIn === 'RealMoney'
-            ? 'Price is set, but real-money products are priced by the app store. Leave it empty.'
-            : `Price is set, but a ${soldIn === 'Free' ? 'free' : 'rewarded-ad'} product has no price. Leave it empty.`,
+          `Price is set, but "${soldIn}" is not one of the currencies the player holds (${CURRENCY_NAMES.join(', ')}), so there is nothing for the figure to be in. Set Price Tier for a dollar price, or leave Price empty.`,
         );
       }
       if (soldIn === 'Free' && cooldown.value === null && !cooldown.invalid) {
-        fail('shop-cooldown-missing', 'Cooldown Hours is empty, but a free product needs one.');
-      }
-      if (soldIn !== 'Free' && cooldown.value !== null) {
-        fail('shop-cooldown-unexpected', 'Cooldown Hours is set, but only free products have a cooldown. Leave it empty.');
+        issues.push({
+          severity: 'warning',
+          code: 'shop-cooldown-missing',
+          message: `${where}: Cooldown Hours is empty, so nothing here caps how often a free product is claimed and the value compiled into the build stands.`,
+          sheetRow,
+        });
       }
       if (soldIn === 'Ad' && dailyLimit.value === null && !dailyLimit.invalid) {
-        fail('shop-daily-limit-missing', 'Daily Limit is empty, but a rewarded-ad product needs one.');
-      }
-      if (soldIn !== 'Ad' && dailyLimit.value !== null) {
-        fail('shop-daily-limit-unexpected', 'Daily Limit is set, but only rewarded-ad products have one. Leave it empty.');
+        issues.push({
+          severity: 'warning',
+          code: 'shop-daily-limit-missing',
+          message: `${where}: Daily Limit is empty, so a rewarded-ad product has no cap beyond what the build was compiled with.`,
+          sheetRow,
+        });
       }
     }
 
@@ -388,15 +438,19 @@ export function transformShop(input: ShopTransformInput): ShopTransformResult {
 
     if (!valid || soldIn === null || enabled === null) continue;
 
-    const product: ShopProduct = { ID: id, SoldIn: soldIn, IsEnabled: enabled, Contents: contents };
-    // Insert optional keys in schema order; `Contents` is re-added last.
-    delete (product as Partial<ShopProduct>).Contents;
+    // Built up in the order the live config carries, since `PriceTier` sits
+    // between two of the always-present keys: what a product is sold in, then
+    // what it costs, then whether it is on sale at all.
+    const product: ShopProduct = { ID: id, SoldIn: soldIn } as ShopProduct;
+    if (priceTier.value !== null) product.PriceTier = priceTier.value;
+    product.IsEnabled = enabled;
     if (listed === false) product.IsListed = false;
     if (price.value !== null) product.PriceInCurrency = price.value;
     if (badge !== null) product.BadgeLabel = badge;
     if (offerHours.value !== null) product.OfferDurationHours = offerHours.value;
     if (cooldown.value !== null) product.CooldownHours = cooldown.value;
     if (dailyLimit.value !== null) product.DailyLimit = dailyLimit.value;
+    if (sortOverride.value !== null) product.SortOverride = sortOverride.value;
     product.Contents = contents;
 
     products.push(product);
@@ -406,6 +460,7 @@ export function transformShop(input: ShopTransformInput): ShopTransformResult {
       enabled,
       listed: listed !== false,
       price: price.value,
+      priceTier: priceTier.value,
       badge,
       contents: contentLabels,
       sheetRow,

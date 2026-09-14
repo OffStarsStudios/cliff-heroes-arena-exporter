@@ -88,11 +88,15 @@ export function validateConfig(config: ArenaProgressConfig): Issue[] {
           unlocks.forEach((unlock, unlockIndex) => {
             const unlockKeys = Object.keys(unlock as Record<string, unknown>);
             const unlockRecord = unlock as Record<string, unknown>;
-            if (!sameKeys(unlockKeys, ['RewardID'])) {
+            // An unlock names a reward and may price it. Without an amount the
+            // client pays what the reward is authored to pay, so the key is
+            // omitted rather than written as zero.
+            const expectedUnlockKeys = 'Amount' in unlockRecord ? ['RewardID', 'Amount'] : ['RewardID'];
+            if (!sameKeys(unlockKeys, expectedUnlockKeys)) {
               issues.push({
                 severity: 'error',
                 code: 'schema-unlock-keys',
-                message: `${position}, unlock ${unlockIndex + 1}: must contain exactly "RewardID" (found: ${unlockKeys.join(', ')}).`,
+                message: `${position}, unlock ${unlockIndex + 1}: must contain exactly [${expectedUnlockKeys.join(', ')}] in that order (found: ${unlockKeys.join(', ')}).`,
               });
             }
             if (!isNonEmptyString(unlockRecord.RewardID)) {
@@ -101,6 +105,16 @@ export function validateConfig(config: ArenaProgressConfig): Issue[] {
                 code: 'schema-unlock-id',
                 message: `${position}, unlock ${unlockIndex + 1}: "RewardID" must be a non-empty string.`,
               });
+            }
+            if ('Amount' in unlockRecord) {
+              const amount = unlockRecord.Amount;
+              if (typeof amount !== 'number' || !Number.isInteger(amount) || amount < 1) {
+                issues.push({
+                  severity: 'error',
+                  code: 'schema-unlock-amount',
+                  message: `${position}, unlock ${unlockIndex + 1}: "Amount" must be a whole number of 1 or more, not ${JSON.stringify(amount)}. Omit it to pay what the reward is authored to pay.`,
+                });
+              }
             }
           });
         }
