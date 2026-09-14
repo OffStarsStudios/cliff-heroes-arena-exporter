@@ -326,7 +326,7 @@ describe('row validation', () => {
     const rewards = sheet('Rewards', [
       ['Reward Name', 'Reward ID'],
       ['Coins', 'reward.currency.coins'],
-      ['coins', 'reward.coins'],
+      ['coins', 'reward.currency.gems'],
     ]);
     expect(codes(run([HEADER, gems()], rewards))).toContain('shop-reward-ambiguous');
   });
