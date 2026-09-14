@@ -87,6 +87,7 @@ export const SETTING_KEYS = {
   arenas: 'arenasSettings',
   shop: 'shopSettings',
   battlePass: 'battlePassSettings',
+  rollingOffer: 'rollingOfferSettings',
 };
 
 export const GIT_PATHS = {
@@ -98,6 +99,7 @@ export const GIT_PATHS = {
   arenas: 'config/arenas.json',
   shop: 'config/shop.json',
   battlePass: 'config/battlePass.json',
+  rollingOffer: 'config/rollingOffer.json',
 };
 
 export const DOMAINS = Object.keys(SETTING_KEYS);
