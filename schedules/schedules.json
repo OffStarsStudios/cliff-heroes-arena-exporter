@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-14T17:10:12.409Z",
+  "updatedAt": "2026-09-14T17:10:20.471Z",
   "entries": [
     {
       "id": "sch_mtqvbx125twygr",
@@ -1301,7 +1301,7 @@
       "startsAt": "2026-10-01T09:00:00.000Z",
       "endsAt": "2026-11-01T10:00:00.000Z",
       "liveops": {
-        "category": "monetization",
+        "category": "seasonal",
         "opensAt": "2026-10-01T09:00:00.000Z",
         "sourceUrl": "https://docs.google.com/spreadsheets/d/1rmh9lMNQeMLJKuTpcAj416pDqZIyWBVpA4hkPP3cxh8/edit?gid=811971009#gid=811971009"
       },
@@ -1317,6 +1317,12 @@
         },
         {
           "at": "2026-09-14T17:10:04.497Z",
+          "action": "edited",
+          "ok": true,
+          "message": "Rescheduled for 2026-10-01T09:00:00.000Z."
+        },
+        {
+          "at": "2026-09-14T17:10:20.471Z",
           "action": "edited",
           "ok": true,
           "message": "Rescheduled for 2026-10-01T09:00:00.000Z."
