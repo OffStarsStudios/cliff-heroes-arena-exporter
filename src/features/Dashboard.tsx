@@ -25,6 +25,7 @@ const VIEW_FOR_DOMAIN: Record<ExporterDomain, View> = {
   heroUpgrade: 'heroUpgrade',
   shop: 'shop',
   battlePass: 'battlePass',
+  rollingOffer: 'rollingOffer',
 };
 
 const ICON_FOR_DOMAIN: Record<ExporterDomain, IconName> = {
@@ -36,6 +37,7 @@ const ICON_FOR_DOMAIN: Record<ExporterDomain, IconName> = {
   heroUpgrade: 'coins',
   shop: 'cart',
   battlePass: 'ticket',
+  rollingOffer: 'zap',
 };
 
 interface HealthProps {

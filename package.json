@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "check:graph": "esbuild scripts/checkGraph.ts --bundle --platform=node --format=cjs --outfile=dist/check-graph.cjs --log-level=warning && node dist/check-graph.cjs",
-    "audit:live": "esbuild scripts/auditLive.ts --bundle --platform=node --format=cjs --outfile=dist/audit-live.cjs --log-level=warning && node dist/audit-live.cjs"
+    "audit:live": "esbuild scripts/auditLive.ts --bundle --platform=node --format=cjs --outfile=dist/audit-live.cjs --log-level=warning && node dist/audit-live.cjs",
+    "sync:rewards": "esbuild scripts/syncRewards.ts --bundle --platform=node --format=cjs --outfile=dist/sync-rewards.cjs --log-level=warning && node dist/sync-rewards.cjs"
   },
   "dependencies": {
     "react": "^18.3.1",

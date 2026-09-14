@@ -16,7 +16,7 @@ import type { ScheduleEntry } from './schedule';
  */
 
 /** Features scheduled as events rather than configured permanently. */
-export const LIVEOPS_DOMAINS = ['battlePass'] as const;
+export const LIVEOPS_DOMAINS = ['battlePass', 'rollingOffer'] as const;
 
 export type LiveOpsDomain = (typeof LIVEOPS_DOMAINS)[number];
 
@@ -27,6 +27,7 @@ export function isLiveOpsDomain(domain: DomainId): domain is LiveOpsDomain {
 /** Where each feature's payload is authored, so an event links back to its sheet. */
 export const FEATURE_SOURCE: Record<LiveOpsDomain, string> = {
   battlePass: 'battlePass',
+  rollingOffer: 'rollingOffer',
 };
 
 export const EVENT_CATEGORIES = ['monetization', 'engagement', 'seasonal', 'test'] as const;
@@ -74,6 +75,16 @@ export interface LiveOpsBlock {
    * booked - the link is provenance, not a promise to re-read the sheet.
    */
   sourceUrl?: string | null;
+  /**
+   * The one entry inside the payload this event owns, where the payload is a
+   * list the client takes whole - a rolling offer's `OfferID`.
+   *
+   * Recorded because ending such an event cannot restore an "off" payload: a
+   * list has no off state, only a version of itself without one member. The
+   * scheduler removes this entry from what is live instead. Absent for a
+   * feature whose payload is wholly its own, like the battle pass.
+   */
+  subjectId?: string | null;
 }
 
 /** Preview hours, for the entries old enough to have them. */

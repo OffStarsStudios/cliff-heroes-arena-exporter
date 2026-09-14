@@ -1,4 +1,5 @@
 import { headerTokens, isBlank, normalizeName } from './normalize';
+import { isRewardId } from './rewards';
 import type { Issue, LookupEntry, LookupTable, RawCell, RawSheet } from './types';
 
 export type LookupKind = 'arena' | 'reward' | 'hero';
@@ -129,6 +130,25 @@ export function buildLookup(sheet: RawSheet, kind: LookupKind): LookupBuild {
         severity: 'warning',
         code: 'lookup-incomplete-row',
         message: `Row ${r + 1} of "${sheet.name}" is missing ${name === '' ? 'a name' : 'an ID'} and was skipped.`,
+        sheetRow: r + 1,
+      });
+      continue;
+    }
+
+    // A Rewards tab is the join between a sheet's vocabulary and the game's, so
+    // it is the one place worth checking the vocabulary itself. An ID the client
+    // registers nothing under is a reward that silently pays nothing - the step
+    // or product carrying it is dropped at runtime with a log line nobody reads
+    // - so it is refused here instead. The reward library page lists what is
+    // registered, and `npm run sync:rewards` regenerates it from the game.
+    if (kind === 'reward' && !isRewardId(id)) {
+      issues.push({
+        severity: 'error',
+        code: 'lookup-unknown-reward',
+        message:
+          `Row ${r + 1} of "${sheet.name}" maps "${name}" to "${id}", which the game registers ` +
+          'no reward under. Check the reward library for the ID, or re-run the reward sync if the ' +
+          'build has gained one.',
         sheetRow: r + 1,
       });
       continue;

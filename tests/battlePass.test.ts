@@ -376,7 +376,7 @@ describe('the tiers tab', () => {
     const rewards = sheet('Rewards', [
       ['Reward Name', 'Reward ID'],
       ['Coins', 'reward.currency.coins'],
-      ['coins', 'reward.coins'],
+      ['coins', 'reward.currency.gems'],
     ]);
     expect(codes(run(TIER_ROWS, rewards))).toContain('battlepass-reward-ambiguous');
   });

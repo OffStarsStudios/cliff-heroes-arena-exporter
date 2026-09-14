@@ -172,7 +172,7 @@ describe('name matching', () => {
     const rewards = sheet('Rewards', [
       ['RewardName', 'RewardID'],
       ['Coins', 'reward.currency.coins'],
-      ['coins', 'reward.currency.coins.v2'],
+      ['coins', 'reward.currency.gems'],
     ]);
     const result = run({
       progression: progression([['Lost Oasis', null, null, null, 20, 'Coins', 50, null, null]]),

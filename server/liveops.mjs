@@ -31,7 +31,7 @@ import { CONFIG_TARGET, readJson, commitJson } from './git.mjs';
  * hero upgrades and the shop are core: they are always live, they are edited
  * on their own pages, and they have no business on a calendar.
  */
-export const LIVEOPS_DOMAINS = ['battlePass'];
+export const LIVEOPS_DOMAINS = ['battlePass', 'rollingOffer'];
 
 export function isLiveOpsDomain(domain) {
   return LIVEOPS_DOMAINS.includes(domain);
@@ -80,6 +80,57 @@ export function offPath(domain) {
 }
 
 /** The off payload for a feature, or null when none has been recorded. */
+/**
+ * Features whose payload is a list the client takes whole, keyed by the field
+ * holding that list and the field identifying an entry within it.
+ *
+ * These have no off state. Ending one event of such a feature removes its entry
+ * from what is live; the others carry on, and for a rolling offer removing the
+ * wrong one would drop those players' progress with it.
+ */
+export const LIST_PAYLOADS = {
+  rollingOffer: { list: 'Offers', key: 'OfferID' },
+};
+
+export function isListPayload(domain) {
+  return Object.prototype.hasOwnProperty.call(LIST_PAYLOADS, domain);
+}
+
+/**
+ * What should be live once this event's entry is taken out.
+ *
+ * Returns null when there is nothing to do or nothing safe to do: an event with
+ * no entry recorded, a live value that is not the shape expected, or an entry
+ * that is not in the live list any more because somebody removed it already.
+ *
+ * Refuses to empty the list. The client treats a schedule that resolves no
+ * offers as a broken payload and keeps what it has, so publishing one would be
+ * asking for the offer to stay live by accident. Better to leave it and say so.
+ */
+export function withoutEntry(domain, liveValue, subjectId) {
+  const shape = LIST_PAYLOADS[domain];
+  if (shape === undefined || typeof subjectId !== 'string' || subjectId === '') return null;
+
+  let payload = liveValue;
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  }
+  if (payload === null || typeof payload !== 'object') return null;
+
+  const entries = payload[shape.list];
+  if (!Array.isArray(entries)) return null;
+
+  const kept = entries.filter((entry) => entry === null || entry[shape.key] !== subjectId);
+  if (kept.length === entries.length) return { payload: null, reason: 'not-listed' };
+  if (kept.length === 0) return { payload: null, reason: 'would-empty' };
+
+  return { payload: { ...payload, [shape.list]: kept }, reason: 'removed' };
+}
+
 export async function loadOff(domain) {
   const { value, existed } = await readJson(offPath(domain), null, CONFIG_TARGET);
   return existed ? value : null;

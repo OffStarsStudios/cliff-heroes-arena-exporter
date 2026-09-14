@@ -15,6 +15,8 @@ import { LiveConfig } from './features/LiveConfig';
 import { LiveOps } from './features/LiveOps';
 import { Schedule } from './features/Schedule';
 import { ParamReference } from './features/ParamReference';
+import { RewardLibrary } from './features/RewardLibrary';
+import { ROLLING_OFFER_EXPORTER } from './exporters/rollingOffer';
 import { SOURCE_LABELS, useWorkbookSources } from './hooks/useWorkbookSources';
 
 const VIEWS: View[] = [
@@ -30,6 +32,8 @@ const VIEWS: View[] = [
   'heroUpgrade',
   'shop',
   'battlePass',
+  'rollingOffer',
+  'rewards',
   'reference',
 ];
 
@@ -43,6 +47,7 @@ const DOMAIN_FOR_VIEW: Partial<Record<View, ExporterDomain>> = {
   heroUpgrade: 'heroUpgrade',
   shop: 'shop',
   battlePass: 'battlePass',
+  rollingOffer: 'rollingOffer',
 };
 
 function viewFromHash(): View {
@@ -128,6 +133,14 @@ export function App() {
           onNavigate={navigate}
         />
       )}
+      {view === 'rollingOffer' && (
+        <ExporterPage
+          definition={ROLLING_OFFER_EXPORTER}
+          source={controllerFor('rollingOffer')}
+          onNavigate={navigate}
+        />
+      )}
+      {view === 'rewards' && <RewardLibrary />}
       {view === 'reference' && <ParamReference />}
     </AppShell>
   );

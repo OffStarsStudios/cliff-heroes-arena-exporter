@@ -476,3 +476,103 @@ export interface BattlePassTransformResult {
     warnings: number;
   };
 }
+
+/* --------------------------------------------------------- Rolling offers -- */
+
+/** One payout inside an offer. `Amount` 0 pays what the reward is authored to pay. */
+export interface RollingOfferReward {
+  RewardID: string;
+  Amount: number;
+}
+
+/**
+ * One rung of the chain.
+ *
+ * A step has no ID: where it sits is what it is. It carries everything it needs
+ * - what it hands over, how it is paid for and what that costs - so an offer is
+ * described in one place rather than being a chain here and a price on a shop
+ * product somewhere else.
+ */
+export interface RollingOfferStep {
+  /** `RealMoney`, `Free`, `Ad`, or a currency the player holds. */
+  SoldIn: ShopSoldIn;
+  /** What it costs in that currency. Only when sold in one. */
+  Price?: number;
+  /** Dollars, and the store SKU charged. Only for real money. */
+  PriceTier?: number;
+  AdPlacement?: string;
+  Rewards: RollingOfferReward[];
+}
+
+/**
+ * One offer.
+ *
+ * `OfferID` is what a player's progress is filed under, so an ID that is new
+ * starts a fresh chain and one that stops appearing retires the offer and drops
+ * the record with it.
+ */
+export interface RollingOffer {
+  OfferID: string;
+  DisplayName: string;
+  Subtitle: string;
+  /** False for an evergreen offer, which shows no clock and ignores the window. */
+  IsTimed: boolean;
+  /** `YYYY-MM-DD HH:mm`, UTC. Omitted on an evergreen offer. */
+  StartUtc?: string;
+  DurationHours?: number;
+  BackgroundArt?: string;
+  TopBarArt?: string;
+  RewardArt?: string;
+  ButtonArt?: string;
+  CompletionReward?: RollingOfferReward;
+  CompletionText?: string;
+  Steps: RollingOfferStep[];
+}
+
+/**
+ * The whole schedule.
+ *
+ * The client takes `Offers` **whole** rather than merging it, so this is always
+ * every offer that should be live - which is why the console merges one sheet's
+ * offer into the live list rather than publishing the sheet alone. The four art
+ * defaults are merged field by field instead, so a payload that says nothing
+ * about the background is not asking for it to be cleared.
+ */
+export interface RollingOfferConfig {
+  DefaultBackgroundArt?: string;
+  DefaultTopBarArt?: string;
+  DefaultRewardArt?: string;
+  DefaultButtonArt?: string;
+  Offers: RollingOffer[];
+}
+
+/** A row of the rolling offer preview: one per step, plus the offer's own header. */
+export interface RollingOfferPreviewRow {
+  /** 1-based position in the chain. */
+  step: number;
+  soldIn: string;
+  /** What it costs, already worded: `$5` or `450 Gems` or `Free`. */
+  price: string;
+  /** "Coins x500" per reward. */
+  rewards: string[];
+  sheetRow: number;
+}
+
+export interface RollingOfferTransformResult {
+  config: RollingOfferConfig;
+  preview: RollingOfferPreviewRow[];
+  issues: Issue[];
+  /**
+   * The offer this workbook describes, as opposed to the others it was merged
+   * into. Empty when the sheet named no ID.
+   */
+  offerId: string;
+  stats: {
+    steps: number;
+    rewards: number;
+    /** How many offers the merged schedule holds, this one included. */
+    offers: number;
+    errors: number;
+    warnings: number;
+  };
+}
