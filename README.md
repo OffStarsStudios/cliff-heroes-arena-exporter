@@ -73,6 +73,8 @@ npm run build && npm start
 | `npm start` | Serve `dist/` plus the Google Sheets proxy on port 4173 |
 | `npm test` | Run the transformation test suite |
 | `npm run typecheck` | TypeScript only |
+| `npm run check:graph` | Cross-config validation over the payloads in `config/` |
+| `npm run audit:live` | Diff every Google Sheet against what ConfigCat is serving |
 
 ## Using it
 
@@ -333,8 +335,8 @@ graph checks the Live config page runs. The report is split against the live bas
 
 - **Introduced** issues are ones this change causes. Introduced *errors* block
   publishing; introduced warnings do not.
-- **Already present** issues exist with or without the change (the undeclared
-  difficulty mapping, for instance) and are folded away so they are not blamed on it.
+- **Already present** issues exist with or without the change and are folded away
+  so they are not blamed on it.
 - **Fixed** issues are live problems the change makes go away.
 
 If the live config cannot be read (no credentials, no network) the check says so
@@ -621,6 +623,49 @@ lookup tabs.
 `config/` holds the current live payload for each setting, formatted exactly as
 the exporters emit it, as the git-tracked baseline for future diffs.
 
+## Auditing the sheets against live
+
+Both checks above read files in this repo, which means neither of them can see
+the two things that actually go wrong: a sheet someone edited and never
+published, and a value someone changed by hand in ConfigCat during a launch.
+Both have happened - the arenas sheet has carried an unpublished track-count
+edit for weeks, and the shop's pass products were restructured in ConfigCat
+while the sheet still named a product that no longer exists.
+
+`npm run audit:live` answers the question those miss: **would publishing this
+sheet change the live game, and how?** For each config it downloads the sheet,
+runs the real exporter over it, and diffs the result against the value the
+game's own SDK would fetch.
+
+```bash
+CONFIGCAT_SDK_KEY=... npm run audit:live
+```
+
+Each config comes back as one of three things: it *matches live*, it has
+*changes waiting in the sheet* (each one named), or it *cannot publish* because
+the exporter refuses it. Exit code is non-zero for the last of those, so it
+works as a gate; changes waiting are reported but pass, since a sheet ahead of
+live is the normal state of someone mid-edit. `--strict` fails on those too,
+which is what a scheduled run wants.
+
+Two inputs, neither secret:
+
+- **`CONFIGCAT_SDK_KEY`** - the *client* SDK key for the environment the game
+  reads. It ships inside the game and can be read out of any build, which is why
+  the config CDN answers it without authentication; it grants read access to the
+  config and nothing else. It is taken from the environment rather than
+  committed so this repo does not become another place it has to be rotated. The
+  ConfigCat dashboard shows it, and in the game repo it is the `SdkKey` constant
+  in `Assets/SDK/Runtime/Config/ConfigProvider.cs`.
+- **`scripts/sheets.json`** - which spreadsheet backs which config. Update it
+  when a sheet is replaced; the console's own per-page links live in the
+  browser, where a script cannot reach them.
+
+The trophy road has no `ExporterDefinition` - its page wires detection, lookups
+and `transform` together by hand - so the audit reproduces that wiring, using
+the same tab scoring the page uses. Without it, the one config with no
+automated path would be the one config never checked.
+
 ## Output schema: arena progress
 
 ```json
@@ -654,9 +699,12 @@ ever added to a milestone.
 ```
 
 Key order is always `ID, TrackCount, BotLevels`. `TrackCount` is a whole number of 1
-or more; `BotLevels` holds one difficulty name per bot, spelled exactly `Easy`,
-`Medium`, `Hard` or `VeryHard` (the list lives in `src/lib/arenaDifficulties.ts`,
-the same way power parameters live in `powerParams.ts`).
+or more; `BotLevels` holds one difficulty name per bot, spelled exactly `VeryEasy`,
+`Easy`, `Medium`, `Hard` or `VeryHard`. Those five are the members of the game's
+`BotLevel` enum, in the order it declares them, and the list lives in
+`src/lib/arenaDifficulties.ts` the same way power parameters live in
+`powerParams.ts`. The order is not decoration: it is what gives each difficulty
+its number, so the same list is what `botsSettings` is checked against.
 
 ### The Arenas Settings sheet
 
@@ -691,8 +739,9 @@ arenas that have no settings row.
 
 Cross-config (from the live-config check): an arena the trophy road introduces
 but this config does not define, an arena no milestone introduces, a bot count
-that does not match the number of scoring places, more difficulty names than bot
-levels, and arena rewards that grant an arena this config does not define.
+that does not match the number of scoring places, a difficulty an arena races at
+that `botsSettings` does not tune, and arena rewards that grant an arena this
+config does not define.
 
 ## Output schema: match trophies
 
@@ -726,7 +775,6 @@ than the place above it.
 
 ```json
 {
-  "BotLevel": 4,
   "Bots": [
     { "Level": 0, "MinJumpInterval": 4, "MaxJumpInterval": 6, "MinDodgeChance": 0.1, "MaxDodgeChance": 0.2,
       "RaycastDistance": 8, "RaycastInterval": 0.3, "MinFireInterval": 2, "MaxFireInterval": 4 }
@@ -734,27 +782,36 @@ than the place above it.
 }
 ```
 
-Key order is fixed as shown. `BotLevel` is never authored: it is the highest
-level in the table. Levels must run 0..N with no gaps or duplicates, the same
-rule hero levels follow, because the client indexes into the table.
+`Bots` and nothing beside it. The client's own config class declares that one
+list, so a summary field such as the highest level would be read by nothing.
+
+`Level` is the game's `BotLevel` enum as a number, so it runs 0 (`VeryEasy`) to 4
+(`VeryHard`) and every one of the five is tuned exactly once. The client looks
+each difficulty up in this table **by value** rather than indexing into it, and
+keeps the tuning compiled into the build for anything it cannot find - so a level
+past the end of the enum tunes no bot at all, and a difficulty left out is one
+quietly still running on the build's own numbers. Both are refused.
 
 ### The Bots Settings sheet
 
 One tab, `Bots`: `Level | Min Jump Interval | Max Jump Interval | Min Dodge Chance |
 Max Dodge Chance | Raycast Distance | Raycast Interval | Min Fire Interval | Max Fire Interval`,
-one row per level. Level rejects anything but a whole number of 0 or more; the
-dodge chances reject anything outside 0..1; the other columns reject anything
-that is not a positive number. Rows may be in any order.
+one row per difficulty, five rows in all. Level rejects anything but a whole
+number from 0 to 4; the dodge chances reject anything outside 0..1; the other
+columns reject anything that is not a positive number. Rows may be in any order.
+
+`scripts/sheets/enumGuards.gs` holds `guardBotLevels`, which puts that 0..4 rule
+on the sheet itself and notes each row with the difficulty its number names.
 
 ### Bots validation
 
 Errors: a missing column (reported by name), a blank or non-numeric value, a
-fractional or negative level, a level listed twice, a gap in the level sequence,
-an interval or distance that is not positive, a dodge chance outside 0..1, a
-minimum above its maximum, an empty tab, and the schema gate (key order,
-`BotLevel` equal to the highest level).
+level that is fractional, negative or past the end of the enum, a difficulty
+tuned twice, a difficulty left untuned, an interval or distance that is not
+positive, a dodge chance outside 0..1, a minimum above its maximum, an empty tab,
+and the schema gate (key order, and all five difficulties covered).
 
-Warnings: a level that dodges less or fires slower than the level below it.
+Warnings: a difficulty that dodges less or fires slower than the one below it.
 
 ## Output schema: hero upgrades
 
@@ -772,8 +829,8 @@ Warnings: a level that dodges less or fires slower than the level below it.
 }
 ```
 
-Key order is fixed as shown. `ReferenceRarity` is emitted with the exact
-spelling of the matching `Costs` row.
+Key order is fixed as shown. `ReferenceRarity` is emitted under the game's own
+spelling of the rarity, and must be one a `Costs` row prices.
 
 ### The Hero Upgrade Settings sheet
 
@@ -785,60 +842,101 @@ Reference Rarity is a dropdown fed by the Costs tab. `Costs` is one row per
 rarity: `Rarity | Coins Base | Cards Base | Cost Modifier | Growth Modifier`,
 with Rarity a dropdown of the known rarities and the numbers validated.
 
+Every rarity here - the per-row one and the Reference Rarity - must be one of
+`Common`, `Uncommon`, `Rare`, `Epic`, `Legendary`, `Mythic`, the members of the
+game's `Rarity` enum (`src/lib/rarities.ts`). The client parses them strictly and
+**throws** on any other spelling, and `heroUpgradeSettings` is a config the game
+will not start without, so a rarity typed "Legendry" is not a mistuned curve - it
+is a launch that never leaves the loading screen. A spelling that differs only in
+case or spacing is corrected with a warning; anything else is refused.
+`scripts/sheets/enumGuards.gs` puts the same list on the sheet as a dropdown.
+
 ### Hero upgrades validation
 
 Errors: a setting missing, unknown, duplicated or blank; a non-numeric scalar;
 a growth factor that is not positive; a rounding that is not a whole number of
-1 or more; a negative payout modifier; a Reference Rarity no Costs row prices;
-a missing Costs column; a rarity blank or priced twice; a base that is not a
-whole number of 0 or more; a modifier that is not positive; an empty Costs tab;
-and the schema gate.
+1 or more; a negative payout modifier; a Reference Rarity that is not a rarity the
+game has, or that no Costs row prices; a missing Costs column; a rarity blank,
+priced twice, or not one the game has; a base that is not a whole number of 0 or
+more; a modifier that is not positive; an empty Costs tab; and the schema gate.
 
-Warnings: a growth factor below 1 (each level would cost less than the last).
+Warnings: a growth factor below 1 (each level would cost less than the last), and
+a rarity spelled with different case or spacing (exported under the game's own
+spelling).
 
 ## Output schema: shop
 
 ```json
 {
   "Products": [
-    { "ID": "shop.featured.cinder", "SoldIn": "RealMoney", "IsEnabled": true, "BadgeLabel": "SALE",
-      "OfferDurationHours": 6, "Contents": [{ "RewardID": "reward.hero.cinder", "Amount": 1 }] },
+    { "ID": "shop.featured.cinder", "SoldIn": "RealMoney", "PriceTier": 5, "IsEnabled": true,
+      "BadgeLabel": "SALE", "OfferDurationHours": 6,
+      "Contents": [{ "RewardID": "reward.hero.cinder", "Amount": 1 }] },
     { "ID": "shop.coins.tier1", "SoldIn": "Gems", "IsEnabled": true, "PriceInCurrency": 80,
       "Contents": [{ "RewardID": "reward.currency.coins", "Amount": 500 }] }
   ]
 }
 ```
 
-Keys follow the order `ID, SoldIn, IsEnabled, IsListed, PriceInCurrency, BadgeLabel,
-OfferDurationHours, CooldownHours, DailyLimit, Contents`, with unused optional keys
-omitted rather than written as null. `IsListed` is written only when false.
+Keys follow the order `ID, SoldIn, PriceTier, IsEnabled, IsListed, PriceInCurrency,
+BadgeLabel, OfferDurationHours, CooldownHours, DailyLimit, SortOverride, Contents`,
+with unused optional keys omitted rather than written as null. `IsListed` is
+written only when false.
+
+**A dollar price is authored here, not on the store dashboard.** `PriceTier` is
+the dollar figure - tier 15 is fifteen dollars - and it is also the SKU that is
+charged, because one consumable product per price point is registered on Google
+Play and App Store Connect and everything costing five dollars charges the same
+`tier5`. That is what lets a fetched config move a product's price without a
+build. A tier off the ladder the stores stock (`src/lib/priceTiers.ts`) has no SKU
+behind it, and the client then reads the product as real money with nothing to
+charge against and refuses to sell it - so an unstocked figure is an error, not a
+rounding matter.
+
+`SoldIn` is a way of paying - `RealMoney`, `Free`, `Ad` - or any currency the
+player holds: `Coins`, `Gems`, `Upgrade Cards`, `Trophies`, `Pass Tokens`. The
+client resolves a currency by its ID or its display name, so `hardCurrency` is
+accepted and exported as `Gems`, and `RewardedAd` is accepted and exported as
+`Ad` (`src/lib/currencies.ts`).
 
 ### The Shop Settings sheet
 
 Two tabs. `Products` has one row per product: `Product ID | Sold In | Enabled |
-Listed | Price | Badge Label | Offer Duration Hours | Cooldown Hours | Daily Limit |
-Reward 1 | Amount 1 | Reward 2 | Amount 2 ...` - any number of reward/amount pairs.
-Sold In is a dropdown (RealMoney, Gems, Free, Ad); Enabled and Listed are
-checkboxes; Reward N is a dropdown fed by the `Rewards` tab, which maps reward
-names to reward IDs exactly as the trophy road workbook does.
+Listed | Price | Price Tier | Badge Label | Offer Duration Hours | Cooldown Hours |
+Daily Limit | Reward 1 | Amount 1 | Reward 2 | Amount 2 ... | Sort Override` - any
+number of reward/amount pairs. Sold In is a dropdown of the ways of paying and the
+player's currencies; Enabled and Listed are checkboxes; Price Tier is a dropdown
+of the stocked dollar prices; Reward N is a dropdown fed by the `Rewards` tab,
+which maps reward names to reward IDs exactly as the trophy road workbook does.
 
-Which optional columns a row uses follows from Sold In: **Gems** products need a
-Price and real-money, free and ad products must not have one; **Free** products
-need Cooldown Hours; **Ad** products need a Daily Limit; Badge Label and Offer
-Duration Hours are optional for any product.
+**Which optional columns a row uses is almost free.** The client applies every
+field on its own and only when present, so a cooldown on a paid product or a
+dollar tier beside a gem price is allowed - the latter is how a product is moved
+between real money and gems without being re-sent. Two pairings do matter,
+because without them there is nothing to charge: **RealMoney** needs a Price
+Tier, and a product sold in a **currency** needs a Price. A Price on anything not
+sold in a currency is refused, since there is nothing for the figure to be in.
+
+`scripts/sheets/upgradeShopSheet.gs` adds the Price Tier and Sort Override
+columns to the live workbook, fills the tiers, widens the Sold In dropdown and
+rewrites the Check column against these rules. It is idempotent.
 
 ### Shop validation
 
 Errors: missing Product ID / Sold In / Enabled / reward columns, a reward column
 with no amount column, a row with values but no ID, a duplicated ID, an unknown
-Sold In (with a suggestion), a non-boolean Enabled or Listed, a price / cooldown /
-daily limit that is missing where required or present where not, a non-numeric or
-out-of-range number, a reward name the Rewards tab does not define, a reward
-granted twice by one product, an amount missing or not a whole number of 1 or
-more, an amount with no reward beside it, an empty tab, and the schema gate.
+Sold In (with a suggestion), a non-boolean Enabled or Listed, a real-money product
+with no Price Tier, a Price Tier the stores do not stock (named with the nearest
+two that they do), a currency product with no Price, a Price on something not sold
+in a currency, a non-numeric or out-of-range number, a reward name the Rewards tab
+does not define, a reward granted twice by one product, an amount missing or not a
+whole number of 1 or more, an amount with no reward beside it, an empty tab, and
+the schema gate.
 
 Warnings: an ID not matching `shop.<kind>.<name>`, a Sold In spelled with different
-case or spacing, and a product that grants nothing.
+case or spacing or given as a currency ID rather than its display name, a free
+product with no cooldown or an ad product with no daily limit (the build's own
+value then stands), and a product that grants nothing.
 
 The Rewards tab also feeds the live-config check, but only for this workbook's
 own config. A lookup tab lists the rewards one sheet needs a name for, not every
@@ -976,6 +1074,13 @@ Levels, Power`, and level key order is always `Health, Speed, Grip`. `Power` alw
 begins with `ActivationDelay` and `Duration`; the remaining parameters differ per hero
 and follow the sheet's column order.
 
+`Rarity` must be one of `Common`, `Uncommon`, `Rare`, `Epic`, `Legendary`,
+`Mythic` - the members of the game's `Rarity` enum (`src/lib/rarities.ts`). The
+client parses it strictly and **throws** on any other spelling, and
+`heroesSettings` is a config the game will not start without, so a rarity typed
+"Legendry" is a launch stuck on the loading screen rather than a mistuned hero. A
+spelling differing only in case or spacing is corrected with a warning.
+
 ### How the hero sheets are interpreted
 
 - **Hero order** follows the **Base stats** tab, so the sheet owns the ordering.
@@ -1012,8 +1117,16 @@ floating point `9.7 * 1.5` is `14.549999999999999` rather than `14.55`. The
 multiplication is therefore done in scaled-integer space, so those cases round on
 intent rather than on representation, and match `ROUND(x, 1)` in the sheet.
 
-When the game gains a new power parameter, add it to `POWER_PARAM_TYPES` in
+The accepted names are `PowerRemoteSettings` in the game, field for field. The
+game reads a fetched power block into that one flat class and each power picks out
+only the fields it uses, so a name that is not on it is silently dropped rather
+than refused - which is why the list has to be kept level with it. When the game
+gains a power parameter, add it to `POWER_PARAM_TYPES` in
 `src/lib/powerParams.ts`. That is the only edit needed.
+
+A parameter typed `integer` there (`AbsorbedHits` is the only one today) is held
+in an `int` by the game, so a fractional value would be truncated on the way in
+rather than refused. The exporter refuses it instead.
 
 ## How the arena spreadsheet is interpreted
 
@@ -1071,7 +1184,10 @@ src/lib/heroes.ts         hero tabs   -> heroes + issues + preview
 src/lib/validateHeroes.ts heroes      -> schema check + serializer
 src/lib/arenas.ts         arena tabs  -> arenas + issues + preview
 src/lib/validateArenas.ts arenas      -> schema check + serializer
-src/lib/arenaDifficulties.ts  bot difficulty schema + name resolution
+src/lib/arenaDifficulties.ts  the game's BotLevel enum: names, order, numbering
+src/lib/rarities.ts       the game's Rarity enum + name resolution
+src/lib/currencies.ts     the currencies a product can be sold in + SoldIn resolution
+src/lib/priceTiers.ts     the dollar prices the app stores stock
 src/lib/matchTrophy.ts    places tab  -> trophies by place + issues + preview
 src/lib/bots.ts           bots tab    -> bot levels + issues + preview
 src/lib/heroUpgrade.ts    growth + costs tabs -> upgrade config + issues + preview
@@ -1096,6 +1212,9 @@ src/components/ScheduleDialog.tsx  booking a window, with the fallback guardrail
 src/components/           app shell, stepper, ExporterPage, and the shared UI primitives
 src/styles.css            design tokens + component styling
 src/liveops.css           the live-ops surfaces (overview, schedule, diff, modal)
+scripts/auditLive.ts      every sheet vs what ConfigCat is serving
+scripts/sheets.json       which spreadsheet backs which config
+scripts/sheets/           Apps Script for the Google Sheets: the shop upgrade, the enum dropdowns
 server/git.mjs            GitHub Contents API: publish history, schedule store, diagnostics
 server/schedule.mjs       the scheduling model, its guardrails, and the tick
 server/                   Google Sheets proxy, ConfigCat client, publish + schedule routes
