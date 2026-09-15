@@ -225,6 +225,7 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
         <LiveOpsDialog
           environmentId={environmentId}
           event={editing}
+          takenIds={events.flatMap((candidate) => (candidate.subjectId === null ? [] : [candidate.subjectId]))}
           onClose={() => {
             setComposing(false);
             setEditing(null);

@@ -15,6 +15,11 @@
  *   withWindow   Move one event's window inside the payload.
  *   endedNow     Take one event out of the game right now.
  *   withoutPart  Take one event out of the payload altogether.
+ *   withSubjectId  Put the same event out under another ID - a new run.
+ *
+ * A feature whose players see more of an event than its content - a rolling
+ * offer's title and art - also answers `presentationOf` / `withPresentation`,
+ * and one whose ended events linger in a list answers `retiredBy`.
  *
  * Adding a feature means adding one entry to `LIVEOPS_FEATURES` below. Nothing
  * else in the scheduler, the calendar or the pages branches on the domain.
@@ -81,6 +86,129 @@ function isoOrNull(ms) {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
+/* ----------------------------------------------------------------- runs -- */
+
+/**
+ * Every time an event goes live it is a new run, under an ID of its own.
+ *
+ * The game files a player's progress under the event's ID and keeps it for as
+ * long as that ID is served: republish an offer under the same ID and every
+ * player picks up on the step they had reached last time, prize claimed and
+ * all. That is never what re-running an offer means. So a sheet names a *base*
+ * ID - `offer.spacebinge` - and each run goes out as the base plus the UTC date
+ * it opens, `offer.spacebinge.r20260917`: a fresh chain for everybody.
+ *
+ * The run key is decided once, when the run is booked or first published, and
+ * kept from then on. Moving a run's dates or fixing its steps is the same run,
+ * and players keep their place in it.
+ */
+const RUN_KEY = /\.r(\d{8})([a-z]?)$/;
+
+/** How long an ended run stays listed before it is retired. */
+export const RETIRE_AFTER_DAYS = 7;
+
+/** `offer.spacebinge.r20260917` -> `offer.spacebinge`. An ID with no run key is its own base. */
+export function baseOf(id) {
+  return typeof id === 'string' ? id.replace(RUN_KEY, '') : id;
+}
+
+export function hasRunKey(id) {
+  return typeof id === 'string' && RUN_KEY.test(id);
+}
+
+/**
+ * A new run ID for `baseId`, opening at `opensAt`.
+ *
+ * A second run of the same base opening on the same UTC day gets a letter,
+ * `r20260917b`, rather than the same ID - which would hand it the first run's
+ * progress. Null only when the whole alphabet is taken that day.
+ */
+export function mintRunId(baseId, opensAt, taken = []) {
+  const at = new Date(opensAt ?? Date.now());
+  const day = Number.isNaN(at.getTime()) ? new Date() : at;
+  const stamp = day.toISOString().slice(0, 10).replaceAll('-', '');
+  const stem = `${baseOf(baseId)}.r${stamp}`;
+  const used = new Set(taken);
+  if (!used.has(stem)) return stem;
+  for (let code = 98; code <= 122; code += 1) {
+    const candidate = `${stem}${String.fromCharCode(code)}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * The ID a publish of `baseId` goes out under, when nobody has said which run.
+ *
+ * That is a publish straight from a feature's page. If a run of this base is
+ * in the game right now, the page is changing that run and it keeps its ID.
+ * Otherwise it is a new run - including when an earlier run of the same base
+ * has ended but is still listed, which is exactly the progress not to reuse.
+ */
+export function runIdFor(feature, { baseId, live, opensAt, now = Date.now(), taken = [] }) {
+  const base = baseOf(baseId);
+  const events = feature.eventsIn(live);
+  const running = events.find((event) => {
+    if (baseOf(event.subjectId) !== base) return false;
+    const phase = phaseOfWindow(event.startsAt, event.endsAt, now);
+    return phase === 'active' || phase === 'ending';
+  });
+  if (running !== undefined) return { id: running.subjectId, fresh: false };
+  return {
+    id: mintRunId(base, opensAt ?? now, [...taken, ...events.map((event) => event.subjectId)]),
+    fresh: true,
+  };
+}
+
+/* --------------------------------------------------------- presentation -- */
+
+/**
+ * What a player sees of an offer that is not its steps: the text on its page
+ * and the art it is drawn with.
+ *
+ * Set in the back office, on the event, rather than in the sheet - the same
+ * reason the window is: re-running an offer with a new title or new art is a
+ * decision about that run, and nobody should have to copy a workbook to make it.
+ */
+export const PRESENTATION_FIELDS = [
+  'DisplayName',
+  'Subtitle',
+  'CompletionText',
+  'BackgroundArt',
+  'TopBarArt',
+  'RewardArt',
+  'ButtonArt',
+];
+
+/** Fields written even when empty; the rest are left out, which the client reads as "use the default". */
+const ALWAYS_WRITTEN = new Set(['DisplayName', 'Subtitle']);
+
+export function emptyPresentation() {
+  return Object.fromEntries(PRESENTATION_FIELDS.map((field) => [field, '']));
+}
+
+/**
+ * Problems with an offer's presentation, as sentences.
+ *
+ * The completion text is the one that can break the page. The client runs it
+ * through `string.Format` with the prize's name, so `{0}` is the only brace it
+ * survives - any other throws, and the offer page does not draw.
+ */
+export function checkPresentation(presentation) {
+  const problems = [];
+  const text = (field) => (typeof presentation?.[field] === 'string' ? presentation[field] : '');
+  if (text('DisplayName').trim() === '') {
+    problems.push('The offer needs a display name. It is the title across its page and on its menu button.');
+  }
+  const stray = text('CompletionText').replaceAll('{{', '').replaceAll('}}', '').replaceAll('{0}', '');
+  if (stray.includes('{') || stray.includes('}')) {
+    problems.push(
+      'The completion text can only use {0}, which becomes the prize name. Any other brace stops the offer page drawing.',
+    );
+  }
+  return problems;
+}
+
 /* ----------------------------------------------------------- battle pass -- */
 
 /**
@@ -145,6 +273,12 @@ const battlePass = {
 
   endedNow(value, subjectId, { off } = {}) {
     return battlePass.withoutPart(value, subjectId, { off });
+  },
+
+  /** The same season under another ID - how a run gets its run key. */
+  withSubjectId(value, fromId, toId) {
+    const payload = battlePass.partOf(value, fromId);
+    return payload === null ? null : { ...payload, SeasonID: toId };
   },
 
   withoutPart(value, subjectId, { off } = {}) {
@@ -361,6 +495,85 @@ const rollingOffer = {
     if (kept.length === offers.length) return { payload: null, reason: 'not-listed' };
     if (kept.length === 0) return { payload: null, reason: 'would-empty' };
     return { payload: withOffers(payload, kept), reason: 'removed' };
+  },
+
+  /**
+   * The same offer under another ID - how a run gets its run key.
+   *
+   * Any other offer already listed under the new ID is dropped: a page that
+   * built its list from what was live carries the running run as well as the
+   * sheet's own copy of it, and keeping both would list one ID twice.
+   */
+  withSubjectId(value, fromId, toId) {
+    const payload = readPayload(value);
+    const offers = offersOf(payload);
+    if (offers === null || rollingOffer.partOf(payload, fromId) === null) return null;
+    if (fromId === toId) return withOffers(payload, offers);
+    const next = offers
+      .filter((offer) => offer?.OfferID !== toId)
+      .map((offer) => (offer?.OfferID === fromId ? { ...offer, OfferID: toId } : offer));
+    return withOffers(payload, next);
+  },
+
+  /** An offer's text and art, each field a string, or null when the offer is not listed. */
+  presentationOf(value, subjectId) {
+    const offer = rollingOffer.partOf(value, subjectId);
+    if (offer === null) return null;
+    return Object.fromEntries(
+      PRESENTATION_FIELDS.map((field) => [field, typeof offer[field] === 'string' ? offer[field] : '']),
+    );
+  },
+
+  /** Writes an offer's text and art. An empty art or completion text is left out, so the client falls back. */
+  withPresentation(value, subjectId, presentation) {
+    const payload = readPayload(value);
+    const offer = rollingOffer.partOf(payload, subjectId);
+    if (offer === null) return null;
+    const next = { ...offer };
+    for (const field of PRESENTATION_FIELDS) {
+      const text = typeof presentation?.[field] === 'string' ? presentation[field] : '';
+      if (text === '' && !ALWAYS_WRITTEN.has(field)) delete next[field];
+      else next[field] = text;
+    }
+    return withOffers(
+      payload,
+      payload.Offers.map((candidate) => (candidate?.OfferID === subjectId ? next : candidate)),
+    );
+  },
+
+  /**
+   * Takes out every offer whose window closed `afterDays` or more ago.
+   *
+   * A run that has ended is never coming back - a re-run is a new ID - so its
+   * players' progress is only weight. It stays listed for a while first, so a
+   * real-money step paid for in its last minutes can still be granted against
+   * it when the app is next opened. The last offer listed always stays, because
+   * the client ignores an empty list.
+   */
+  retiredBy(value, { now = Date.now(), afterDays = RETIRE_AFTER_DAYS } = {}) {
+    const payload = readPayload(value);
+    const offers = offersOf(payload);
+    if (offers === null) return { payload: null, retired: [] };
+
+    const cutoff = now - afterDays * DAY_MS;
+    const expired = offers.filter((offer) => {
+      if (offer === null || typeof offer !== 'object') return false;
+      const window = windowOfOffer(offer);
+      return window !== null && window.end <= cutoff;
+    });
+    if (expired.length === 0) return { payload: null, retired: [] };
+
+    let gone = expired;
+    if (gone.length === offers.length) {
+      const latest = gone.reduce((best, offer) => (windowOfOffer(offer).end > windowOfOffer(best).end ? offer : best));
+      gone = gone.filter((offer) => offer !== latest);
+      if (gone.length === 0) return { payload: null, retired: [] };
+    }
+    const ids = new Set(gone.map((offer) => offer.OfferID));
+    return {
+      payload: withOffers(payload, offers.filter((offer) => !gone.includes(offer))),
+      retired: [...ids],
+    };
   },
 
   /** A booked rolling offer payload is the whole list, so the offer is recorded on the booking instead. */

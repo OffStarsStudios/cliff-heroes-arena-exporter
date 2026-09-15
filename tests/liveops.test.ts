@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error - plain .mjs module shared with the production server.
 import * as serverLiveOps from '../server/liveops.mjs';
 // @ts-expect-error - plain .mjs module shared with the production server.
-import { GIT_PATHS as SERVER_GIT_PATHS, SETTING_KEYS as SERVER_SETTING_KEYS, checkEntry } from '../server/schedule.mjs';
+import { ENVIRONMENT_IDS as SERVER_ENVIRONMENT_IDS, GIT_PATHS as SERVER_GIT_PATHS, SETTING_KEYS as SERVER_SETTING_KEYS, checkEntry } from '../server/schedule.mjs';
+import { ENVIRONMENTS } from '../src/domains/account';
 import { BATTLE_PASS_EXPORTER } from '../src/exporters/battlePass';
 import { EMPTY_SEASON } from '../src/lib/battlePass';
 import { GIT_PATHS, SETTING_KEYS } from '../src/domains/types';
@@ -101,6 +102,11 @@ describe('the server and the client agree', () => {
 
   it('records them under the same paths', () => {
     expect(SERVER_GIT_PATHS).toEqual(GIT_PATHS);
+  });
+
+  it('sweeps every environment the console publishes to for ended runs', () => {
+    // A server list that missed one would leave that environment's ended offers listed for ever.
+    expect([...SERVER_ENVIRONMENT_IDS].sort()).toEqual(ENVIRONMENTS.map((environment) => environment.environmentId).sort());
   });
 
   it('agrees on the phase of an event', () => {

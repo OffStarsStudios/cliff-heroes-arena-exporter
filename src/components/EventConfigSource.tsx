@@ -29,6 +29,11 @@ export interface EventConfig {
    */
   subjectId: string | null;
   /**
+   * The event ID the sheet names, as soon as it names one - even while the
+   * config is not ready - so the form can show what the run will be called.
+   */
+  baseId: string | null;
+  /**
    * True once somebody has asked for this config: pressed Load, or changed a
    * field in the panel. The sheet an existing event was booked from is read on
    * its own when the dialog opens, and that read alone must not republish the
@@ -249,10 +254,11 @@ export function EventConfigSource({
   const payload = blocker === null ? exportable.config : null;
 
   const subjectId = exportable.config === null ? null : (result?.subject ?? null);
+  const baseId = result?.subject ?? null;
 
   const answer = useMemo<EventConfig>(
-    () => ({ payload, sourceUrl: loadedUrl, blocker, subjectId, touched }),
-    [payload, loadedUrl, blocker, subjectId, touched],
+    () => ({ payload, sourceUrl: loadedUrl, blocker, subjectId, baseId, touched }),
+    [payload, loadedUrl, blocker, subjectId, baseId, touched],
   );
 
   useEffect(() => {
@@ -316,7 +322,8 @@ export function EventConfigSource({
       {definition.controls !== undefined && settings !== undefined && (
         <details className="disclosure" open>
           <summary>
-            {definition.controls.title} - <strong>{definition.controls.summary(settings)}</strong>
+            {definition.controls.eventTitle ?? definition.controls.title} -{' '}
+            <strong>{definition.controls.summary(settings)}</strong>
           </summary>
           <div className="stack-sm" style={{ marginTop: 8 }}>
             <definition.controls.Panel

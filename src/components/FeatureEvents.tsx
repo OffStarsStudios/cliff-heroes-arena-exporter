@@ -85,6 +85,7 @@ export function FeatureEvents({ domain, environmentId, onEnvironmentChange, onNa
           environmentId={environmentId}
           domain={domain}
           event={editing}
+          takenIds={board.events.flatMap((candidate) => (candidate.subjectId === null ? [] : [candidate.subjectId]))}
           onClose={() => {
             setComposing(false);
             setEditing(null);

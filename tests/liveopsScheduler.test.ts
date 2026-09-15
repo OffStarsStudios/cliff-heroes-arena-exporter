@@ -197,11 +197,174 @@ describe('putting a booked offer live', () => {
     });
     expect(result.ok).toBe(true);
     expect(result.started.ok).toBe(true);
-    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual(['offer.roll.1', 'offer.roll.2', 'offer.roll.3']);
+    const run = `offer.roll.3.r${new Date().toISOString().slice(0, 10).replaceAll('-', '')}`;
+    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual(['offer.roll.1', 'offer.roll.2', run]);
     // Its window is the booking's, written into the offer.
     // Within a minute: the start is floored to the minute it was booked in.
-    expect(offer('offer.roll.3').DurationHours).toBeCloseTo(72, 1);
+    expect(offer(run).DurationHours).toBeCloseTo(72, 1);
     expect((state.store.entries as { state: string }[])[0].state).toBe('active');
+  });
+});
+
+/* ------------------------------------------------------------------ runs -- */
+
+const OPENS = '2099-03-10T09:00:00.000Z';
+const ENDS = '2099-03-12T09:00:00.000Z';
+const sheetOffer = { ...rollingOfferJson.Offers[0], OfferID: 'offer.spacebinge', DisplayName: 'SPACE BINGE' };
+const book = (overrides: Record<string, unknown> = {}) =>
+  scheduler.createEntry({
+    domain: 'rollingOffer',
+    environmentId: ENV,
+    label: 'Space binge',
+    payload: { ...rollingOfferJson, Offers: [sheetOffer] },
+    startsAt: OPENS,
+    endsAt: ENDS,
+    liveops: { category: 'monetization', opensAt: OPENS, subjectId: 'offer.spacebinge' },
+    ...overrides,
+  });
+
+describe('every run of an event is a new ID', () => {
+  it('books the base the sheet names as a run keyed by the day it opens', async () => {
+    const result = await book();
+    expect(result.ok).toBe(true);
+    expect(result.entry.liveops).toMatchObject({ subjectId: 'offer.spacebinge.r20990310', baseId: 'offer.spacebinge' });
+    expect(result.entry.payload.Offers[0].OfferID).toBe('offer.spacebinge.r20990310');
+  });
+
+  it('gives a second run on the same day a letter, never the first run\'s ID', async () => {
+    await book({ endsAt: '2099-03-10T10:00:00.000Z' });
+    const second = await book({
+      startsAt: '2099-03-10T12:00:00.000Z',
+      endsAt: '2099-03-10T13:00:00.000Z',
+      liveops: { category: 'monetization', opensAt: '2099-03-10T12:00:00.000Z', subjectId: 'offer.spacebinge' },
+    });
+    expect(second.ok).toBe(true);
+    expect(second.entry.liveops.subjectId).toBe('offer.spacebinge.r20990310b');
+  });
+
+  it('refuses two runs of one offer at once, whatever their IDs', async () => {
+    await book();
+    const clash = await book({
+      startsAt: '2099-03-11T09:00:00.000Z',
+      liveops: { category: 'monetization', opensAt: '2099-03-11T09:00:00.000Z', subjectId: 'offer.spacebinge' },
+    });
+    expect(clash.ok).toBe(false);
+    expect(clash.problems.join(' ')).toContain('overlaps');
+  });
+
+  it('keeps the run when its dates move or its sheet is reloaded, so players keep their place', async () => {
+    const { entry } = await book();
+    const moved = await scheduler.updateEntry({
+      id: entry.id,
+      endsAt: '2099-03-20T09:00:00.000Z',
+      liveops: { opensAt: '2099-03-15T09:00:00.000Z', subjectId: 'offer.spacebinge' },
+      payload: { ...rollingOfferJson, Offers: [{ ...sheetOffer, Subtitle: 'fixed' }] },
+    });
+    expect(moved.ok).toBe(true);
+    expect(moved.entry.liveops.subjectId).toBe('offer.spacebinge.r20990310');
+    expect(moved.entry.payload.Offers[0]).toMatchObject({ OfferID: 'offer.spacebinge.r20990310', Subtitle: 'fixed' });
+  });
+
+  it('refuses a reloaded sheet that is a different offer', async () => {
+    const { entry } = await book();
+    const other = await scheduler.updateEntry({
+      id: entry.id,
+      payload: { ...rollingOfferJson, Offers: [{ ...sheetOffer, OfferID: 'offer.other' }] },
+    });
+    expect(other.ok).toBe(false);
+  });
+});
+
+describe('publishing from a feature page, which names only the base', () => {
+  const now = Date.parse('2026-09-10T12:00:00.000Z');
+
+  it('changes the run of that offer that is in the game', async () => {
+    const running = { ...rollingOfferJson.Offers[0], OfferID: 'offer.roll.1.r20260901' };
+    state.live[OFFERS_KEY] = JSON.stringify({ ...rollingOfferJson, Offers: [running, rollingOfferJson.Offers[1]] });
+    const page = { ...rollingOfferJson, Offers: [running, { ...rollingOfferJson.Offers[0], DisplayName: 'RE-CUT' }] };
+    page.Offers[1] = { ...page.Offers[1], OfferID: 'offer.roll.1' };
+
+    const result = await scheduler.publishLiveEvent({
+      domain: 'rollingOffer',
+      environmentId: ENV,
+      subjectId: 'offer.roll.1',
+      payload: page,
+      resolveRun: true,
+      now,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.subjectId).toBe('offer.roll.1.r20260901');
+    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual(['offer.roll.1.r20260901', 'offer.roll.2']);
+    expect(offer('offer.roll.1.r20260901').DisplayName).toBe('RE-CUT');
+  });
+
+  it('starts a new run when the last one has ended, even though it is still listed', async () => {
+    const ended = { ...rollingOfferJson.Offers[0], OfferID: 'offer.roll.1.r20260801', StartUtc: '2026-08-01 00:00', DurationHours: 24 };
+    state.live[OFFERS_KEY] = JSON.stringify({ ...rollingOfferJson, Offers: [ended, rollingOfferJson.Offers[1]] });
+    const page = { ...rollingOfferJson, Offers: [{ ...rollingOfferJson.Offers[0], OfferID: 'offer.roll.1', IsTimed: false }] };
+    delete (page.Offers[0] as Record<string, unknown>).StartUtc;
+    delete (page.Offers[0] as Record<string, unknown>).DurationHours;
+
+    const result = await scheduler.publishLiveEvent({
+      domain: 'rollingOffer',
+      environmentId: ENV,
+      subjectId: 'offer.roll.1',
+      payload: page,
+      resolveRun: true,
+      now,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.subjectId).toBe('offer.roll.1.r20260910');
+    // The ended run is left for the sweep; its players' progress is not reused.
+    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual([
+      'offer.roll.1.r20260801',
+      'offer.roll.2',
+      'offer.roll.1.r20260910',
+    ]);
+  });
+
+  it('puts a season out as a run keyed by its own start', async () => {
+    const next = { ...battlePassJson, SeasonID: 'pass.season2', StartUtc: '2026-10-01 00:00' };
+    const result = await scheduler.publishLiveEvent({
+      domain: 'battlePass',
+      environmentId: ENV,
+      subjectId: 'pass.season2',
+      payload: next,
+      resolveRun: true,
+      now,
+    });
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(state.live[PASS_KEY]).SeasonID).toBe('pass.season2.r20261001');
+  });
+});
+
+describe('an offer\'s text and art, set on the event', () => {
+  it('republishes a live offer with new art, without its sheet', async () => {
+    const presentation = {
+      DisplayName: 'ROLL AGAIN',
+      Subtitle: 'New subtitle',
+      CompletionText: '',
+      BackgroundArt: 'GuySuperSpaceBG',
+      TopBarArt: '',
+      RewardArt: '',
+      ButtonArt: 'GuySuperSpaceButton',
+    };
+    const result = await scheduler.publishLiveEvent({ domain: 'rollingOffer', environmentId: ENV, subjectId: 'offer.roll.1', presentation });
+    expect(result.ok).toBe(true);
+    const changed = offer('offer.roll.1') as Offer & Record<string, unknown>;
+    expect(changed).toMatchObject({ DisplayName: 'ROLL AGAIN', BackgroundArt: 'GuySuperSpaceBG', ButtonArt: 'GuySuperSpaceButton' });
+    // Emptied fields are left out, so the client falls back rather than drawing nothing by name.
+    expect(changed).not.toHaveProperty('TopBarArt');
+    expect(changed).not.toHaveProperty('CompletionText');
+    expect(changed.Steps).toEqual(rollingOfferJson.Offers[0].Steps);
+  });
+
+  it('refuses text the offer page could not draw', async () => {
+    const result = await book({
+      presentation: { DisplayName: '', Subtitle: '', CompletionText: 'WIN {1}', BackgroundArt: '', TopBarArt: '', RewardArt: '', ButtonArt: '' },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.problems.length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -224,10 +387,44 @@ describe('the heartbeat taking an offer down at its end', () => {
         history: [],
       },
     ];
-    const result = await scheduler.tick({ now: Date.parse('2026-09-03T00:00:00.000Z') });
+    const result = await scheduler.tick({ now: Date.parse('2026-09-03T00:00:00.000Z'), environments: [ENV] });
     expect(result.actions).toContainEqual(expect.objectContaining({ id: 'sch_end', action: 'end', ok: true }));
-    // Retired, and the neighbour's edit is kept rather than reverted.
-    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual(['offer.roll.2']);
+    // Left listed with its window closed, and the neighbour's edit kept rather than reverted.
+    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual(['offer.roll.1', 'offer.roll.2']);
     expect(offer('offer.roll.2').DisplayName).toBe('EDITED');
+  });
+});
+
+describe('the heartbeat retiring ended runs', () => {
+  const ended = (id: string, start: string) => ({ ...rollingOfferJson.Offers[0], OfferID: id, StartUtc: start, DurationHours: 24 });
+
+  it('takes out an offer seven days after its window closed, and not before', async () => {
+    state.live[OFFERS_KEY] = JSON.stringify({
+      ...rollingOfferJson,
+      Offers: [ended('offer.a.r20260901', '2026-09-01 00:00'), ended('offer.b.r20260905', '2026-09-05 00:00'), rollingOfferJson.Offers[1]],
+    });
+    // a closed 2 Sep, b closed 6 Sep: at 10 Sep only a is a week gone.
+    const result = await scheduler.tick({ now: Date.parse('2026-09-10T00:00:00.000Z'), environments: [ENV] });
+    expect(result.actions).toContainEqual(expect.objectContaining({ action: 'retire', ok: true, detail: 'offer.a.r20260901' }));
+    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual(['offer.b.r20260905', 'offer.roll.2']);
+  });
+
+  it('keeps the last offer listed, because the client ignores an empty list', async () => {
+    state.live[OFFERS_KEY] = JSON.stringify({ ...rollingOfferJson, Offers: [ended('offer.a.r20260801', '2026-08-01 00:00')] });
+    await scheduler.tick({ now: Date.parse('2026-09-10T00:00:00.000Z'), environments: [ENV] });
+    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual(['offer.a.r20260801']);
+  });
+
+  it('looks once an hour, not on every tick', async () => {
+    const now = Date.parse('2026-09-10T00:00:00.000Z');
+    await scheduler.tick({ now, environments: [ENV] });
+    state.live[OFFERS_KEY] = JSON.stringify({
+      ...rollingOfferJson,
+      Offers: [ended('offer.a.r20260801', '2026-08-01 00:00'), rollingOfferJson.Offers[1]],
+    });
+    await scheduler.tick({ now: now + 5 * 60000, environments: [ENV] });
+    expect(liveOffers().Offers).toHaveLength(2);
+    await scheduler.tick({ now: now + 61 * 60000, environments: [ENV] });
+    expect(liveOffers().Offers).toHaveLength(1);
   });
 });

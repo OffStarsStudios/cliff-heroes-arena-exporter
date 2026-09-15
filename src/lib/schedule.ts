@@ -8,7 +8,7 @@
 
 import type { DomainId } from '../domains/types';
 import type { ApplyResponse, Change } from './liveConfig';
-import type { EventPhase, LiveOpsBlock } from './liveops';
+import type { EventPhase, LiveOpsBlock, Presentation } from './liveops';
 
 export type ScheduleState =
   | 'scheduled'
@@ -175,6 +175,8 @@ export interface NewWindow {
   startsAt: string;
   endsAt: string | null;
   liveops?: LiveOpsBlock;
+  /** An offer's text and art, set on the event rather than in its sheet. */
+  presentation?: Presentation;
   /**
    * Books a live ops event and publishes it straight away, instead of waiting
    * for its start. The event opens at the minute it is booked.
@@ -207,6 +209,7 @@ export interface WindowEdit {
   endsAt?: string | null;
   payload?: unknown;
   liveops?: Partial<LiveOpsBlock>;
+  presentation?: Presentation;
 }
 
 export function updateWindow(input: WindowEdit): Promise<{ entry: ScheduleEntry }> {
@@ -246,13 +249,19 @@ export interface EventRepublish {
   payload?: unknown;
   /** Null dates make an evergreen offer. */
   window?: { startsAt: string | null; endsAt: string | null };
+  presentation?: Presentation;
+  /**
+   * `subjectId` is a base ID from a feature's page, and the server picks the
+   * run: the one in the game if a run of that base is live, a new one if not.
+   */
+  resolveRun?: boolean;
   expected?: unknown;
   reason?: string;
 }
 
 export function republishEvent(
   input: EventRepublish,
-): Promise<{ result: unknown; response: ApplyResponse; entry: ScheduleEntry | null }> {
+): Promise<{ result: unknown; response: ApplyResponse; subjectId: string; entry: ScheduleEntry | null }> {
   return call('/api/schedule/event-publish', { method: 'POST', body: JSON.stringify(input) });
 }
 

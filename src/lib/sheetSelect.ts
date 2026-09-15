@@ -417,7 +417,8 @@ function scoreOffer(sheet: RawSheet): number {
     const first = row[0];
     if (typeof first === 'string') labels.add(first.trim().toLowerCase());
   }
-  for (const wanted of ['offer id', 'display name', 'completion reward', 'completion text']) {
+  // The current rows, and the ones a sheet made before its text moved to the back office still has.
+  for (const wanted of ['base id', 'offer id', 'completion reward', 'completion amount', 'display name', 'completion text']) {
     if (labels.has(wanted)) score += 15;
   }
   return score;

@@ -3,6 +3,7 @@ import liveJson from '../config/rollingOffer.json';
 import { ROLLING_OFFER_EXPORTER } from '../src/exporters/rollingOffer';
 import { buildLookup } from '../src/lib/lookups';
 import { REWARDS } from '../src/lib/rewards';
+import type { Presentation } from '../src/lib/liveops';
 import { EMPTY_SCHEDULE, transformRollingOffer, type RollingOfferSchedule } from '../src/lib/rollingOffer';
 import { autoSelectRollingOfferSheets, detectDataset } from '../src/lib/sheetSelect';
 import { validateRollingOfferConfig } from '../src/lib/validateRollingOffer';
@@ -17,17 +18,21 @@ const REWARDS_SHEET = sheet('Rewards', [
 
 const OFFER_ROWS: RawCell[][] = [
   ['Setting', 'Value', 'What it is'],
-  ['Offer ID', 'offer.roll.autumn', ''],
-  ['Display Name', 'AUTUMN ROLL', ''],
-  ['Subtitle', 'Claim each step to unlock the next.', ''],
+  ['Base ID', 'offer.roll.autumn', ''],
   ['Completion Reward', 'Skin - Flick Ghost', ''],
   ['Completion Amount', 1, ''],
-  ['Completion Text', 'COMPLETE ALL STEPS TO UNLOCK {0}!', ''],
-  ['Background Art', 'AutumnBG', ''],
-  ['Top Bar Art', '', ''],
-  ['Reward Art', '', ''],
-  ['Button Art', 'AutumnButton', ''],
 ];
+
+/** What the back office sets for the offer: its text and art. */
+const PRESENTATION: Presentation = {
+  DisplayName: 'AUTUMN ROLL',
+  Subtitle: 'Claim each step to unlock the next.',
+  CompletionText: 'COMPLETE ALL STEPS TO UNLOCK {0}!',
+  BackgroundArt: 'FlickGhostOfferBG',
+  TopBarArt: '',
+  RewardArt: '',
+  ButtonArt: 'FlickGhostOfferButton',
+};
 
 const STEP_HEADER: RawCell[] = [
   'Step',
@@ -61,7 +66,7 @@ function run(
     offer: sheet('Offer', offer),
     steps: sheet('Steps', steps),
     rewards: rewards.table,
-    schedule: { ...EMPTY_SCHEDULE, startUtc: '2026-10-01 09:00', durationHours: 336, ...schedule },
+    schedule: { ...EMPTY_SCHEDULE, presentation: PRESENTATION, startUtc: '2026-10-01 09:00', durationHours: 336, ...schedule },
   });
   return { ...result, issues: [...rewards.issues, ...result.issues] };
 }
@@ -85,6 +90,52 @@ describe('a rolling offer sheet', () => {
     expect(validateRollingOfferConfig(result.config)).toEqual([]);
   });
 
+  it('takes the text and art from the back office, and leaves an unpicked picture out', () => {
+    const offer = run().config.Offers[0];
+    expect(offer).toMatchObject({ Subtitle: PRESENTATION.Subtitle, BackgroundArt: 'FlickGhostOfferBG', ButtonArt: 'FlickGhostOfferButton' });
+    expect(offer.CompletionText).toBe('COMPLETE ALL STEPS TO UNLOCK {0}!');
+    // Left out rather than written empty: the client reads a missing key as "use the default".
+    expect('TopBarArt' in offer).toBe(false);
+  });
+
+  it('leaves the text blank and unchecked when an event owns it', () => {
+    // The event form sets it and the server writes it in.
+    const result = run(OFFER_ROWS, STEP_ROWS, { presentation: null });
+    expect(result.config.Offers[0].DisplayName).toBe('');
+    expect(codes(result)).not.toContain('rollingoffer-presentation-invalid');
+  });
+
+  it('refuses an offer with no display name, and completion text the client cannot format', () => {
+    expect(codes(run(OFFER_ROWS, STEP_ROWS, { presentation: { ...PRESENTATION, DisplayName: ' ' } }))).toContain(
+      'rollingoffer-presentation-invalid',
+    );
+    const braces = run(OFFER_ROWS, STEP_ROWS, { presentation: { ...PRESENTATION, CompletionText: 'UNLOCK {1}!' } });
+    expect(errors(braces).join(' ')).toContain('{0}');
+  });
+
+  it('warns about a picture the art library does not have', () => {
+    const result = run(OFFER_ROWS, STEP_ROWS, { presentation: { ...PRESENTATION, TopBarArt: 'NotAPicture' } });
+    expect(codes(result)).toContain('rollingoffer-art-unknown');
+    expect(result.stats.errors).toBe(0);
+  });
+
+  it('says a row that moved to the back office is ignored', () => {
+    const legacy = [...OFFER_ROWS, ['Display Name', 'OLD TITLE', ''], ['Background Art', 'OldBG', '']];
+    const result = run(legacy);
+    expect(result.issues.filter((issue) => issue.code === 'rollingoffer-field-moved')).toHaveLength(2);
+    expect(result.config.Offers[0].DisplayName).toBe('AUTUMN ROLL');
+  });
+
+  it('still reads a sheet whose ID row is called Offer ID', () => {
+    const legacy = OFFER_ROWS.map((row) => (row[0] === 'Base ID' ? ['Offer ID', row[1], ''] : row));
+    expect(run(legacy).offerId).toBe('offer.roll.autumn');
+  });
+
+  it('refuses a base ID that already carries a run key', () => {
+    const keyed = OFFER_ROWS.map((row) => (row[0] === 'Base ID' ? ['Base ID', 'offer.roll.autumn.r20260917', ''] : row));
+    expect(codes(run(keyed))).toContain('rollingoffer-id-run-key');
+  });
+
   it('carries each step own price and what it pays', () => {
     const [free, gems, money, ad] = run().config.Offers[0].Steps;
     expect(free).toEqual({ SoldIn: 'Free', Rewards: [{ RewardID: 'reward.currency.coins', Amount: 500 }] });
@@ -104,7 +155,7 @@ describe('a rolling offer sheet', () => {
   it('reads the Offer tab by label, not by row position', () => {
     // A row inserted at the top must not shift every field by one.
     const shuffled = [OFFER_ROWS[0], ['Notes', 'ignore me', ''], ...OFFER_ROWS.slice(1)];
-    expect(run(shuffled).config.Offers[0].DisplayName).toBe('AUTUMN ROLL');
+    expect(run(shuffled).config.Offers[0].OfferID).toBe('offer.roll.autumn');
   });
 });
 
@@ -159,7 +210,7 @@ describe('merging into the live schedule', () => {
   it('replaces an offer of the same ID in place, rather than duplicating it', () => {
     // Order is the order the buttons are drawn, so an updated offer keeps its
     // place instead of jumping to the end of the row.
-    const asFirst = OFFER_ROWS.map((row) => (row[0] === 'Offer ID' ? ['Offer ID', 'offer.roll.1', ''] : row));
+    const asFirst = OFFER_ROWS.map((row) => (row[0] === 'Base ID' ? ['Base ID', 'offer.roll.1', ''] : row));
     const result = run(asFirst, STEP_ROWS, { others });
     expect(result.config.Offers.map((offer) => offer.OfferID)).toEqual(['offer.roll.1', 'offer.roll.2']);
     expect(result.config.Offers[0].DisplayName).toBe('AUTUMN ROLL');

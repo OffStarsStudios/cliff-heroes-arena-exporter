@@ -7,6 +7,7 @@ import {
   validateSeason,
   type BattlePassSeason,
 } from '../lib/battlePass';
+import { baseOf } from '../lib/liveops';
 import { buildLookup } from '../lib/lookups';
 import { autoSelectBattlePassSheets, type BattlePassSheetSelection } from '../lib/sheetSelect';
 import { serializeBattlePassConfig, validateBattlePassConfig } from '../lib/validateBattlePass';
@@ -47,7 +48,8 @@ function seasonFrom(payload: unknown): BattlePassSeason | null {
   if (canonical === null || !Number.isInteger(days) || days < 1) return null;
 
   return {
-    seasonId: text('SeasonID', 'seasonId'),
+    // A live season carries its run key; the panel holds the base it was run from.
+    seasonId: baseOf(text('SeasonID', 'seasonId')),
     seasonName: text('SeasonName', 'seasonName'),
     startUtc: canonical,
     durationDays: days,
