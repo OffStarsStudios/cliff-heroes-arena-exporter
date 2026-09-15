@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Icon } from './Icon';
 import { JsonOutput } from './JsonOutput';
-import { ScheduleDialog } from './ScheduleDialog';
+import { LiveOpsDialog } from './LiveOpsDialog';
 import { Segmented } from './Segmented';
 import { IssueList } from './Summary';
 import { ACCOUNT, ENVIRONMENTS, environmentName, isLiveEnvironment } from '../domains/account';
 import { DOMAIN_LABELS, GIT_PATHS, SETTING_KEYS, type DomainId } from '../domains/types';
 import { applyPublish, type ApplyResponse } from '../lib/liveConfig';
 import type { Release } from '../hooks/useRelease';
+import { LIVEOPS_FEATURES, isLiveOpsDomain } from '../lib/liveops';
 
 interface ChangeReviewProps {
   domain: DomainId;
@@ -21,6 +22,14 @@ interface ChangeReviewProps {
   onEnvironmentChange: (environmentId: string) => void;
   /** Set when the sheet itself is not exportable, with the reason. */
   sheetBlocker: string | null;
+  /**
+   * For a live ops feature: which event this config is, and the sheet it came
+   * from. Its presence is what offers Schedule - a core config is published,
+   * never booked.
+   */
+  event?: { subjectId: string | null; sourceUrl: string | null } | null;
+  /** Opens the page's Events tab, after something was booked. */
+  onShowEvents?: () => void;
 }
 
 function CountTile({ value, label, tone }: { value: number; label: string; tone?: 'ok' | 'warn' | 'danger' }) {
@@ -90,6 +99,8 @@ export function ChangeReview({
   environmentId,
   onEnvironmentChange,
   sheetBlocker,
+  event = null,
+  onShowEvents,
 }: ChangeReviewProps) {
   const [confirmed, setConfirmed] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -101,6 +112,21 @@ export function ChangeReview({
   const settingKey = SETTING_KEYS[domain];
   const targetsLive = isLiveEnvironment(environmentId);
   const { entry, graph } = release;
+
+  /**
+   * A season published before its start is already in the game.
+   *
+   * The client shows a pass while it has a season ID and time left, and never
+   * asks whether the start has come - and a new season ID rolls every player's
+   * progress on their next launch. So publishing next season today ends this
+   * one today. Booking it for its start is what was meant.
+   */
+  const earlySeason = (() => {
+    if (!isLiveOpsDomain(domain) || LIVEOPS_FEATURES[domain].unit !== 'whole' || payload === null) return null;
+    const season = LIVEOPS_FEATURES[domain].eventsIn(payload)[0];
+    if (season === undefined || season.startsAt === null) return null;
+    return Date.parse(season.startsAt) > Date.now() ? { ...season, startsAt: season.startsAt } : null;
+  })();
 
   const introduced = graph?.introduced ?? [];
   const introducedErrors = introduced.filter((issue) => issue.severity === 'error');
@@ -313,12 +339,31 @@ export function ChangeReview({
         </p>
       )}
 
+      {earlySeason !== null && ready && (
+        <p className="banner banner--warn">
+          <Icon name="alert" size={14} className="banner__icon" />
+          <span>
+            <strong>
+              This season starts {new Date(earlySeason.startsAt).toLocaleString()}, but publishing puts it in the game
+              now.
+            </strong>{' '}
+            The client shows a pass as soon as it has one, and a new Season ID rolls every player&rsquo;s progress on
+            their next launch. Schedule it to go live at its start instead.
+          </span>
+        </p>
+      )}
+
       {scheduled && (
         <p className="banner banner--ok">
           <Icon name="calendar" size={14} className="banner__icon" />
           <span>
-            Scheduled. It shows on the dashboard and in Scheduling until it goes live, and the back
-            office publishes it without anyone here.
+            Booked. It is on the live ops calendar and this page&rsquo;s Events tab, and the back office publishes it
+            without anyone here.{' '}
+            {onShowEvents !== undefined && (
+              <button type="button" className="linkbtn" onClick={onShowEvents}>
+                Show events
+              </button>
+            )}
           </span>
         </p>
       )}
@@ -334,16 +379,18 @@ export function ChangeReview({
         )}
 
         <div className="review__buttons">
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setScheduling(true)}
-            disabled={!ready}
-            title={ready ? undefined : blocker ?? 'Nothing to schedule yet.'}
-          >
-            <Icon name="calendar" size={14} />
-            Schedule it
-          </button>
+          {event !== null && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setScheduling(true)}
+              disabled={!ready}
+              title={ready ? undefined : (blocker ?? 'Nothing to schedule yet.')}
+            >
+              <Icon name="calendar" size={14} />
+              Schedule it
+            </button>
+          )}
           <button type="button" className="btn btn--primary btn--lg" onClick={() => void publish()} disabled={!canPublish}>
             {publishing ? <span className="spinner spinner--on-accent" aria-hidden="true" /> : <Icon name="upload" size={15} />}
             Publish to {environmentName(environmentId).replace(' Environment', '')}
@@ -351,13 +398,17 @@ export function ChangeReview({
         </div>
       </div>
 
-      {scheduling && payload !== null && (
-        <ScheduleDialog
-          domain={domain}
-          payload={payload}
+      {scheduling && payload !== null && event !== null && isLiveOpsDomain(domain) && (
+        <LiveOpsDialog
           environmentId={environmentId}
+          domain={domain}
+          preset={{ payload, subjectId: event.subjectId, sourceUrl: event.sourceUrl }}
           onClose={() => setScheduling(false)}
-          onScheduled={() => setScheduled(true)}
+          onDone={() => {
+            setScheduling(false);
+            setScheduled(true);
+            release.reload();
+          }}
         />
       )}
     </div>

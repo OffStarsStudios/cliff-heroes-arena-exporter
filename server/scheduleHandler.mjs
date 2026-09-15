@@ -8,12 +8,14 @@
  */
 
 import { ConfigCatError } from './configcat.mjs';
-import { LIVEOPS_DOMAINS, OFF_MEANS, OFF_SEEDS, loadOff, saveOff } from './liveops.mjs';
+import { LIVEOPS_DOMAINS, OFF_MEANS, OFF_SEEDS, loadOff, needsOffState, saveOff } from './liveops.mjs';
 import { gitStatus } from './git.mjs';
 import {
   DOMAINS,
   cancelEntry,
   createEntry,
+  endLiveEvent,
+  publishLiveEvent,
   updateEntry,
   describeSchedule,
   loadDefault,
@@ -124,12 +126,13 @@ async function serveCreate(req, res) {
       endsAt: body.endsAt ?? null,
       createdBy: body.createdBy,
       liveops: body.liveops ?? null,
+      startNow: body.startNow === true,
     });
     if (!result.ok) {
       sendJson(res, 422, { error: 'This window was not scheduled.', problems: result.problems });
       return;
     }
-    sendJson(res, 201, { entry: { ...result.entry, payload: undefined } });
+    sendJson(res, 201, { entry: { ...result.entry, payload: undefined }, started: result.started ?? null });
   } catch (error) {
     fail(res, error);
   }
@@ -159,7 +162,65 @@ async function serveUpdate(req, res) {
       sendJson(res, 422, { error: 'This window was not changed.', problems: result.problems });
       return;
     }
-    sendJson(res, 200, { entry: { ...result.entry, payload: undefined } });
+    sendJson(res, 200, { entry: result.entry ? { ...result.entry, payload: undefined } : null, result: result.result });
+  } catch (error) {
+    fail(res, error);
+  }
+}
+
+/**
+ * `POST /api/schedule/event-end` - take one live ops event out of the game now.
+ *
+ * Acts on what ConfigCat is serving, booked or not. `mode` is `end` (close it,
+ * always safe) or `remove` (take it out of the payload for good). `expected`
+ * is the event as the page last saw it, so ending something that has changed
+ * underneath is refused rather than done blind.
+ */
+async function serveEventEnd(req, res) {
+  try {
+    const body = await readJsonBody(req);
+    const result = await endLiveEvent({
+      domain: body.domain,
+      environmentId: body.environmentId,
+      subjectId: body.subjectId,
+      mode: body.mode === 'remove' ? 'remove' : 'end',
+      expected: body.expected,
+      reason: typeof body.reason === 'string' ? body.reason : undefined,
+    });
+    if (!result.ok) {
+      sendJson(res, 422, { error: 'That event was not changed.', problems: result.problems });
+      return;
+    }
+    sendJson(res, 200, {
+      result: result.result,
+      cancelled: result.cancelled.map((entry) => entry.id),
+    });
+  } catch (error) {
+    fail(res, error);
+  }
+}
+
+/**
+ * `POST /api/schedule/event-publish` - republish one live ops event now, with
+ * a new window, a new config, or both.
+ */
+async function serveEventPublish(req, res) {
+  try {
+    const body = await readJsonBody(req);
+    const result = await publishLiveEvent({
+      domain: body.domain,
+      environmentId: body.environmentId,
+      subjectId: body.subjectId,
+      payload: body.payload ?? undefined,
+      window: body.window ?? undefined,
+      expected: body.expected,
+      reason: typeof body.reason === 'string' ? body.reason : undefined,
+    });
+    if (!result.ok) {
+      sendJson(res, 422, { error: 'That event was not changed.', problems: result.problems });
+      return;
+    }
+    sendJson(res, 200, { result: result.result, entry: result.entry ? { ...result.entry, payload: undefined } : null });
   } catch (error) {
     fail(res, error);
   }
@@ -175,7 +236,7 @@ async function serveCancel(req, res) {
       sendJson(res, 422, { error: 'That window was not cancelled.', problems: result.problems });
       return;
     }
-    sendJson(res, 200, { entry: { ...result.entry, payload: undefined }, revert: result.revert });
+    sendJson(res, 200, { entry: { ...result.entry, payload: undefined }, revert: result.revert ?? null });
   } catch (error) {
     fail(res, error);
   }
@@ -203,9 +264,16 @@ async function serveOff(req, res) {
       if (domain === null || !LIVEOPS_DOMAINS.includes(domain)) {
         throw new Error(`"${domain}" is not a live ops feature. The calendar schedules ${LIVEOPS_DOMAINS.join(', ')}.`);
       }
+      // A feature whose payload is a list has no off state to record: ending
+      // one of its events closes that event's window instead.
+      if (!needsOffState(domain)) {
+        sendJson(res, 200, { domain, needed: false, present: true, payload: null, suggested: false, means: null });
+        return;
+      }
       const value = await loadOff(domain);
       sendJson(res, 200, {
         domain,
+        needed: true,
         present: value !== null,
         payload: value ?? OFF_SEEDS[domain] ?? null,
         suggested: value === null,
@@ -300,6 +368,8 @@ const ROUTES = {
     req.method === 'POST' ? serveCreate(req, res) : serveList(req, res),
   '/api/schedule/cancel': serveCancel,
   '/api/schedule/update': serveUpdate,
+  '/api/schedule/event-end': serveEventEnd,
+  '/api/schedule/event-publish': serveEventPublish,
   '/api/schedule/default': serveDefault,
   '/api/schedule/off': serveOff,
   '/api/schedule/preview': servePreview,
@@ -319,6 +389,8 @@ export {
   serveCancel,
   serveCreate,
   serveDefault,
+  serveEventEnd,
+  serveEventPublish,
   serveGitStatus,
   serveList,
   serveOff,

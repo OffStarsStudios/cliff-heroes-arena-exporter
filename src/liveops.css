@@ -1501,6 +1501,31 @@
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
 }
 
+/* Live without a booking - published from its page or edited in ConfigCat.
+   Striped along its length so it never reads as a booked event's colour. */
+.gantt__bar--unbooked:not(.gantt__bar--ended) {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0 14px,
+    rgba(255, 255, 255, 0.12) 14px 16px
+  );
+}
+
+/* Booked as running, but not in ConfigCat: somebody took it out by hand. */
+.gantt__bar--missing {
+  background: var(--surface);
+  color: var(--danger, #dc2626);
+  border: 1px dashed var(--danger, #dc2626);
+}
+
+.legend__swatch--unbooked {
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0 3px,
+    rgba(255, 255, 255, 0.35) 3px 4px
+  );
+}
+
 .gantt__bar--selected {
   box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--event-colour);
 }

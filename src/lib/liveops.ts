@@ -1,13 +1,22 @@
 import type { DomainId } from '../domains/types';
 import type { ScheduleEntry } from './schedule';
+import {
+  ENDING_SOON_HOURS,
+  LIVEOPS_DOMAINS,
+  LIVEOPS_FEATURES,
+  phaseOfWindow,
+  type EventCategory,
+  type LiveOpsDomain,
+  type PayloadEvent,
+} from '../../server/liveopsFeatures.mjs';
 
 /**
  * The live ops calendar's vocabulary.
  *
- * Mirrors `server/liveops.mjs`, the same way `domains/types.ts` mirrors the
- * setting keys the server holds: the server has no build step and cannot
- * import TypeScript, so the two lists are kept side by side and small enough
- * to check by eye. A test asserts they agree.
+ * The feature list and what each feature can say about its payload are not
+ * written here: they are imported from `server/liveopsFeatures.mjs`, the same
+ * file the scheduler runs, so the calendar and the heartbeat cannot disagree
+ * about what an event is.
  *
  * The distinction this whole file turns on: a core config is always live and
  * ends by going back to its previous version; a live ops feature is only
@@ -15,10 +24,20 @@ import type { ScheduleEntry } from './schedule';
  * lanes, the fact that an end time is required - follows from that.
  */
 
-/** Features scheduled as events rather than configured permanently. */
-export const LIVEOPS_DOMAINS = ['battlePass', 'rollingOffer'] as const;
-
-export type LiveOpsDomain = (typeof LIVEOPS_DOMAINS)[number];
+/**
+ * The features, and everything each can answer about its payload, come from
+ * the one module the server runs as well - see `server/liveopsFeatures.mjs`.
+ */
+export {
+  ENDING_SOON_HOURS,
+  EVENT_CATEGORIES,
+  LIVEOPS_DOMAINS,
+  LIVEOPS_FEATURES,
+  REASON_TEXT,
+  featureFor,
+  phaseOfWindow,
+} from '../../server/liveopsFeatures.mjs';
+export type { EventCategory, LiveOpsDomain, LiveOpsFeature, PayloadEvent } from '../../server/liveopsFeatures.mjs';
 
 export function isLiveOpsDomain(domain: DomainId): domain is LiveOpsDomain {
   return (LIVEOPS_DOMAINS as readonly string[]).includes(domain);
@@ -29,10 +48,6 @@ export const FEATURE_SOURCE: Record<LiveOpsDomain, string> = {
   battlePass: 'battlePass',
   rollingOffer: 'rollingOffer',
 };
-
-export const EVENT_CATEGORIES = ['monetization', 'engagement', 'seasonal', 'test'] as const;
-
-export type EventCategory = (typeof EVENT_CATEGORIES)[number];
 
 export const CATEGORY_LABELS: Record<EventCategory, string> = {
   monetization: 'Monetisation',
@@ -99,8 +114,6 @@ export function isLiveOpsEntry(entry: ScheduleEntry): entry is LiveOpsEntry {
   return entry.liveops !== null && entry.liveops !== undefined;
 }
 
-export const ENDING_SOON_HOURS = 24;
-
 const HOUR_MS = 3600 * 1000;
 
 /**
@@ -147,20 +160,167 @@ export function phaseOf(entry: LiveOpsEntry, now: number): EventPhase {
   return 'active';
 }
 
-/** The window the config is actually published for, and the slice players see. */
-export function spanOf(entry: LiveOpsEntry): { publishedFrom: number; opens: number; ends: number } {
+/* ------------------------------------------------------------- the board -- */
+
+/**
+ * The colour of an event nobody booked - published from its page, or pasted
+ * into ConfigCat by hand. It has no category because it never went through the
+ * form that asks for one, and it should look different for exactly that reason.
+ */
+export const UNBOOKED_COLOUR = '#64748b';
+
+/**
+ * One row of the calendar: an event as the game sees it, joined to the booking
+ * behind it when there is one.
+ *
+ * Two sources, because either alone lies. The schedule knows what was booked
+ * but not what somebody published from a page or edited in ConfigCat. The live
+ * payload knows what players get but not what is coming next week. So every
+ * event live in ConfigCat is a row, matched to the booking that put it there;
+ * and every booking not accounted for that way - still to come, finished, or
+ * gone from ConfigCat under it - is a row of its own.
+ */
+export interface BoardEvent {
+  /** Stable across reloads: the booking's id, or the feature and subject for an unbooked event. */
+  key: string;
+  domain: LiveOpsDomain;
+  /** The season ID or offer ID this event is inside its payload. */
+  subjectId: string | null;
+  name: string;
+  /** Null for an event that was never booked. */
+  category: EventCategory | null;
+  /** When it opens. Null for an evergreen event, which is open already. */
+  startsAt: string | null;
+  /** When it closes. Null for one that never does. */
+  endsAt: string | null;
+  phase: EventPhase;
+  /** The booking behind it, when there is one. */
+  entry: LiveOpsEntry | null;
+  /** What ConfigCat is serving for it right now, when it is serving anything. */
+  live: { event: PayloadEvent; part: Record<string, unknown> } | null;
+  /**
+   * A booking that should be live but is not in ConfigCat: somebody took it
+   * out by hand. Only ever set when the live payload could actually be read.
+   */
+  missingLive: boolean;
+}
+
+/** An event with no window: always on, never ends. */
+export function isEvergreen(event: BoardEvent): boolean {
+  return event.live !== null && event.startsAt === null && event.endsAt === null;
+}
+
+/** In the game right now, or published and waiting for its own start. */
+export function isInGame(event: BoardEvent): boolean {
+  return event.live !== null && (event.phase === 'active' || event.phase === 'ending' || event.phase === 'preview');
+}
+
+/** Over, but still carried in the payload. Harmless to players; worth tidying. */
+export function isLingering(event: BoardEvent): boolean {
+  return event.live !== null && event.phase === 'ended';
+}
+
+/** A booking on its own, before anything is known about what is live. */
+export function boardEventFromEntry(entry: LiveOpsEntry, now: number, missingLive = false): BoardEvent {
+  const domain = entry.domain as LiveOpsDomain;
   return {
-    publishedFrom: Date.parse(entry.startsAt),
-    opens: Date.parse(entry.liveops.opensAt),
-    ends: entry.endsAt === null ? Date.parse(entry.startsAt) : Date.parse(entry.endsAt),
+    key: entry.id,
+    domain,
+    subjectId: entry.liveops.subjectId ?? null,
+    name: entry.label === '' ? (LIVEOPS_FEATURES[domain]?.label ?? entry.domain) : entry.label,
+    category: entry.liveops.category,
+    startsAt: entry.liveops.opensAt,
+    endsAt: entry.endsAt,
+    phase: phaseOf(entry, now),
+    entry,
+    live: null,
+    missingLive,
   };
+}
+
+/** How far apart two ends may be and still be the same run - a season is rounded to whole days. */
+const SAME_RUN_MS = 24 * HOUR_MS;
+
+/**
+ * Joins the schedule to what ConfigCat is serving, for one environment.
+ *
+ * `live` maps each feature to its payload. A feature missing from it is one
+ * whose live value could not be read: its bookings are still shown, and none
+ * of them is called missing on the strength of a read that failed.
+ */
+export function boardEvents({
+  entries,
+  live,
+  environmentId,
+  now,
+}: {
+  entries: ScheduleEntry[];
+  live: Partial<Record<LiveOpsDomain, unknown>>;
+  environmentId: string;
+  now: number;
+}): BoardEvent[] {
+  const rows: BoardEvent[] = [];
+
+  for (const domain of LIVEOPS_DOMAINS) {
+    const feature = LIVEOPS_FEATURES[domain];
+    const bookings = entries
+      .filter(isLiveOpsEntry)
+      .filter((entry) => entry.domain === domain && entry.environmentId === environmentId);
+    const known = Object.prototype.hasOwnProperty.call(live, domain);
+    const payload = known ? live[domain] : null;
+    const claimed = new Set<string>();
+
+    for (const event of known ? feature.eventsIn(payload) : []) {
+      const bySubject = bookings.filter((entry) => entry.liveops.subjectId === event.subjectId);
+      // The booking running it, or else the one that ran it - an offer that is
+      // the last one listed stays listed after its booking finishes.
+      const entry =
+        bySubject.find((candidate) => candidate.state === 'active') ??
+        bySubject
+          .filter((candidate) => candidate.state === 'completed' && candidate.endsAt !== null && event.endsAt !== null)
+          .filter(
+            (candidate) =>
+              Math.abs(Date.parse(candidate.endsAt as string) - Date.parse(event.endsAt as string)) <= SAME_RUN_MS,
+          )
+          .sort((x, y) => Date.parse(y.startsAt) - Date.parse(x.startsAt))[0] ??
+        null;
+      if (entry !== null) claimed.add(entry.id);
+
+      const windowPhase = phaseOfWindow(event.startsAt, event.endsAt, now);
+      rows.push({
+        key: entry?.id ?? `live:${domain}:${event.subjectId}`,
+        domain,
+        subjectId: event.subjectId,
+        name: entry !== null && entry.label !== '' ? entry.label : event.name,
+        category: entry?.liveops.category ?? null,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        // Published but not open yet is the preview phase: the config is live,
+        // the event is not.
+        phase: windowPhase === 'scheduled' ? 'preview' : windowPhase,
+        entry,
+        live: { event, part: feature.partOf(payload, event.subjectId) ?? {} },
+        missingLive: false,
+      });
+    }
+
+    for (const entry of bookings) {
+      if (claimed.has(entry.id)) continue;
+      rows.push(boardEventFromEntry(entry, now, known && entry.state === 'active'));
+    }
+  }
+
+  return rows.sort((a, b) => startOf(a) - startOf(b));
+}
+
+function startOf(event: BoardEvent): number {
+  return event.startsAt === null ? -Infinity : Date.parse(event.startsAt);
 }
 
 /* ------------------------------------------------------------- the gantt -- */
 
 export interface GanttBar {
-  entry: LiveOpsEntry;
-  phase: EventPhase;
+  event: BoardEvent;
   /** Fractions of the chart width, 0..1, already clamped to the visible range. */
   left: number;
   width: number;
@@ -171,12 +331,6 @@ export interface GanttBar {
   clippedEnd: boolean;
   /** Which row inside the lane, so two overlapping events never sit on top of each other. */
   row: number;
-}
-
-export interface GanttLane {
-  domain: DomainId;
-  label: string;
-  bars: GanttBar[];
 }
 
 export interface GanttTick {
@@ -192,20 +346,24 @@ export interface GanttTick {
  * Kept out of the component and free of DOM so the arithmetic that decides
  * where a bar sits can be tested directly - an off-by-one here is a promotion
  * drawn in the wrong week, which is exactly the mistake a calendar exists to
- * prevent.
+ * prevent. An evergreen event runs off both edges, which is what it does.
  */
-export function layOutBars(entries: LiveOpsEntry[], from: number, to: number, now: number): GanttBar[] {
+export function layOutBars(events: BoardEvent[], from: number, to: number): GanttBar[] {
   const span = Math.max(to - from, 1);
-  // Rows are needed even though the scheduler refuses two *live* windows on
-  // one feature: a finished event and its replacement are allowed to overlap,
-  // and drawing them on top of each other would hide one of them entirely.
+  // Rows are needed even though two bookings of one slot are refused: a
+  // finished event and its replacement may overlap, offers run side by side,
+  // and drawing them on top of each other would hide one entirely.
   const rowEnds: number[] = [];
 
-  return entries
+  return events
     .slice()
-    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
-    .map((entry) => {
-      const { publishedFrom, opens, ends } = spanOf(entry);
+    .sort((a, b) => startOf(a) - startOf(b))
+    .map((event) => {
+      const opens = startOf(event);
+      // Entries booked with preview hours published their config early.
+      const publishedFrom =
+        event.entry !== null && event.live === null ? Math.min(Date.parse(event.entry.startsAt), opens) : opens;
+      const ends = event.endsAt === null ? Infinity : Date.parse(event.endsAt);
       const visibleStart = Math.max(publishedFrom, from);
       const visibleEnd = Math.min(ends, to);
       if (visibleEnd <= visibleStart) return null;
@@ -219,11 +377,10 @@ export function layOutBars(entries: LiveOpsEntry[], from: number, to: number, no
       rowEnds[row] = visibleEnd;
 
       return {
-        entry,
-        phase: phaseOf(entry, now),
+        event,
         left: (visibleStart - from) / span,
         width,
-        previewFraction: width === 0 ? 0 : (previewEnd - visibleStart) / (visibleEnd - visibleStart),
+        previewFraction: (previewEnd - visibleStart) / (visibleEnd - visibleStart),
         clippedStart: publishedFrom < from,
         clippedEnd: ends > to,
         row,

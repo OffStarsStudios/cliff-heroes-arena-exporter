@@ -19,9 +19,11 @@ far the two environments have drifted apart, what is scheduled, and whether the 
 things this all depends on are actually working: ConfigCat, the GitHub token, and the
 scheduler's heartbeat.
 
-**Scheduling** (`#/schedule`) - windows the back office opens and closes on its own,
-the fallback each config returns to, and proof the heartbeat is arriving. See
-[Scheduling](#scheduling).
+**Live ops calendar** (`#/liveops`) - every battle pass season and rolling offer that
+is running or booked, whether it was booked there, published from its own page, or is
+evergreen; the heartbeat's health; and End now on anything running. See
+[Live ops](#live-ops). There is no separate scheduling page any more: `#/schedule`
+redirects here.
 
 **Live config** (`#/live`) - every setting as deployed, byte for byte. Read-only.
 
@@ -86,8 +88,9 @@ Pick a config in the sidebar. There are two steps.
    maps columns, folded the same way, and it opens itself when detection was unsure.
 2. **Review and ship.** Parse counts, then the errors and warnings, then the diff
    against the live config - added, removed, changed and reordered, line by line -
-   and the cross-config check with this payload substituted in. Underneath, two
-   buttons: **Publish to Test** and **Schedule it**.
+   and the cross-config check with this payload substituted in. Underneath,
+   **Publish to Test** - and, on a live ops feature's page, **Schedule it**, which
+   books the config as an event.
 
 Nothing has to be pressed to get there. The JSON is generated and schema-checked as
 part of parsing, and the diff is fetched as soon as the config is valid. If you want
@@ -361,13 +364,12 @@ and is worth stating out loud before touching either.
 
 ## Scheduling
 
-Book a config to go live at a time, and to come down at another. The back office does
-both without anybody being awake for either.
+The machinery under every live ops booking: an event goes live at one time and comes
+down at another, and the back office does both without anybody being awake for either.
 
-A window is created from a config page, not from the scheduling page: load the sheet,
-read the diff, then press **Schedule it** instead of **Publish**. There is deliberately
-no create form on `#/schedule`, because a window booked without looking at what it
-publishes is the exact mistake this console exists to prevent.
+Bookings are made from the live ops calendar or from a live ops feature's own page -
+see [Live ops](#live-ops). The scheduler still accepts ordinary windows for core
+configs through its API, but nothing in the console books them any more.
 
 ### The guardrails, and why each one is there
 
@@ -378,9 +380,11 @@ inline: the value that is live right now is almost always the right default, and
 press records it. Open-ended windows need no default, because nothing has to be
 restored.
 
-**Windows for one config and environment may not overlap.** Two schedules fighting
-over one setting is not something anyone means to configure, so it is refused at
-creation with the clashing window named.
+**Windows for one slot may not overlap.** Two schedules fighting over one setting is
+not something anyone means to configure, so it is refused at creation with the
+clashing window named. For a core config and for the battle pass the slot is the
+setting; for rolling offers it is one offer, so different offers run side by side and
+only two bookings of the same offer collide.
 
 **A start time in the past is refused**, with about fifteen minutes of grace for a
 slow form submit. A window longer than 180 days is refused too - that is nearly
@@ -403,9 +407,10 @@ attempts it is marked failed and shown on the Overview.
 
 **Every scheduled write is a real publish**: read back and verified, noted in
 ConfigCat's audit log with the window's name, committed to `config/`, and refused
-while there is unpublished work staged in the ConfigCat dashboard. The one difference
-from a person pressing the button is that there is no baseline hash - the window was
-planned days ago and the live value is expected to have moved since.
+while there is unpublished work staged in the ConfigCat dashboard. A whole-payload
+window carries no baseline hash - it was planned days ago and the live value is
+expected to have moved since. A rolling offer is merged into what is live at the
+moment it opens, and that merge does carry one, so nothing written in between is lost.
 
 ### Where the schedule lives
 
@@ -507,7 +512,7 @@ leaves up to five minutes of slop, so a promotion that must be up at 18:00 sharp
 should be booked for 17:50. The scheduler is not a real-time system and does not
 pretend to be one.
 
-The Overview and the scheduling page both show when the last beat arrived, and say so
+The Overview and the live ops calendar both show when the last beat arrived, and say so
 loudly past an hour. A scheduler nobody is running is worse than no scheduler, and its
 failure mode is silence - nothing happens, and nothing is exactly what an empty
 schedule looks like.
@@ -519,7 +524,9 @@ schedule looks like.
 | `GET /api/schedule` | Every window, the fallbacks, and the heartbeat's health |
 | `POST /api/schedule` | Book a window. Refused with the full list of failed guardrails. |
 | `POST /api/schedule/cancel` | Stop a window; if it is live, put the config back first |
-| `POST /api/schedule/update` | Edit a window that has not finished. Only the fields sent change. |
+| `POST /api/schedule/update` | Edit a window that has not finished. Only the fields sent change. A running event's new window or config is published straight away. |
+| `POST /api/schedule/event-end` | End one live ops event now, booked or not (`mode: end`), or take it out of the payload (`mode: remove`) |
+| `POST /api/schedule/event-publish` | Republish one live ops event now with a new window, a new config, or both |
 | `GET|POST /api/schedule/default` | Read or record a config's fallback |
 | `GET /api/schedule/preview?id=` | What one window would change if it ran now |
 | `GET|POST /api/schedule/tick` | The heartbeat. GET as well, because Vercel Cron issues one. |
@@ -528,7 +535,7 @@ schedule looks like.
 `server/schedule.mjs` holds the model and the guardrails; `tests/schedule.test.ts` is
 their specification.
 
-All four `/api/schedule/<action>` routes are served by one function,
+Every `/api/schedule/<action>` route is served by one function,
 `api/schedule/[action].js`, because Vercel's Hobby plan allows twelve serverless
 functions per deployment and this app has ten. A deployment that exceeds the limit
 *builds* successfully and then fails at the deploy step, so the count is worth
@@ -536,71 +543,106 @@ keeping an eye on when adding a route.
 
 ## Live ops
 
-The live ops calendar (`#/liveops`) schedules the features that are **not always in
-the game**. Today that is the battle pass; rolling offers and limited-time quests are
-the same shape. The core configs - trophy road, hero stats, arenas, match trophies,
-bots, hero upgrades, shop - are deliberately not here: they are always live and are
-edited on their own pages.
+A live ops feature is one that is **not always in the game**: a battle pass season, a
+rolling offer, next a quest board. The core configs - trophy road, hero stats, arenas,
+match trophies, bots, hero upgrades, shop - are deliberately not live ops: they are
+always live and are edited on their own pages.
 
-An event is not a second kind of record. It is a scheduling window carrying an extra
-`liveops` block, stored in the same `schedules/schedules.json`, applied by the same
-heartbeat, guarded by the same overlap and drift checks. The one thing it does
-differently is what happens at the end: an ordinary window goes back to
-`config/defaults/<domain>.json`, the last known-good version, and an event goes to
-`config/off/<domain>.json`, the payload that means *this feature is not running*.
-Restoring a default battle pass when a season ends would start last season again.
-An event cannot be booked for a feature with no off state recorded.
+### The standard
+
+Every live ops feature is handled the same way, from two places that show one list:
+the **live ops calendar** (`#/liveops`) and the feature's own page, which has an
+**Events** tab beside *Update from a sheet* and *Live in game*. From either you can
+book an event, change one, and end one.
+
+**What the calendar shows is what ConfigCat is serving, joined to what is booked.**
+Every event in the live payload is a row - booked on the calendar, published from its
+page, pasted into the ConfigCat dashboard by hand, or evergreen - matched to the
+booking that put it there when there is one. Every booking not accounted for that way
+is a row of its own: still to come, finished, or flagged *Not in ConfigCat* when
+somebody took its event out by hand. An event nobody booked is drawn in grey and
+labelled *Published directly*.
+
+**Anything running can be ended now**, booked or not, without waiting for its end and
+without opening ConfigCat:
+
+- A **season** ends by publishing the recorded off state (`config/off/battlePass.json`).
+  The client shows no pass while `SeasonID` is empty, and `RollSeason` ignores an
+  empty ID, so nobody's progress is rolled - publishing the same season again picks
+  it back up.
+- An **offer** ends by **closing its window** and staying listed. The client hides an
+  offer outside its window, keeps its progress while it is listed, and ignores a list
+  with no offers at all - so closing works for the last offer too, where removing it
+  would leave it running. An offer that has run can then be **removed** from the list,
+  which is what retires its progress.
+
+Ending checks the event against what the page last showed: if it changed in ConfigCat
+in the meantime, the end is refused rather than done blind. The booking that was
+running it is cancelled, so the heartbeat does not end it a second time.
+
+**A running event can be changed now.** Its window and its config are inside the
+payload players read, so saving a new end time, a new start, evergreen on or off, or a
+config reloaded from its sheet publishes straight away. For a rolling offer the change
+is merged into the offers live at that moment. Renaming a booked event, or changing
+its note or category, publishes nothing.
+
+**The event's dates are the one answer for its window.** A season's `StartUtc` and
+`DurationDays` and an offer's `StartUtc` and `DurationHours` are written from the
+event's dates whenever it is booked or moved, so moving an event never needs the sheet
+reloaded and never publishes a config on the old dates. A season is rounded to the
+whole days the client counts in; an offer to hundredths of an hour.
+
+### Adding a feature
+
+Add one entry to `LIVEOPS_FEATURES` in `server/liveopsFeatures.mjs`, and its type to
+`server/liveopsFeatures.d.mts`. That file imports nothing, so the server and the app
+import the very same functions - the calendar, the heartbeat and End now cannot
+disagree about what an event is. Each feature answers six questions about its payload:
+
+| | |
+| --- | --- |
+| `eventsIn` | Which events does this payload hold, and when does each run? |
+| `partOf` | Which part of the payload is one event? |
+| `withPart` | Put one event's part into what is live, leaving the rest. |
+| `withWindow` | Write an event's window into the payload. |
+| `endedNow` | Take one event out of the game now. |
+| `withoutPart` | Take one event out of the payload altogether. |
+
+plus `unit` - `whole` when the payload is one event (two bookings always collide, and
+an off state is required), `list` when each entry is one (events run side by side) -
+and `evergreen`, whether an event may have no end. Then add the exporter to
+`LIVEOPS_EXPORTERS`, give its analysis a `subject` naming the event its sheet
+describes, and seed `OFF_SEEDS` if it is a `whole` feature.
 
 ### Booking an event
 
-The form asks four things: which feature, what to call it, when it opens and when it
-ends. Both dates are required - a window with no end never comes down - and the form
-shows the **duration they add up to**, in days and hours, calculated rather than
-typed. That is the number people actually argue about; the two dates are only how it
-is written down.
+The form asks which feature, what to call it, its category, and when: **at a date**,
+or **now**, which books it and publishes it at once rather than waiting for the
+heartbeat. It shows the **duration** the dates add up to, calculated rather than typed.
+A season needs an end; an offer may be evergreen.
 
-The event then needs a config, and it takes it from **the sheet the feature is
-authored in**: paste the Google Sheets link, load it, and the console runs the
-feature's own exporter over it - the same parser, the same tab mapping, the same
-issue list, the same schema gate, the same cross-config check against the live game.
-A season booked three weeks out is more worth checking than one published by hand,
-because nobody is watching at the minute it goes live.
+The config comes from **the sheet the feature is authored in**: paste the link, load
+it, and the console runs the feature's own exporter over it - the same parser, tab
+mapping, issue list, schema gate and cross-config check its page runs. From the
+feature's page, **Schedule it** opens the same form with the config the page already
+built and checked. What is booked is a **snapshot**: editing the sheet afterwards does
+not change a booked event. The link is kept as provenance.
 
-The header fields the feature's page collects are collected here too, in the same
-panel, seeded from the live config - with one difference: the fields the event
-already decides are shown read-only. A battle pass season booked as an event starts
-when the event opens and runs for as long as the event runs, rounded to the whole
-days the client counts in. Asking twice could only produce two answers that disagree.
+Publishing a season from its page whose start is in the future warns first: the
+client shows a pass as soon as it is published, whatever its start, and a new Season
+ID rolls every player's progress on their next launch - so publishing next season
+early ends this one early. Schedule it instead.
 
-What is booked is a **snapshot**. The parsed config is stored on the schedule entry
-when the event is created, so editing the sheet afterwards does not change what a
-booked event publishes; the link is kept on the event as provenance and is shown in
-the events table. Reload the sheet and book again to change it.
-
-There are no preview hours. An event's config is published when the event opens,
-which is the one date anybody has in their head. Events booked before this was
-removed still carry theirs, and the calendar still draws their preview slice.
-
-### Editing a booked event
-
-Clicking a row in the events table, or a bar on the calendar, opens that event in
-the same form it was booked with. A window that has not started yet is editable in
-full; one that is already live keeps its start and its config - moving those is a
-publish, not an edit - and still takes a new end time, name and note. The entry keeps
-its id and its history, so an event that slipped a week reads as one event that
-slipped rather than as a cancellation and a new booking.
-
-An event whose window lives inside its config (a battle pass season carries its own
-start and length) reloads its sheet when the form opens, so moving the dates rebuilds
-the payload. If that sheet cannot be read, the dates are refused rather than saved
-against a config that would publish the old window.
+There are no preview hours. Events booked before they were removed still carry theirs,
+and the calendar still draws their preview slice.
 
 ### Phases
 
 The schedule state answers "has the scheduler done its job"; the phase answers "what
-does a player see". They come apart where it matters: scheduled -> preview (config
-live, event not open) -> active -> ending soon (inside its last day) -> ended, with
-`off` for an event that was cancelled or missed and never ran.
+does a player see". scheduled -> preview (config live, event not open) -> active ->
+ending soon (inside its last day) -> ended, with `off` for an event that was cancelled
+or missed and never ran. On the board an event with no window reads *Evergreen*, and
+one that is over but still in the payload reads *Ended, still listed*.
 
 ## Cross-config validation
 

@@ -9,6 +9,7 @@ import { GIT_PATHS, SETTING_KEYS } from '../src/domains/types';
 import {
   EVENT_CATEGORIES,
   LIVEOPS_DOMAINS,
+  boardEventFromEntry,
   durationLabel,
   eventDuration,
   layOutBars,
@@ -158,6 +159,14 @@ describe('booking an event', () => {
     expect(problems.join(' ')).toMatch(/needs an end time/);
   });
 
+  it('lets an evergreen rolling offer be booked with no end, and nothing else', () => {
+    const open = { startsAt: iso(DAY), endsAt: null };
+    expect(checkEvent({ category: 'monetization', opensAt: iso(DAY) }, open, 'rollingOffer')).toEqual([]);
+    expect((checkEvent({ category: 'seasonal', opensAt: iso(DAY) }, open, 'battlePass') as string[]).join(' ')).toMatch(
+      /needs an end time/,
+    );
+  });
+
   it('refuses an event that ends before it opens', () => {
     const problems = checkEvent({ category: 'seasonal', opensAt: iso(10 * DAY), previewHours: 0 }, {
       startsAt: iso(10 * DAY),
@@ -189,7 +198,7 @@ describe('booking an event', () => {
     const candidate = {
       domain: 'battlePass',
       environmentId: 'env-test',
-      payload: {},
+      payload: { SeasonID: 'pass.season2', Tiers: [{}] },
       startsAt: iso(DAY),
       endsAt: iso(31 * DAY),
       liveops: { category: 'monetization', opensAt: iso(DAY), previewHours: 0 },
@@ -244,9 +253,10 @@ describe('the off state', () => {
 describe('laying events out on the calendar', () => {
   const from = NOW - 10 * DAY;
   const to = NOW + 10 * DAY;
+  const bar_ = (entry: LiveOpsEntry) => boardEventFromEntry(entry, NOW);
 
   it('places a bar where its dates say', () => {
-    const bar = layOutBars([event({ startsAt: iso(0), endsAt: iso(10 * DAY) }, { opensAt: iso(0) })], from, to, NOW)[0];
+    const bar = layOutBars([bar_(event({ startsAt: iso(0), endsAt: iso(10 * DAY) }, { opensAt: iso(0) }))], from, to)[0];
     expect(bar.left).toBeCloseTo(0.5, 5);
     expect(bar.width).toBeCloseTo(0.5, 5);
   });
@@ -254,20 +264,18 @@ describe('laying events out on the calendar', () => {
   it('marks the preview slice as a fraction of the bar', () => {
     // Published on day 0, opens on day 5, ends on day 10: half the bar.
     const bar = layOutBars(
-      [event({ startsAt: iso(0), endsAt: iso(10 * DAY) }, { opensAt: iso(5 * DAY), previewHours: 120 })],
+      [bar_(event({ startsAt: iso(0), endsAt: iso(10 * DAY) }, { opensAt: iso(5 * DAY), previewHours: 120 }))],
       from,
       to,
-      NOW,
     )[0];
     expect(bar.previewFraction).toBeCloseTo(0.5, 5);
   });
 
   it('clips a bar that runs past either edge and says so', () => {
     const bar = layOutBars(
-      [event({ startsAt: iso(-40 * DAY), endsAt: iso(40 * DAY) }, { opensAt: iso(-40 * DAY) })],
+      [bar_(event({ startsAt: iso(-40 * DAY), endsAt: iso(40 * DAY) }, { opensAt: iso(-40 * DAY) }))],
       from,
       to,
-      NOW,
     )[0];
     expect(bar.left).toBe(0);
     expect(bar.width).toBe(1);
@@ -276,7 +284,9 @@ describe('laying events out on the calendar', () => {
   });
 
   it('drops an event that is entirely outside the range', () => {
-    expect(layOutBars([event({ startsAt: iso(40 * DAY), endsAt: iso(50 * DAY) })], from, to, NOW)).toEqual([]);
+    expect(
+      layOutBars([bar_(event({ startsAt: iso(40 * DAY), endsAt: iso(50 * DAY) }, { opensAt: iso(40 * DAY) }))], from, to),
+    ).toEqual([]);
   });
 });
 

@@ -28,6 +28,13 @@ export interface EventConfig {
    * this entry. Null for a feature whose payload is wholly its own.
    */
   subjectId: string | null;
+  /**
+   * True once somebody has asked for this config: pressed Load, or changed a
+   * field in the panel. The sheet an existing event was booked from is read on
+   * its own when the dialog opens, and that read alone must not republish the
+   * sheet's latest edits over a running event just because its name was fixed.
+   */
+  touched: boolean;
 }
 
 interface EventConfigSourceProps {
@@ -88,6 +95,7 @@ export function EventConfigSource({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selection, setSelection] = useState<TabSelection>(EMPTY_SELECTION);
   const [showMapping, setShowMapping] = useState(false);
+  const [touched, setTouched] = useState(false);
 
   // A new workbook re-runs the definition's own guess at the tab mapping.
   useEffect(() => {
@@ -163,7 +171,7 @@ export function EventConfigSource({
   const settings = useMemo(() => {
     const { controls, eventSettings } = definition;
     if (controls === undefined) return undefined;
-    if (eventSettings === undefined || opensAt === null || endsAt === null) return edited;
+    if (eventSettings === undefined) return edited;
     return eventSettings(edited, { opensAt, endsAt });
   }, [definition, edited, opensAt, endsAt]);
 
@@ -243,8 +251,8 @@ export function EventConfigSource({
   const subjectId = exportable.config === null ? null : (result?.subject ?? null);
 
   const answer = useMemo<EventConfig>(
-    () => ({ payload, sourceUrl: loadedUrl, blocker, subjectId }),
-    [payload, loadedUrl, blocker, subjectId],
+    () => ({ payload, sourceUrl: loadedUrl, blocker, subjectId, touched }),
+    [payload, loadedUrl, blocker, subjectId, touched],
   );
 
   useEffect(() => {
@@ -273,7 +281,7 @@ export function EventConfigSource({
               <span className="spinner" aria-hidden="true" /> Reading the sheet this event was booked from...
             </>
           ) : (
-            <>Keeping the config booked with this event ({(booked.bytes / 1024).toFixed(1)} kB).</>
+            <>Keeping the config it carries now ({(booked.bytes / 1024).toFixed(1)} kB).</>
           )}
         </p>
       )}
@@ -287,6 +295,7 @@ export function EventConfigSource({
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault();
+              setTouched(true);
               void load();
             }
           }}
@@ -294,7 +303,10 @@ export function EventConfigSource({
         <button
           type="button"
           className="btn"
-          onClick={() => void load()}
+          onClick={() => {
+            setTouched(true);
+            void load();
+          }}
           disabled={busy || url.trim() === ''}
         >
           {busy ? 'Loading...' : workbook === null ? 'Load' : 'Reload'}
@@ -309,7 +321,10 @@ export function EventConfigSource({
           <div className="stack-sm" style={{ marginTop: 8 }}>
             <definition.controls.Panel
               value={settings}
-              onChange={setEdited}
+              onChange={(next: unknown) => {
+                setTouched(true);
+                setEdited(next);
+              }}
               environmentId={environmentId}
               fromEvent
             />

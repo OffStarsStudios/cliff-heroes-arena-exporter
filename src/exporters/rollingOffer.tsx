@@ -147,17 +147,17 @@ export const ROLLING_OFFER_EXPORTER: ExporterDefinition<
     // An offer published by an event runs for exactly as long as the event, so
     // the booking is the answer. An event with no end is an evergreen offer -
     // which is also how an offer with no window is drawn on the calendar.
-    const hours = (Date.parse(endsAt) - Date.parse(opensAt)) / 3600000;
-    if (!Number.isFinite(hours) || hours <= 0) {
+    const hours = opensAt === null || endsAt === null ? NaN : (Date.parse(endsAt) - Date.parse(opensAt)) / 3600000;
+    if (opensAt === null || !Number.isFinite(hours) || hours <= 0) {
       return { ...base, isTimed: false, startUtc: '', durationHours: 0 };
     }
     return {
       ...base,
       isTimed: true,
       startUtc: toClientUtc(opensAt),
-      // Whole hours is the client's unit for an offer, and rounding here keeps
-      // the rounding visible in the form rather than discovered in the payload.
-      durationHours: Math.round(hours),
+      // Hundredths of an hour, the same rounding the scheduler writes into the
+      // offer, so the form never shows a different length from the one published.
+      durationHours: Math.round(hours * 100) / 100,
     };
   },
   analyze(sheets, schedule) {

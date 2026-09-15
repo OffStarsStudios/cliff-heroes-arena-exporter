@@ -23,18 +23,20 @@
  */
 
 import { CONFIG_TARGET, readJson, commitJson } from './git.mjs';
+import { ENDING_SOON_HOURS, EVENT_CATEGORIES, LIVEOPS_DOMAINS, featureFor } from './liveopsFeatures.mjs';
 
 /**
  * Domains that are scheduled as events rather than configured permanently.
  *
  * Deliberately short. Trophy road, hero stats, arenas, match trophies, bots,
  * hero upgrades and the shop are core: they are always live, they are edited
- * on their own pages, and they have no business on a calendar.
+ * on their own pages, and they have no business on a calendar. The list itself
+ * is the registry in `liveopsFeatures.mjs`, which the app imports too.
  */
-export const LIVEOPS_DOMAINS = ['battlePass', 'rollingOffer'];
+export { ENDING_SOON_HOURS, EVENT_CATEGORIES, LIVEOPS_DOMAINS };
 
 export function isLiveOpsDomain(domain) {
-  return LIVEOPS_DOMAINS.includes(domain);
+  return featureFor(domain) !== null;
 }
 
 /** True for a schedule entry that was booked as a live ops event. */
@@ -43,17 +45,19 @@ export function isLiveOpsEntry(entry) {
 }
 
 /**
- * What "not running" looks like for each live ops feature.
+ * What "not running" looks like for each feature that has such a thing.
  *
  * Shaped like the real payload rather than `{}` on purpose: a typed client
  * that deserialises `battlePassSettings` into a struct would throw on an empty
  * object, whereas it reads this happily and finds no season and no tiers. The
- * emptiness is the signal - an empty `SeasonID` and an empty `Tiers` is how
- * the client is expected to know there is no pass.
+ * emptiness is the signal. Checked against the client since: an empty
+ * `SeasonID` means no pass is running, and `RollSeason` ignores it, so nobody's
+ * progress is rolled by the season going off and coming back.
  *
  * These are seeds. The file in `config/off/` is the truth once it exists, so
  * the shape can be corrected from the back office without a deploy if the
- * client wants a different sentinel.
+ * client wants a different sentinel. A feature whose payload is a list has no
+ * off state: ending one of its events closes that event's window instead.
  */
 export const OFF_SEEDS = {
   battlePass: {
@@ -75,60 +79,13 @@ export const OFF_MEANS = {
   battlePass: 'An empty Season ID and no tiers. The client shows no pass.',
 };
 
+/** True for a feature that needs an off state recorded before its events can end. */
+export function needsOffState(domain) {
+  return featureFor(domain)?.unit === 'whole';
+}
+
 export function offPath(domain) {
   return `config/off/${domain}.json`;
-}
-
-/** The off payload for a feature, or null when none has been recorded. */
-/**
- * Features whose payload is a list the client takes whole, keyed by the field
- * holding that list and the field identifying an entry within it.
- *
- * These have no off state. Ending one event of such a feature removes its entry
- * from what is live; the others carry on, and for a rolling offer removing the
- * wrong one would drop those players' progress with it.
- */
-export const LIST_PAYLOADS = {
-  rollingOffer: { list: 'Offers', key: 'OfferID' },
-};
-
-export function isListPayload(domain) {
-  return Object.prototype.hasOwnProperty.call(LIST_PAYLOADS, domain);
-}
-
-/**
- * What should be live once this event's entry is taken out.
- *
- * Returns null when there is nothing to do or nothing safe to do: an event with
- * no entry recorded, a live value that is not the shape expected, or an entry
- * that is not in the live list any more because somebody removed it already.
- *
- * Refuses to empty the list. The client treats a schedule that resolves no
- * offers as a broken payload and keeps what it has, so publishing one would be
- * asking for the offer to stay live by accident. Better to leave it and say so.
- */
-export function withoutEntry(domain, liveValue, subjectId) {
-  const shape = LIST_PAYLOADS[domain];
-  if (shape === undefined || typeof subjectId !== 'string' || subjectId === '') return null;
-
-  let payload = liveValue;
-  if (typeof payload === 'string') {
-    try {
-      payload = JSON.parse(payload);
-    } catch {
-      return null;
-    }
-  }
-  if (payload === null || typeof payload !== 'object') return null;
-
-  const entries = payload[shape.list];
-  if (!Array.isArray(entries)) return null;
-
-  const kept = entries.filter((entry) => entry === null || entry[shape.key] !== subjectId);
-  if (kept.length === entries.length) return { payload: null, reason: 'not-listed' };
-  if (kept.length === 0) return { payload: null, reason: 'would-empty' };
-
-  return { payload: { ...payload, [shape.list]: kept }, reason: 'removed' };
 }
 
 export async function loadOff(domain) {
@@ -152,26 +109,6 @@ export async function saveOff(domain, payload, note) {
 }
 
 /* ------------------------------------------------------------ the model -- */
-
-/**
- * Why an event is running. Only used for grouping and colour, but it is the
- * question a live ops calendar is read to answer - "what monetisation is up
- * this week" - so it is a field rather than a note somebody has to parse.
- */
-export const EVENT_CATEGORIES = ['monetization', 'engagement', 'seasonal', 'test'];
-
-/**
- * How long before it opens the config is published, by default.
- *
- * Publishing early is what lets the client advertise a pass before it starts:
- * the payload carries its own start time, so the game can show a countdown
- * while treating the season as not yet begun. Zero is also valid - it just
- * means the event appears the moment it opens.
- */
-export const DEFAULT_PREVIEW_HOURS = 0;
-
-/** Inside this much of the end, an event is "ending soon" rather than merely active. */
-export const ENDING_SOON_HOURS = 24;
 
 const HOUR_MS = 3600 * 1000;
 
@@ -207,7 +144,7 @@ export function phaseOf(entry, now = Date.now()) {
  * answered once, in `checkEntry`, with the right sentence for the kind of
  * window it is.
  */
-export function checkEvent(liveops, { startsAt, endsAt }) {
+export function checkEvent(liveops, { startsAt, endsAt }, domain) {
   const problems = [];
 
   if (!EVENT_CATEGORIES.includes(liveops?.category)) {
@@ -229,12 +166,16 @@ export function checkEvent(liveops, { startsAt, endsAt }) {
     }
   }
 
-  // An event that never ends is not an event, it is a feature. The whole
-  // premise here is that the thing goes away again.
+  // A feature that can run for good - an evergreen rolling offer - may be
+  // booked with no end: it goes up at its start and stays, and is ended by
+  // hand from the calendar or its page. Anything else has to come down again.
+  const evergreen = featureFor(domain)?.evergreen === true;
   if (endsAt === null || endsAt === undefined) {
-    problems.push(
-      'A live ops event needs an end time. A window with no end never comes down, and a feature that never comes down belongs on its own page rather than the calendar.',
-    );
+    if (!evergreen) {
+      problems.push(
+        'A live ops event needs an end time. A window with no end never comes down, and this feature has no evergreen form.',
+      );
+    }
   } else if (!Number.isNaN(opens) && Date.parse(endsAt) <= opens) {
     problems.push('The event ends before it opens.');
   }
@@ -254,4 +195,19 @@ export function windowForEvent(liveops, endsAt) {
   const opens = Date.parse(liveops.opensAt);
   const startsAt = new Date(opens - (liveops.previewHours ?? 0) * HOUR_MS).toISOString();
   return { startsAt, endsAt };
+}
+
+/**
+ * Which event inside the payload a booking owns.
+ *
+ * A rolling offer booking records it, because its payload is the whole list.
+ * A season names itself, which also covers bookings made before the field.
+ */
+export function subjectOfEntry(entry) {
+  // A payload that names its own event is the truth: a season re-cut with a
+  // new ID is a booking of the new season, whatever was written down before.
+  const named = featureFor(entry?.domain)?.subjectOf(entry?.payload) ?? null;
+  if (named !== null) return named;
+  const recorded = entry?.liveops?.subjectId;
+  return typeof recorded === 'string' && recorded !== '' ? recorded : null;
 }

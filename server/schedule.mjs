@@ -43,12 +43,13 @@ import {
   LIVEOPS_DOMAINS,
   checkEvent,
   isLiveOpsEntry,
-  isListPayload,
   loadOff,
-  withoutEntry,
+  needsOffState,
   phaseOf,
+  subjectOfEntry,
   windowForEvent,
 } from './liveops.mjs';
+import { REASON_TEXT, featureFor, readPayload } from './liveopsFeatures.mjs';
 import { applyPublish, hashValue, toStoredValue } from './publish.mjs';
 
 export const SCHEDULE_PATH = 'schedules/schedules.json';
@@ -191,11 +192,43 @@ function overlaps(a, b) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+/**
+ * The slot a window owns, which is what two windows must not both hold at once.
+ *
+ * For a core config and for a feature whose payload is one event - a battle
+ * pass season - that is the setting itself. For a feature whose payload is a
+ * list, each event is one entry of it: two rolling offers run side by side, and
+ * only two bookings of the *same* offer collide.
+ */
+function slotOf(entry) {
+  const base = `${entry.domain} ${entry.environmentId}`;
+  if (!isLiveOpsEntry(entry) || featureFor(entry.domain)?.unit !== 'list') return base;
+  return `${base} ${subjectOfEntry(entry) ?? ''}`;
+}
+
 function record(entry, action, ok, message) {
   entry.history = [
     ...(entry.history ?? []),
     { at: new Date().toISOString(), action, ok, message: message ?? null },
   ].slice(-20);
+}
+
+/**
+ * Writes an event's window into the config it carries.
+ *
+ * The event's dates are the one answer: a season's start and length, an
+ * offer's start and hours, are set from them whenever a booking is made or
+ * moved. So moving an event on the calendar can never publish a config that
+ * still runs on the old dates, and nobody has to reload a sheet to move one.
+ */
+function alignToWindow(entry) {
+  const feature = featureFor(entry.domain);
+  const subjectId = entry.liveops?.subjectId ?? null;
+  if (feature === null || subjectId === null || entry.payload === null || entry.payload === undefined) return;
+  const aligned = feature.withWindow(entry.payload, subjectId, { startsAt: entry.liveops.opensAt, endsAt: entry.endsAt });
+  if (aligned === null) return;
+  entry.payload = aligned;
+  entry.payloadHash = hashValue(toStoredValue(aligned));
 }
 
 /* ------------------------------------------------------------ guardrails -- */
@@ -252,19 +285,22 @@ export function checkEntry(candidate, { entries, hasDefault, hasOff, now = Date.
   // kind of window it is - a core config goes back to its last known-good
   // version, a live ops feature goes away entirely - so the question is the
   // same one and the answer is not.
+  // Every live ops booking has to say which event inside the payload it owns:
+  // it is what gets merged in when it opens, taken out when it ends, and what
+  // the calendar matches against what ConfigCat is serving.
+  const feature = liveOps ? featureFor(candidate.domain) : null;
+  if (liveOps && feature === null) {
+    problems.push(`"${candidate.domain}" is not a live ops feature, so it cannot be booked as an event.`);
+  } else if (liveOps && subjectOfEntry(candidate) === null) {
+    problems.push(
+      `This event does not record which ${feature.noun} it publishes, so there would be nothing to merge in when ` +
+        `it opens or take out when it ends. Load its sheet so the booking knows which one it owns.`,
+    );
+  }
+
   // A feature whose payload is a list needs no off state and could not have
-  // one: ending its event removes its entry from what is live. What it does
-  // need is to know which entry that is, which comes from the sheet it was
-  // booked from.
-  const listPayload = liveOps && isListPayload(candidate.domain);
-  if (end !== null && !Number.isNaN(end) && listPayload) {
-    if (candidate.liveops?.subjectId == null || candidate.liveops.subjectId === '') {
-      problems.push(
-        'This event does not record which offer it publishes, so there would be nothing to remove when ' +
-          'it ends. Load the offer sheet so the booking knows which one it owns.',
-      );
-    }
-  } else if (end !== null && !Number.isNaN(end) && !(liveOps ? hasOff : hasDefault)) {
+  // one: ending one of its events changes that entry and leaves the rest.
+  if (end !== null && !Number.isNaN(end) && !(liveOps ? !needsOffState(candidate.domain) || hasOff : hasDefault)) {
     problems.push(
       liveOps
         ? 'This feature has no off state recorded, so there would be nothing to publish when the event ends and the feature would stay in the game after it was over. Record the off state first.'
@@ -272,11 +308,11 @@ export function checkEntry(candidate, { entries, hasDefault, hasOff, now = Date.
     );
   }
 
+  const slot = slotOf(candidate);
   const clashing = entries.filter(
     (entry) =>
       entry.id !== candidate.id &&
-      entry.domain === candidate.domain &&
-      entry.environmentId === candidate.environmentId &&
+      slotOf(entry) === slot &&
       !isTerminal(entry) &&
       overlaps(entry, candidate),
   );
@@ -291,9 +327,28 @@ export function checkEntry(candidate, { entries, hasDefault, hasOff, now = Date.
 
 /* -------------------------------------------------------------- writing -- */
 
+/**
+ * Books a window, or - with `startNow` - books a live ops event and puts it
+ * live straight away.
+ *
+ * Starting now is the calendar's "publish it now": the event is recorded the
+ * same way a booked one is, so it shows on the calendar, keeps its history and
+ * is taken down at its end, and the only difference is that nobody waits five
+ * minutes for the heartbeat to publish it.
+ */
 export async function createEntry(input) {
   const { store, sha } = await loadSchedule();
-  const liveops = input.liveops ?? null;
+  const now = Date.now();
+  const startNow = input.startNow === true && input.liveops !== null && input.liveops !== undefined;
+  const liveops =
+    input.liveops === null || input.liveops === undefined
+      ? null
+      : {
+          ...input.liveops,
+          // Floored to the minute, because that is as precise as the client's
+          // own start stamp is.
+          ...(startNow ? { opensAt: new Date(Math.floor(now / 60000) * 60000).toISOString() } : {}),
+        };
   const hasDefault = (await loadDefault(input.domain)) !== null;
   const hasOff = liveops === null ? false : (await loadOff(input.domain)) !== null;
 
@@ -320,21 +375,40 @@ export async function createEntry(input) {
     endsAt: window.endsAt,
     liveops,
     state: 'scheduled',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(now).toISOString(),
     createdBy: input.createdBy ?? 'back office',
     history: [],
   };
+  // Written down on the booking, so every later reader - the heartbeat, the
+  // calendar - asks the same question of the same answer.
+  if (liveops !== null) {
+    entry.liveops = { ...liveops, subjectId: subjectOfEntry(entry) };
+    alignToWindow(entry);
+  }
 
   const problems = [
-    ...checkEntry(entry, { entries: store.entries, hasDefault, hasOff }),
-    ...(liveops === null ? [] : checkEvent(liveops, { startsAt: entry.startsAt, endsAt: entry.endsAt })),
+    ...checkEntry(entry, { entries: store.entries, hasDefault, hasOff, now }),
+    ...(liveops === null ? [] : checkEvent(entry.liveops, { startsAt: entry.startsAt, endsAt: entry.endsAt }, entry.domain)),
   ];
   if (problems.length > 0) return { ok: false, problems };
 
-  record(entry, 'created', true, `Scheduled for ${entry.startsAt}.`);
+  record(entry, 'created', true, startNow ? 'Booked to start now.' : `Scheduled for ${entry.startsAt}.`);
   store.entries = [...store.entries, entry];
-  await saveSchedule(store, sha, `Schedule ${entry.domain}: ${entry.label || entry.id}`);
-  return { ok: true, entry };
+
+  let started = null;
+  if (startNow) {
+    // Published before the booking is saved, and saved either way: a publish
+    // refused by a colleague's open change request is retried by the next
+    // tick, exactly as a booked event would be.
+    started = await startWindow(entry, new Date(now));
+  }
+
+  await saveSchedule(
+    store,
+    sha,
+    `${startNow ? 'Start' : 'Schedule'} ${entry.domain}: ${entry.label || entry.id}`,
+  );
+  return { ok: true, entry, started };
 }
 
 /**
@@ -346,11 +420,13 @@ export async function createEntry(input) {
  * in between.
  *
  * What may change depends on whether it has started. A scheduled window is not
- * doing anything yet, so all of it is editable. A live one is already serving
- * its payload: moving its start or swapping its config underneath the game is
- * not an edit, it is a publish, so those are refused and the end time, the name
- * and the note are not. Anything omitted keeps the value it had, which is what
- * lets the form send only what somebody touched.
+ * doing anything yet, so all of it is editable. A live core window is already
+ * serving its payload, so moving its start or swapping its config is refused.
+ * A live ops event that is live is different: its window and its config are
+ * inside the payload the game is reading, so changing either *is* publishing,
+ * and that is what happens - straight away, through `publishLiveEvent`.
+ * Anything omitted keeps the value it had, which is what lets the form send
+ * only what somebody touched.
  */
 export async function updateEntry(input) {
   const { store, sha } = await loadSchedule();
@@ -373,17 +449,32 @@ export async function updateEntry(input) {
       : windowForEvent(liveops, endsAt ?? null);
 
   const payload = input.payload === undefined ? current.payload : input.payload;
+  const payloadChanged = input.payload !== undefined && hashValue(toStoredValue(payload)) !== current.payloadHash;
+
+  if (started && liveops !== null && (payloadChanged || window.endsAt !== current.endsAt || window.startsAt !== current.startsAt)) {
+    const subjectId = subjectOfEntry(current);
+    const published = await publishLiveEvent({
+      domain: current.domain,
+      environmentId: current.environmentId,
+      subjectId,
+      payload: payloadChanged ? payload : undefined,
+      window: { startsAt: liveops.opensAt, endsAt: window.endsAt },
+      reason: `Live event "${input.label ?? current.label ?? current.id}" edited from the back office.`,
+      details: { label: input.label, note: input.note, category: input.liveops?.category, sourceUrl: input.liveops?.sourceUrl },
+    });
+    return published;
+  }
 
   if (started) {
     const problems = [];
     if (window.startsAt !== current.startsAt) {
       problems.push(
-        'This event is already live, so its start cannot be moved. End it and book a new one if it should start again later.',
+        'This window is already live, so its start cannot be moved. Take it down and book a new one if it should start again later.',
       );
     }
-    if (input.payload !== undefined && hashValue(toStoredValue(payload)) !== current.payloadHash) {
+    if (payloadChanged) {
       problems.push(
-        'This event is already live, so its config cannot be swapped from here. Publish the change on the config page, or end the event and book it again.',
+        'This window is already live, so its config cannot be swapped from here. Publish the change on the config page instead.',
       );
     }
     if (problems.length > 0) return { ok: false, problems };
@@ -400,12 +491,16 @@ export async function updateEntry(input) {
     endsAt: window.endsAt,
     liveops,
   };
+  if (liveops !== null) {
+    next.liveops = { ...liveops, subjectId: subjectOfEntry(next) };
+    alignToWindow(next);
+  }
 
   const hasDefault = (await loadDefault(next.domain)) !== null;
   const hasOff = liveops === null ? false : (await loadOff(next.domain)) !== null;
   const problems = [
     ...checkEntry(next, { entries: store.entries, hasDefault, hasOff, started }),
-    ...(liveops === null ? [] : checkEvent(liveops, { startsAt: next.startsAt, endsAt: next.endsAt })),
+    ...(liveops === null ? [] : checkEvent(next.liveops, { startsAt: next.startsAt, endsAt: next.endsAt }, next.domain)),
   ];
   if (problems.length > 0) return { ok: false, problems };
 
@@ -415,16 +510,38 @@ export async function updateEntry(input) {
   return { ok: true, entry: next };
 }
 
+/**
+ * Stops a window.
+ *
+ * One that has not started is simply called off. One that is live has to take
+ * its config back out, or "cancel" would mean "leave the promotion up for
+ * ever": a core window goes back to its default, and a live ops event is
+ * ended the same way the calendar's End now ends it - at once, whatever else
+ * has happened to the payload since.
+ */
 export async function cancelEntry(id, reason) {
   const { store, sha } = await loadSchedule();
   const entry = store.entries.find((candidate) => candidate.id === id);
   if (entry === undefined) return { ok: false, problems: [`No schedule with id "${id}".`] };
   if (isTerminal(entry)) return { ok: false, problems: [`That window is already ${entry.state}.`] };
 
-  // Cancelling a window that is currently live has to put the config back, or
-  // "cancel" would mean "leave the promotion up forever".
+  if (entry.state === 'active' && isLiveOpsEntry(entry)) {
+    const ended = await endLiveEvent({
+      domain: entry.domain,
+      environmentId: entry.environmentId,
+      subjectId: subjectOfEntry(entry),
+      mode: 'end',
+      reason: reason ?? 'Cancelled from the back office.',
+    });
+    if (ended.ok) return { ...ended, entry: ended.cancelled.find((candidate) => candidate.id === id) ?? entry };
+    // Nothing of this event is left running - somebody took it out already, or
+    // its window has closed - so there is nothing to publish, only a booking
+    // to call off.
+    if (ended.reason !== 'not-listed' && ended.reason !== 'already-ended') return ended;
+  }
+
   let revert = null;
-  if (entry.state === 'active') {
+  if (entry.state === 'active' && !isLiveOpsEntry(entry)) {
     revert = await endWindow(entry, store, 'cancelled');
   }
 
@@ -432,6 +549,219 @@ export async function cancelEntry(id, reason) {
   record(entry, 'cancelled', true, reason ?? 'Cancelled from the back office.');
   await saveSchedule(store, sha, `Cancel schedule ${entry.domain}: ${entry.label || entry.id}`);
   return { ok: true, entry, revert };
+}
+
+/* ------------------------------------------------------- live ops events -- */
+
+/**
+ * The live value of one setting, read fresh, with the hash a publish is
+ * checked against so nothing written in between is overwritten.
+ */
+async function readLive(environmentId, settingKey) {
+  const values = await getValues(CONFIG_ID, environmentId);
+  if (values.unreadable !== null) {
+    throw new Error(`The live config could not be read: ${values.unreadable.reason}`);
+  }
+  const setting = values.settings.find((candidate) => candidate.key === settingKey);
+  if (setting === undefined) throw new Error(`ConfigCat has no setting with the key "${settingKey}".`);
+  const text = typeof setting.value === 'string' ? setting.value : null;
+  return { text, payload: readPayload(text), hash: hashValue(text) };
+}
+
+/**
+ * Refuses when the event somebody is acting on is not the event that is live.
+ *
+ * Checked on the event's own part of the payload, not the whole setting: two
+ * people ending two different rolling offers at once are not in each other's
+ * way, but one ending an offer another has just re-cut should hear about it.
+ */
+function changedSince(feature, live, subjectId, expected) {
+  if (expected === undefined) return false;
+  return diffJson(feature.partOf(live, subjectId), expected ?? null).length > 0;
+}
+
+/**
+ * Settles the bookings of an event that was just changed by hand.
+ *
+ * Ending it cancels the booking that was running it, so the heartbeat does not
+ * try to take it down again later. Editing it keeps the booking and brings it
+ * onto what was published, so its end time and its "is this still ours" check
+ * both follow the edit.
+ */
+async function settleBookings({ domain, environmentId, subjectId, action, payload, window, details, message }) {
+  if (!gitAvailable()) return [];
+  const { store, sha } = await loadSchedule();
+  const touched = store.entries.filter(
+    (entry) =>
+      entry.domain === domain &&
+      entry.environmentId === environmentId &&
+      entry.state === 'active' &&
+      isLiveOpsEntry(entry) &&
+      subjectOfEntry(entry) === subjectId,
+  );
+  if (touched.length === 0) return [];
+
+  for (const entry of touched) {
+    if (action === 'end') {
+      entry.state = 'cancelled';
+      record(entry, 'ended', true, message);
+    } else {
+      entry.payload = payload;
+      entry.payloadHash = hashValue(toStoredValue(payload));
+      if (window !== undefined) {
+        entry.endsAt = window.endsAt;
+        if (window.startsAt !== null) entry.liveops = { ...entry.liveops, opensAt: window.startsAt };
+      }
+      if (details?.label !== undefined) entry.label = details.label;
+      if (details?.note !== undefined) entry.note = details.note;
+      if (details?.category !== undefined) entry.liveops = { ...entry.liveops, category: details.category };
+      if (details?.sourceUrl !== undefined && details.sourceUrl !== null) {
+        entry.liveops = { ...entry.liveops, sourceUrl: details.sourceUrl };
+      }
+      record(entry, 'edited-live', true, message);
+    }
+  }
+  await saveSchedule(
+    store,
+    sha,
+    `${action === 'end' ? 'End' : 'Edit'} live ${domain} event ${subjectId}`,
+  );
+  return touched;
+}
+
+/**
+ * Takes one live ops event out of the game now.
+ *
+ * Works on whatever ConfigCat is serving, booked or not - an offer published
+ * from its page, a season somebody pasted into the dashboard. That is the
+ * point: a misconfigured offer has to come down the minute somebody notices,
+ * not at its end time, and not by somebody opening ConfigCat to hand-edit a
+ * JSON string.
+ *
+ * `mode: 'end'` closes the event (off state for a season, a closed window for
+ * an offer) and is always safe. `mode: 'remove'` takes an offer out of the
+ * list for good, which retires its progress, and is what tidies up an offer
+ * that has already run.
+ */
+export async function endLiveEvent({ domain, environmentId, subjectId, mode = 'end', expected, reason, now = Date.now() }) {
+  const feature = featureFor(domain);
+  if (feature === null) return { ok: false, problems: [`"${domain}" is not a live ops feature.`] };
+  if (typeof subjectId !== 'string' || subjectId === '') {
+    return { ok: false, problems: ['Which event to end is required.'] };
+  }
+  if (typeof environmentId !== 'string' || environmentId === '') {
+    return { ok: false, problems: ['A target environment is required.'] };
+  }
+
+  const off = feature.unit === 'whole' ? await loadOff(domain) : null;
+  const live = await readLive(environmentId, feature.settingKey);
+  if (changedSince(feature, live.payload, subjectId, expected)) {
+    return {
+      ok: false,
+      problems: ['That event changed in ConfigCat after you opened it. Refresh and look at it again before ending it.'],
+    };
+  }
+
+  const outcome =
+    mode === 'remove'
+      ? feature.withoutPart(live.payload, subjectId, { off })
+      : feature.endedNow(live.payload, subjectId, { now, off });
+  if (outcome.payload === null) {
+    return {
+      ok: false,
+      reason: outcome.reason,
+      problems: [REASON_TEXT[outcome.reason] ?? `Nothing was changed (${outcome.reason}).`],
+    };
+  }
+
+  const verb = mode === 'remove' ? 'removed from the config' : 'ended';
+  const { result } = await publishPayload({
+    environmentId,
+    payload: outcome.payload,
+    settingKey: feature.settingKey,
+    gitPath: GIT_PATHS[domain],
+    baselineHash: live.hash,
+    note: `Live ${feature.noun} "${subjectId}" ${verb} by hand. ${reason ?? ''}`.trim(),
+  });
+  const ok = result.status === 'written' || result.status === 'unchanged';
+  if (!ok) return { ok: false, problems: [result.message ?? `The publish did not go through (${result.status}).`], result };
+
+  const cancelled = await settleBookings({
+    domain,
+    environmentId,
+    subjectId,
+    action: 'end',
+    message: `${feature.noun[0].toUpperCase()}${feature.noun.slice(1)} ${verb} by hand${reason ? `: ${reason}` : '.'}`,
+  });
+  return { ok: true, result, cancelled };
+}
+
+/**
+ * Republishes one live ops event now: a new window, a new config from its
+ * sheet, or both.
+ *
+ * Merged into what is live at the moment of publishing, so the other offers
+ * running beside this one are carried through as they are now rather than as
+ * they were when the sheet was loaded.
+ */
+export async function publishLiveEvent({ domain, environmentId, subjectId, payload, window, expected, reason, details }) {
+  const feature = featureFor(domain);
+  if (feature === null) return { ok: false, problems: [`"${domain}" is not a live ops feature.`] };
+  if (typeof subjectId !== 'string' || subjectId === '') {
+    return { ok: false, problems: ['Which event to change is required.'] };
+  }
+  if (payload === undefined && window === undefined) {
+    return { ok: false, problems: ['Nothing to change: send a new window, a new config, or both.'] };
+  }
+
+  const live = await readLive(environmentId, feature.settingKey);
+  if (changedSince(feature, live.payload, subjectId, expected)) {
+    return {
+      ok: false,
+      problems: ['That event changed in ConfigCat after you opened it. Refresh and look at it again before changing it.'],
+    };
+  }
+
+  let next = payload === undefined ? live.payload : feature.withPart(live.payload, payload, subjectId);
+  if (next === null) {
+    return { ok: false, problems: [`The config does not carry the ${feature.noun} "${subjectId}".`] };
+  }
+  if (payload === undefined && feature.partOf(next, subjectId) === null) {
+    return { ok: false, problems: [REASON_TEXT['not-listed']] };
+  }
+  if (window !== undefined) {
+    if (window.endsAt === null && !feature.evergreen) {
+      return { ok: false, problems: [`A ${feature.noun} needs an end.`] };
+    }
+    if (window.startsAt !== null && window.endsAt !== null && Date.parse(window.endsAt) <= Date.parse(window.startsAt)) {
+      return { ok: false, problems: ['The event ends before it opens.'] };
+    }
+    next = feature.withWindow(next, subjectId, window);
+    if (next === null) return { ok: false, problems: ['That window cannot be written into this config.'] };
+  }
+
+  const { result } = await publishPayload({
+    environmentId,
+    payload: next,
+    settingKey: feature.settingKey,
+    gitPath: GIT_PATHS[domain],
+    baselineHash: live.hash,
+    note: `Live ${feature.noun} "${subjectId}" changed by hand. ${reason ?? ''}`.trim(),
+  });
+  const ok = result.status === 'written' || result.status === 'unchanged';
+  if (!ok) return { ok: false, problems: [result.message ?? `The publish did not go through (${result.status}).`], result };
+
+  const updated = await settleBookings({
+    domain,
+    environmentId,
+    subjectId,
+    action: 'edit',
+    payload: next,
+    window,
+    details,
+    message: window === undefined ? 'Config republished by hand.' : `Republished by hand to run until ${window.endsAt ?? 'further notice'}.`,
+  });
+  return { ok: true, result, entry: updated[0] ?? null };
 }
 
 /* ----------------------------------------------------------------- tick -- */
@@ -444,19 +774,28 @@ export async function cancelEntry(id, reason) {
  * run, because the heartbeat is external and may be late, early or missing.
  * If two windows somehow both apply, the one that started most recently wins
  * and the other is marked superseded rather than left to fight.
+ *
+ * For a feature whose payload is a list, pass the event's `subjectId`: each
+ * offer is its own slot, and two offers running together are not a contest.
  */
-export function windowFor(entries, domain, environmentId, now) {
+export function windowFor(entries, domain, environmentId, now, subjectId) {
   const applicable = entries
     .filter(
       (entry) =>
         entry.domain === domain &&
         entry.environmentId === environmentId &&
+        (subjectId === undefined || subjectOfEntry(entry) === subjectId) &&
         !isTerminal(entry) &&
         Date.parse(entry.startsAt) <= now &&
         (entry.endsAt === null || Date.parse(entry.endsAt) > now),
     )
     .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
   return { winner: applicable[0] ?? null, losers: applicable.slice(1) };
+}
+
+/** The subject that scopes a window's slot, or undefined when the whole setting is the slot. */
+function slotSubject(entry) {
+  return isLiveOpsEntry(entry) && featureFor(entry.domain)?.unit === 'list' ? subjectOfEntry(entry) : undefined;
 }
 
 /**
@@ -469,16 +808,17 @@ const PRODUCT_ID = process.env.CONFIGCAT_PRODUCT_ID ?? '08ded206-3476-460f-8afc-
 /**
  * A scheduled write is still a publish: read back and verified, noted in the
  * audit log, committed to git, and refused while somebody has unpublished work
- * staged in the ConfigCat dashboard. The one difference from a person pressing
- * the button is that there is no baseline hash - the window was planned days
- * ago and the live value is expected to have moved since.
+ * staged in the ConfigCat dashboard. A window planned days ago carries no
+ * baseline hash - the live value is expected to have moved since - but a
+ * change computed from the live value a moment ago does, so nothing written in
+ * between is overwritten.
  */
-async function publishPayload({ environmentId, payload, note, gitPath, settingKey }) {
+async function publishPayload({ environmentId, payload, note, gitPath, settingKey, baselineHash }) {
   const response = await applyPublish({
     configId: CONFIG_ID,
     environmentId,
     productId: PRODUCT_ID,
-    entries: [{ settingKey, payload, gitPath, note }],
+    entries: [{ settingKey, payload, gitPath, note, baselineHash }],
   });
   return { response, result: response.results[0] };
 }
@@ -494,120 +834,173 @@ async function publishPayload({ environmentId, payload, note, gitPath, settingKe
 const MAX_ATTEMPTS = 6;
 
 /**
- * Takes a window down.
+ * Puts a window's config live.
+ *
+ * A feature whose payload is a list is merged in at this moment, from the
+ * booking's own entry, into whatever else is live now. Publishing the list as
+ * it was when the event was booked would retire every offer added since.
+ */
+async function startWindow(entry, at) {
+  const now = at.getTime();
+  try {
+    let payload = entry.payload;
+    let baselineHash;
+    const feature = isLiveOpsEntry(entry) ? featureFor(entry.domain) : null;
+    if (feature?.unit === 'list') {
+      const live = await readLive(entry.environmentId, entry.settingKey);
+      payload = feature.withPart(live.payload, entry.payload, subjectOfEntry(entry));
+      baselineHash = live.hash;
+      if (payload === null) throw new Error(`The booked config does not carry "${subjectOfEntry(entry)}".`);
+    }
+
+    const { result } = await publishPayload({
+      environmentId: entry.environmentId,
+      payload,
+      settingKey: entry.settingKey,
+      gitPath: entry.gitPath,
+      baselineHash,
+      note:
+        `Scheduled window "${entry.label || entry.id}" started` +
+        (entry.endsAt === null ? '.' : `, ending ${entry.endsAt}.`) +
+        (entry.note === null || entry.note === undefined ? '' : ` ${entry.note}`),
+    });
+
+    const ok = result.status === 'written' || result.status === 'unchanged';
+    if (ok) {
+      entry.state = 'active';
+      entry.activatedAt = new Date(now).toISOString();
+      // What actually went live, which for a merged list is not what was booked.
+      entry.payload = payload;
+      entry.payloadHash = hashValue(toStoredValue(payload));
+      record(entry, 'started', true, `Published to ${entry.environmentName ?? entry.environmentId}.`);
+    } else {
+      entry.startAttempts = (entry.startAttempts ?? 0) + 1;
+      const giveUp = entry.startAttempts >= MAX_ATTEMPTS;
+      if (giveUp) entry.state = 'failed';
+      record(
+        entry,
+        'start-failed',
+        false,
+        `${result.message ?? 'The publish failed.'}${giveUp ? ' Giving up after ' + entry.startAttempts + ' attempts.' : ' Retrying on the next tick.'}`,
+      );
+    }
+    return { ok, detail: result.status };
+  } catch (error) {
+    entry.startAttempts = (entry.startAttempts ?? 0) + 1;
+    const giveUp = entry.startAttempts >= MAX_ATTEMPTS;
+    // Left scheduled, so a ConfigCat blip or a colleague's open change
+    // request delays the window by one tick rather than cancelling it.
+    if (giveUp) entry.state = 'failed';
+    record(
+      entry,
+      'start-failed',
+      false,
+      `${error?.message ?? String(error)}${giveUp ? ' Giving up after ' + entry.startAttempts + ' attempts.' : ' Retrying on the next tick.'}`,
+    );
+    return { ok: false, detail: error?.message };
+  }
+}
+
+/**
+ * Takes a window down at its end.
  *
  * The target is the next window that should be live, if one is, and otherwise
- * the domain's default. Crucially it first checks that the live value is still
- * what this window put there: a human fix published over a scheduled promotion
- * must not be undone by the promotion expiring.
+ * the domain's fallback. Crucially it first checks that the live value is
+ * still what this window put there: a human fix published over a scheduled
+ * promotion must not be undone by the promotion expiring.
  */
 async function endWindow(entry, store, becauseOf) {
   const now = Date.now();
+  const liveOps = isLiveOpsEntry(entry);
+  const feature = liveOps ? featureFor(entry.domain) : null;
+  const subjectId = liveOps ? subjectOfEntry(entry) : undefined;
+
   const successor = windowFor(
     store.entries.filter((candidate) => candidate.id !== entry.id),
     entry.domain,
     entry.environmentId,
     now,
+    slotSubject(entry),
   ).winner;
 
-  // A core config goes back to its last known-good version. A live ops
-  // feature has no previous version to want - the season is over - so it goes
-  // back to the payload that means "not running". Getting this wrong would
-  // restart last season the moment this one ended.
-  //
-  // A feature whose payload is a list has neither. There is no off state for a
-  // rolling offer schedule, because the schedule is every offer: ending one
-  // event means publishing what is live without that one entry, and what is
-  // live is only knowable now. So that fallback is computed below, after the
-  // live value has been read.
-  const liveOps = isLiveOpsEntry(entry);
-  const listPayload = liveOps && isListPayload(entry.domain);
-
-  let fallback = null;
-  if (successor !== null) fallback = successor.payload;
-  else if (listPayload) fallback = undefined;
-  else if (liveOps) fallback = await loadOff(entry.domain);
-  else fallback = await loadDefault(entry.domain);
-
-  if (listPayload && successor === null && entry.liveops?.subjectId == null) {
-    record(
-      entry,
-      'end-skipped',
-      false,
-      'The event ended but it does not record which offer it owns, so there is nothing safe to remove. ' +
-        'Re-book it from its sheet, or take the offer out by hand.',
-    );
-    return { reverted: false, reason: 'no-subject' };
-  }
-
-  if (fallback === null) {
-    record(
-      entry,
-      'end-skipped',
-      false,
-      liveOps
-        ? 'The event ended but no off state is recorded, so the feature was left live rather than removed from a running game. Record the off state for this feature.'
-        : 'The window ended but no default config is recorded, so the config was left as it is rather than removed from a running game. Record a default for this config.',
-    );
-    return { reverted: false, reason: liveOps ? 'no-off-state' : 'no-default' };
-  }
-
-  // Is the live value still ours to take back?
   const values = await getValues(CONFIG_ID, entry.environmentId);
   const live = values.settings.find((setting) => setting.key === entry.settingKey);
-  const liveHash = hashValue(typeof live?.value === 'string' ? live.value : null);
-  if (liveHash !== entry.payloadHash) {
+  const liveText = typeof live?.value === 'string' ? live.value : null;
+
+  // Is the live value still ours to take back? For a live ops event only its
+  // own part is asked about: other offers coming and going beside it is not
+  // somebody overriding this one.
+  const ours =
+    feature === null
+      ? hashValue(liveText) === entry.payloadHash
+      : diffJson(feature.partOf(readPayload(liveText), subjectId), feature.partOf(entry.payload, subjectId)).length === 0;
+  if (!ours) {
     record(
       entry,
       'end-skipped',
       false,
-      'The live value is no longer what this window published, so somebody changed it by hand. Leaving their change in place rather than reverting it.',
+      feature !== null && feature.partOf(readPayload(liveText), subjectId) === null
+        ? REASON_TEXT['not-listed']
+        : 'The live value is no longer what this window published, so somebody changed it by hand. Leaving their change in place rather than reverting it.',
     );
     return { reverted: false, reason: 'changed-by-hand' };
   }
 
-  if (fallback === undefined) {
-    // Computed now rather than at booking time: what else is live decides it,
-    // and that can have changed since.
-    const without = withoutEntry(entry.domain, live?.value ?? null, entry.liveops.subjectId);
-    if (without === null) {
+  // A core config goes back to its last known-good version. A live ops
+  // feature has no previous version to want - the season is over - so its
+  // event is taken out of the payload: the off state for a season, the list
+  // without it for an offer. Getting this wrong would restart last season the
+  // moment this one ended.
+  let fallback;
+  let target;
+  if (successor !== null && feature === null) {
+    fallback = successor.payload;
+    target = `the "${successor.label || successor.id}" window`;
+  } else if (successor !== null) {
+    fallback = feature.withPart(readPayload(liveText), successor.payload, subjectOfEntry(successor));
+    target = `the "${successor.label || successor.id}" event`;
+  } else if (feature !== null) {
+    const off = feature.unit === 'whole' ? await loadOff(entry.domain) : null;
+    const outcome = feature.withoutPart(readPayload(liveText), subjectId, { off });
+    if (outcome.payload === null) {
+      // An offer that is the last one listed stays listed: its window has
+      // closed in the payload on its own, so the client already hides it.
+      const harmless = outcome.reason === 'would-empty' || outcome.reason === 'not-listed';
+      record(
+        entry,
+        'end-skipped',
+        harmless,
+        outcome.reason === 'would-empty'
+          ? `"${subjectId}" is the only ${feature.noun} listed, and the client ignores an empty list - so it stays listed with its window closed, which keeps it off the menu.`
+          : REASON_TEXT[outcome.reason] ?? `Nothing was removed (${outcome.reason}).`,
+      );
+      return { reverted: harmless, reason: outcome.reason };
+    }
+    fallback = outcome.payload;
+    target =
+      feature.unit === 'list'
+        ? `the config without "${subjectId}", so that ${feature.noun} is retired and the rest carry on`
+        : 'the off state, so the feature is no longer in the game';
+  } else {
+    fallback = await loadDefault(entry.domain);
+    target = 'the default config';
+    if (fallback === null) {
       record(
         entry,
         'end-skipped',
         false,
-        'The event ended but the live value is not the shape this feature expects, so nothing was removed.',
+        'The window ended but no default config is recorded, so the config was left as it is rather than removed from a running game. Record a default for this config.',
       );
-      return { reverted: false, reason: 'unreadable-live-value' };
+      return { reverted: false, reason: 'no-default' };
     }
-    if (without.payload === null) {
-      record(
-        entry,
-        'end-skipped',
-        false,
-        without.reason === 'would-empty'
-          ? `"${entry.liveops.subjectId}" is the only entry live, and a payload with none is one the client ` +
-            'refuses rather than applies - so it was left running. Book its replacement, or take it out by hand.'
-          : `"${entry.liveops.subjectId}" is not in the live payload any more, so there was nothing to remove.`,
-      );
-      return { reverted: without.reason === 'not-listed', reason: without.reason };
-    }
-    fallback = without.payload;
   }
 
-  const target =
-    successor !== null
-      ? `the "${successor.label || successor.id}" window`
-      : listPayload
-        ? `the schedule without "${entry.liveops.subjectId}", so that offer is retired and the rest carry on`
-        : liveOps
-          ? 'the off state, so the feature is no longer in the game'
-          : 'the default config';
   const { result } = await publishPayload({
-    entry,
     environmentId: entry.environmentId,
     payload: fallback,
     settingKey: entry.settingKey,
     gitPath: entry.gitPath,
+    baselineHash: feature === null ? undefined : hashValue(liveText),
     note: `Scheduled window "${entry.label || entry.id}" ended (${becauseOf}); restoring ${target}.`,
   });
 
@@ -680,17 +1073,18 @@ export async function tick({ now = Date.now() } = {}) {
     changed = true;
   }
 
-  // Then apply whatever should be live now.
+  // Then apply whatever should be live now, one slot at a time.
   const groups = new Map();
   for (const entry of liveEntries(store)) {
-    groups.set(`${entry.domain} ${entry.environmentId}`, {
+    groups.set(slotOf(entry), {
       domain: entry.domain,
       environmentId: entry.environmentId,
+      subjectId: slotSubject(entry),
     });
   }
 
   for (const group of groups.values()) {
-    const { winner, losers } = windowFor(store.entries, group.domain, group.environmentId, now);
+    const { winner, losers } = windowFor(store.entries, group.domain, group.environmentId, now, group.subjectId);
 
     for (const loser of losers) {
       loser.state = 'superseded';
@@ -701,50 +1095,8 @@ export async function tick({ now = Date.now() } = {}) {
 
     if (winner === null || winner.state === 'active') continue;
 
-    try {
-      const { result } = await publishPayload({
-        entry: winner,
-        environmentId: winner.environmentId,
-        payload: winner.payload,
-        settingKey: winner.settingKey,
-        gitPath: winner.gitPath,
-        note:
-          `Scheduled window "${winner.label || winner.id}" started` +
-          (winner.endsAt === null ? '.' : `, ending ${winner.endsAt}.`) +
-          (winner.note === null || winner.note === undefined ? '' : ` ${winner.note}`),
-      });
-
-      const ok = result.status === 'written' || result.status === 'unchanged';
-      if (ok) {
-        winner.state = 'active';
-        winner.activatedAt = new Date(now).toISOString();
-        record(winner, 'started', true, `Published to ${winner.environmentName ?? winner.environmentId}.`);
-      } else {
-        winner.startAttempts = (winner.startAttempts ?? 0) + 1;
-        const giveUp = winner.startAttempts >= MAX_ATTEMPTS;
-        if (giveUp) winner.state = 'failed';
-        record(
-          winner,
-          'start-failed',
-          false,
-          `${result.message ?? 'The publish failed.'}${giveUp ? ' Giving up after ' + winner.startAttempts + ' attempts.' : ' Retrying on the next tick.'}`,
-        );
-      }
-      actions.push({ id: winner.id, domain: winner.domain, action: 'start', ok, detail: result.status });
-    } catch (error) {
-      winner.startAttempts = (winner.startAttempts ?? 0) + 1;
-      const giveUp = winner.startAttempts >= MAX_ATTEMPTS;
-      // Left scheduled, so a ConfigCat blip or a colleague's open change
-      // request delays the window by one tick rather than cancelling it.
-      if (giveUp) winner.state = 'failed';
-      record(
-        winner,
-        'start-failed',
-        false,
-        `${error?.message ?? String(error)}${giveUp ? ' Giving up after ' + winner.startAttempts + ' attempts.' : ' Retrying on the next tick.'}`,
-      );
-      actions.push({ id: winner.id, domain: winner.domain, action: 'start', ok: false, detail: error?.message });
-    }
+    const started = await startWindow(winner, new Date(now));
+    actions.push({ id: winner.id, domain: winner.domain, action: 'start', ok: started.ok, detail: started.detail });
     changed = true;
   }
 
@@ -824,6 +1176,10 @@ export async function describeSchedule({ now = Date.now() } = {}) {
   const off = {};
   await Promise.all(
     LIVEOPS_DOMAINS.map(async (domain) => {
+      if (!needsOffState(domain)) {
+        off[domain] = { present: true, hash: null, needed: false };
+        return;
+      }
       try {
         const value = await loadOff(domain);
         off[domain] = { present: value !== null, hash: value === null ? null : hashValue(toStoredValue(value)) };
@@ -860,7 +1216,7 @@ export async function describeSchedule({ now = Date.now() } = {}) {
       history: entry.history ?? [],
       // Present only on windows booked from the live ops calendar. Its absence
       // is what tells every reader this is an ordinary config window.
-      liveops: entry.liveops ?? null,
+      liveops: entry.liveops ? { ...entry.liveops, subjectId: subjectOfEntry(entry) } : null,
       phase: entry.liveops ? phaseOf(entry, now) : null,
       startsInMs: start - now,
       endsInMs: end === null ? null : end - now,
