@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-15T14:25:09.578Z",
+  "updatedAt": "2026-09-15T14:27:54.477Z",
   "entries": [
     {
       "id": "sch_mtqvbx125twygr",
@@ -1701,7 +1701,7 @@
         "sourceUrl": "https://docs.google.com/spreadsheets/d/1xck3C_wolW7XK3g6ed7O2ktqbEFgGbFh5WSLsDZMa1Y/edit?gid=570226268#gid=570226268",
         "subjectId": "offer.testro.1"
       },
-      "state": "scheduled",
+      "state": "cancelled",
       "createdAt": "2026-09-15T13:25:56.012Z",
       "createdBy": "back office",
       "history": [
@@ -1710,6 +1710,12 @@
           "action": "created",
           "ok": true,
           "message": "Scheduled for 2026-09-17T08:00:00.000Z."
+        },
+        {
+          "at": "2026-09-15T14:27:54.477Z",
+          "action": "cancelled",
+          "ok": true,
+          "message": "Cancelled from the back office."
         }
       ]
     }
