@@ -168,6 +168,53 @@ function offersOf(payload) {
   return payload !== null && Array.isArray(payload.Offers) ? payload.Offers : null;
 }
 
+/**
+ * The order an offer's keys are written in: the client schema's, which the
+ * exporter writes and its schema check holds every offer in the list to.
+ *
+ * The client does not care about the order; the check does, and it judges the
+ * whole list. So an offer written out of order here - End now on an evergreen
+ * offer used to tack its new window on at the end - blocks every later publish
+ * of any offer until somebody notices.
+ */
+export const OFFER_KEY_ORDER = [
+  'OfferID',
+  'DisplayName',
+  'Subtitle',
+  'IsTimed',
+  'StartUtc',
+  'DurationHours',
+  'BackgroundArt',
+  'TopBarArt',
+  'RewardArt',
+  'ButtonArt',
+  'CompletionText',
+  'CompletionReward',
+  'Steps',
+];
+
+/** An offer with its keys in schema order. Anything the schema does not know keeps its place after them. */
+export function offerInKeyOrder(offer) {
+  if (offer === null || typeof offer !== 'object' || Array.isArray(offer)) return offer;
+  const ordered = {};
+  for (const key of OFFER_KEY_ORDER) {
+    if (Object.prototype.hasOwnProperty.call(offer, key)) ordered[key] = offer[key];
+  }
+  for (const key of Object.keys(offer)) {
+    if (!Object.prototype.hasOwnProperty.call(ordered, key)) ordered[key] = offer[key];
+  }
+  return ordered;
+}
+
+/**
+ * A payload with this offer list. Every write goes through here, so whatever
+ * is published is in schema order - including an offer that was already live
+ * out of order, which is healed by the next write rather than carried forever.
+ */
+function withOffers(payload, offers) {
+  return { ...payload, Offers: offers.map(offerInKeyOrder) };
+}
+
 /** The client's own test for whether an offer has a window at all. */
 function windowOfOffer(offer) {
   const timed = offer.IsTimed !== false;
@@ -229,13 +276,16 @@ const rollingOffer = {
     if (offer === null) return null;
     const current = readPayload(live);
     const offers = offersOf(current);
-    if (current === null || offers === null) return readPayload(booked);
+    if (current === null || offers === null) {
+      const whole = readPayload(booked);
+      return withOffers(whole, offersOf(whole));
+    }
 
     const at = offers.findIndex((candidate) => candidate?.OfferID === subjectId);
     const next = offers.slice();
     if (at === -1) next.push(offer);
     else next[at] = offer;
-    return { ...current, Offers: next };
+    return withOffers(current, next);
   },
 
   withWindow(value, subjectId, { startsAt, endsAt }) {
@@ -255,10 +305,10 @@ const rollingOffer = {
       if (!Number.isFinite(start) || !(hours > 0)) return null;
       next = { ...offer, IsTimed: true, StartUtc: toClientUtc(start), DurationHours: hours };
     }
-    return {
-      ...payload,
-      Offers: payload.Offers.map((candidate) => (candidate?.OfferID === subjectId ? next : candidate)),
-    };
+    return withOffers(
+      payload,
+      payload.Offers.map((candidate) => (candidate?.OfferID === subjectId ? next : candidate)),
+    );
   },
 
   /**
@@ -288,7 +338,10 @@ const rollingOffer = {
       closed = { ...offer, IsTimed: true, StartUtc: toClientUtc(end - HOUR_MS), DurationHours: 1 };
     }
     return {
-      payload: { ...payload, Offers: payload.Offers.map((candidate) => (candidate?.OfferID === subjectId ? closed : candidate)) },
+      payload: withOffers(
+        payload,
+        payload.Offers.map((candidate) => (candidate?.OfferID === subjectId ? closed : candidate)),
+      ),
       reason: 'ended',
     };
   },
@@ -307,7 +360,7 @@ const rollingOffer = {
     const kept = offers.filter((offer) => offer === null || offer.OfferID !== subjectId);
     if (kept.length === offers.length) return { payload: null, reason: 'not-listed' };
     if (kept.length === 0) return { payload: null, reason: 'would-empty' };
-    return { payload: { ...payload, Offers: kept }, reason: 'removed' };
+    return { payload: withOffers(payload, kept), reason: 'removed' };
   },
 
   /** A booked rolling offer payload is the whole list, so the offer is recorded on the booking instead. */

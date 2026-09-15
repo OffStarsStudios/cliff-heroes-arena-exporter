@@ -9,7 +9,9 @@ import { GIT_PATHS, SETTING_KEYS } from '../src/domains/types';
 import {
   EVENT_CATEGORIES,
   LIVEOPS_DOMAINS,
+  barTimes,
   boardEventFromEntry,
+  calendarWindow,
   durationLabel,
   eventDuration,
   layOutBars,
@@ -300,6 +302,82 @@ describe('the time ruler', () => {
     const short = ticksFor(NOW, NOW + 14 * DAY);
     const long = ticksFor(NOW, NOW + 180 * DAY);
     expect(long.length).toBeLessThan(short.length * 3);
+  });
+
+  it('reads a day in hours: a line each hour, a label every other one', () => {
+    const { from, to } = calendarWindow('day', NOW);
+    const ticks = ticksFor(from, to);
+    const lines = ticks.filter((tick) => tick.line);
+    // 25 on a normal day, counting both midnights; a clock change moves it by one.
+    expect(lines.length).toBeGreaterThanOrEqual(24);
+    expect(lines.length).toBeLessThanOrEqual(26);
+    const labelled = ticks.filter((tick) => tick.label !== '');
+    expect(labelled.every((tick) => new Date(tick.at).getHours() % 2 === 0)).toBe(true);
+    // Neither midnight is labelled: half of each would be cut off at the edge.
+    expect(labelled.some((tick) => tick.at === from || tick.at === to)).toBe(false);
+  });
+
+  it('names each day of a week across its middle, with midnight as the strong line', () => {
+    const { from, to } = calendarWindow('week', NOW);
+    const ticks = ticksFor(from, to);
+    const labels = ticks.filter((tick) => tick.label !== '');
+    expect(labels).toHaveLength(7);
+    expect(labels.every((tick) => !tick.line && new Date(tick.at).getHours() === 12)).toBe(true);
+    const majors = ticks.filter((tick) => tick.major);
+    expect(majors.every((tick) => tick.line && new Date(tick.at).getHours() === 0)).toBe(true);
+  });
+});
+
+describe('the calendar window', () => {
+  it('shows the day holding now, midnight to midnight', () => {
+    const { from, to } = calendarWindow('day', NOW);
+    expect(from).toBeLessThanOrEqual(NOW);
+    expect(to).toBeGreaterThan(NOW);
+    expect(new Date(from).getHours()).toBe(0);
+    expect(new Date(to).getHours()).toBe(0);
+    // Its last instant is still today.
+    expect(new Date(to - 1).getDate()).toBe(new Date(NOW).getDate());
+  });
+
+  it('shows a week from yesterday, so what just ended is still on it', () => {
+    const { from, to } = calendarWindow('week', NOW);
+    const yesterday = new Date(NOW);
+    yesterday.setHours(0, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
+    expect(from).toBe(yesterday.getTime());
+    expect(Math.round((to - from) / DAY)).toBe(7);
+  });
+
+  it('pages by whole ranges, and page 0 is always back to today', () => {
+    const week = calendarWindow('week', NOW);
+    const next = calendarWindow('week', NOW, 1);
+    const previous = calendarWindow('day', NOW, -1);
+    expect(next.from).toBe(week.to);
+    expect(previous.to).toBe(calendarWindow('day', NOW).from);
+  });
+});
+
+describe('the times on a card', () => {
+  const card = (startsAt: string | null, endsAt: string | null) => ({
+    ...boardEventFromEntry(event({ startsAt: iso(0), endsAt: iso(DAY) }, { opensAt: iso(0) }), NOW),
+    startsAt,
+    endsAt,
+  });
+  const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+  it('gives the time alone inside the day being shown, and the date as well outside it', () => {
+    const { from, to } = calendarWindow('day', NOW);
+    const opensAt = from + 9 * HOUR;
+    const closesAt = to + 9 * HOUR;
+    const [opens, closes] = barTimes(card(new Date(opensAt).toISOString(), new Date(closesAt).toISOString()), from, to).split(' – ');
+    expect(opens).toBe(clock(opensAt));
+    expect(closes).not.toBe(clock(closesAt));
+    expect(closes.endsWith(clock(closesAt))).toBe(true);
+  });
+
+  it('says so for an evergreen event rather than inventing dates', () => {
+    const { from, to } = calendarWindow('week', NOW);
+    expect(barTimes(card(null, null), from, to)).toBe('Always on – no end');
   });
 });
 

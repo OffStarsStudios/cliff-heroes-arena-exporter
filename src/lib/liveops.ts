@@ -115,6 +115,7 @@ export function isLiveOpsEntry(entry: ScheduleEntry): entry is LiveOpsEntry {
 }
 
 const HOUR_MS = 3600 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 /**
  * Where an event is in its life, which is not the same question as whether the
@@ -336,8 +337,52 @@ export interface GanttBar {
 export interface GanttTick {
   at: number;
   left: number;
+  /** Empty for a gridline with nothing written on the ruler. */
   label: string;
   major: boolean;
+  /** False for a label with no gridline under it - a day's name, written across the middle of its day. */
+  line: boolean;
+}
+
+/**
+ * How much of the calendar is on screen, in whole local days before and after
+ * today (today counts as the first day forward).
+ *
+ * A week is the default: it is what the calendar is opened to check - what is
+ * on now and what is about to start. A day is for reading the hours an event
+ * opens and closes on, which a range of weeks draws a pixel apart.
+ */
+export const CALENDAR_RANGES = {
+  day: { label: 'Day', back: 0, forward: 1 },
+  week: { label: 'Week', back: 1, forward: 6 },
+  '6w': { label: '6 weeks', back: 7, forward: 35 },
+  '3m': { label: '3 months', back: 14, forward: 76 },
+  '6m': { label: '6 months', back: 30, forward: 150 },
+} as const;
+
+export type CalendarRange = keyof typeof CALENDAR_RANGES;
+
+/**
+ * The stretch of time a range shows, `page` whole ranges away from the one
+ * holding today.
+ *
+ * Both edges sit on local midnight, and days are counted on the calendar rather
+ * than as 24-hour blocks, so a clock change never leaves the day view an hour
+ * short or every gridline after it an hour out.
+ */
+export function calendarWindow(range: CalendarRange, now: number, page = 0): { from: number; to: number } {
+  const { back, forward } = CALENDAR_RANGES[range];
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - back + page * (back + forward));
+  const end = new Date(start);
+  end.setDate(end.getDate() + back + forward);
+  return { from: start.getTime(), to: end.getTime() };
+}
+
+/** Ranges this short are read in hours, and draw each event's times on its bar. */
+export function isHourScale(from: number, to: number): boolean {
+  return to - from <= 10 * DAY_MS;
 }
 
 /**
@@ -389,25 +434,94 @@ export function layOutBars(events: BoardEvent[], from: number, to: number): Gant
     .filter((bar): bar is GanttBar => bar !== null);
 }
 
-/** Day ticks across the range, with the first of each month called out. */
+/**
+ * The ruler and gridlines for a range.
+ *
+ * Three scales, picked by how long the range is: hours for a day, days with
+ * six-hour lines for a week, and dates for anything longer, with the first of
+ * each month called out. A label sitting exactly on an edge is left off - half
+ * of it would be cut away, and the range's own title already names that day.
+ */
 export function ticksFor(from: number, to: number): GanttTick[] {
   const span = Math.max(to - from, 1);
-  const ticks: GanttTick[] = [];
+  const days = span / DAY_MS;
+  const ticks = days <= 2 ? hourTicks(from, to) : isHourScale(from, to) ? weekTicks(from, to) : dateTicks(from, to);
+  return ticks.map((tick) => ({ ...tick, left: (tick.at - from) / span, label: onEdge(tick, from, to) ? '' : tick.label }));
+}
+
+type Tick = Omit<GanttTick, 'left'>;
+
+function onEdge(tick: Tick, from: number, to: number): boolean {
+  return tick.at <= from || tick.at >= to;
+}
+
+/** The first local instant at or after `from` that `snap` lands on. */
+function firstAtOrAfter(from: number, snap: (date: Date) => void, step: (date: Date) => void): Date {
   const cursor = new Date(from);
-  cursor.setHours(0, 0, 0, 0);
-  if (cursor.getTime() < from) cursor.setDate(cursor.getDate() + 1);
+  snap(cursor);
+  if (cursor.getTime() < from) step(cursor);
+  return cursor;
+}
+
+const clockLabel = (date: Date) => date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+/** A line every hour, labelled every other hour so a narrow window never runs its labels together. */
+function hourTicks(from: number, to: number): Tick[] {
+  const ticks: Tick[] = [];
+  const nextHour = (date: Date) => date.setHours(date.getHours() + 1);
+  const cursor = firstAtOrAfter(from, (date) => date.setMinutes(0, 0, 0), nextHour);
+  while (cursor.getTime() <= to) {
+    const hour = cursor.getHours();
+    const midnight = hour === 0;
+    ticks.push({
+      at: cursor.getTime(),
+      label: midnight
+        ? cursor.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+        : hour % 2 === 0
+          ? clockLabel(cursor)
+          : '',
+      major: midnight,
+      line: true,
+    });
+    nextHour(cursor);
+  }
+  return ticks;
+}
+
+/** A strong line at each midnight, fainter ones every six hours, and each day named across its middle. */
+function weekTicks(from: number, to: number): Tick[] {
+  const ticks: Tick[] = [];
+  const quarter = (date: Date) => date.setHours(date.getHours() + 6);
+  const cursor = firstAtOrAfter(from, (date) => date.setHours(Math.floor(date.getHours() / 6) * 6, 0, 0, 0), quarter);
+  while (cursor.getTime() <= to) {
+    const hour = cursor.getHours();
+    ticks.push({ at: cursor.getTime(), label: '', major: hour === 0, line: true });
+    if (hour === 12) {
+      ticks.push({
+        at: cursor.getTime(),
+        label: cursor.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }),
+        major: false,
+        line: false,
+      });
+    }
+    quarter(cursor);
+  }
+  return ticks;
+}
+
+function dateTicks(from: number, to: number): Tick[] {
+  const ticks: Tick[] = [];
+  const cursor = firstAtOrAfter(from, (date) => date.setHours(0, 0, 0, 0), (date) => date.setDate(date.getDate() + 1));
 
   // A day tick every day reads as noise past about six weeks, so the step
   // widens with the range rather than the labels overlapping.
-  const days = span / 86400000;
+  const days = (to - from) / DAY_MS;
   const step = days <= 21 ? 1 : days <= 70 ? 7 : 14;
 
   while (cursor.getTime() <= to) {
-    const at = cursor.getTime();
     const firstOfMonth = cursor.getDate() === 1;
     ticks.push({
-      at,
-      left: (at - from) / span,
+      at: cursor.getTime(),
       label: firstOfMonth
         ? cursor.toLocaleDateString(undefined, { month: 'short' })
         : cursor.toLocaleDateString(
@@ -417,10 +531,29 @@ export function ticksFor(from: number, to: number): GanttTick[] {
             step === 1 ? { day: 'numeric' } : { day: 'numeric', month: 'short' },
           ),
       major: firstOfMonth,
+      line: true,
     });
     cursor.setDate(cursor.getDate() + step);
   }
   return ticks;
+}
+
+/**
+ * When an event opens and closes, written on its bar in the hour scales.
+ *
+ * As short as the range allows: the time alone for anything inside the day
+ * being shown, the date as well for anything outside it or on a week.
+ */
+export function barTimes(event: BoardEvent, from: number, to: number): string {
+  const oneDay = to - from <= 2 * DAY_MS;
+  const when = (iso: string | null, none: string) => {
+    if (iso === null) return none;
+    const date = new Date(iso);
+    const at = date.getTime();
+    if (oneDay && at >= from && at < to) return clockLabel(date);
+    return `${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} ${clockLabel(date)}`;
+  };
+  return `${when(event.startsAt, 'Always on')} – ${when(event.endsAt, 'no end')}`;
 }
 
 export interface EventDuration {

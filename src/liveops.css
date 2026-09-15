@@ -694,9 +694,12 @@
   padding: 6px 0;
 }
 
+/* Centred on the first line of text (18px at this line height), and without
+   the browser's default side margins, which pushed the box off the text. */
 .checkline input {
+  flex-shrink: 0;
   height: 16px;
-  margin-top: 2px;
+  margin: 1px 0 0;
   width: 16px;
 }
 
@@ -859,6 +862,13 @@
   padding: var(--space-4);
 }
 
+/* A scrolling column must never squeeze what is in it: anything with a set
+   min-height (the confirm line) was being crushed to it, and its text and box
+   spilled out of the bottom of their border. */
+.modal__body > * {
+  flex-shrink: 0;
+}
+
 .modal__foot {
   align-items: center;
   border-top: 1px solid var(--border);
@@ -901,6 +911,34 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: var(--space-2) var(--space-3);
+}
+
+/* Back a range, back to today, forward a range - and which dates are showing. */
+.pager {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.pager__step {
+  justify-content: center;
+  padding-inline: 6px;
+}
+
+.pager__icon--back {
+  transform: rotate(90deg);
+}
+
+.pager__icon--forward {
+  transform: rotate(-90deg);
+}
+
+.pager__label {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  margin-left: 6px;
+  white-space: nowrap;
 }
 
 /* What is running, in two numbers, at the end of the toolbar. */
@@ -1324,6 +1362,9 @@
 .gantt {
   --gantt-head: 172px;
   --gantt-row: 46px;
+  /* How far apart overlapping bars sit in a lane, and how tall each is. */
+  --gantt-pitch: 40px;
+  --gantt-bar: 38px;
   position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1410,11 +1451,11 @@
 
 .gantt__bar {
   position: absolute;
-  top: 8px;
+  top: calc(8px + var(--row, 0) * var(--gantt-pitch));
   flex-direction: column;
   justify-content: center;
   gap: 1px;
-  height: 38px;
+  height: var(--gantt-bar);
   min-width: 4px;
   padding: 0 8px;
   display: flex;
@@ -1450,8 +1491,39 @@
 }
 
 /* Too short a bar cannot hold two lines; the tooltip still has both. */
-.gantt__bar[style*="width: 0"] .gantt__bar-phase {
+.gantt__bar[style*="width: 0"] .gantt__bar-phase,
+.gantt__bar[style*="width: 0"] .gantt__bar-times {
   display: none;
+}
+
+/* Over a day or a week each bar is a card: taller, read from its left edge -
+   where the event opens - and carrying the hours it opens and closes on. */
+.gantt--cards {
+  --gantt-row: 60px;
+  --gantt-pitch: 56px;
+  --gantt-bar: 52px;
+}
+
+.gantt--cards .gantt__bar {
+  align-items: flex-start;
+  padding: 0 9px;
+}
+
+.gantt__bar-label,
+.gantt__bar-phase,
+.gantt__bar-times {
+  max-width: 100%;
+}
+
+.gantt__bar-times {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  opacity: 0.9;
+  overflow: hidden;
+  position: relative;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The preview slice: the config is live but players cannot see the event yet.

@@ -48,7 +48,10 @@ export declare const EVENT_CATEGORIES: EventCategory[];
 export declare const ENDING_SOON_HOURS: number;
 export declare const REASON_TEXT: Record<string, string>;
 
+export declare const OFFER_KEY_ORDER: string[];
+
 export declare function featureFor(domain: string): LiveOpsFeature | null;
+export declare function offerInKeyOrder<T>(offer: T): T;
 export declare function readPayload(value: unknown): Record<string, unknown> | null;
 export declare function toClientUtc(isoOrMs: string | number): string;
 export declare function fromClientUtc(text: unknown): number;

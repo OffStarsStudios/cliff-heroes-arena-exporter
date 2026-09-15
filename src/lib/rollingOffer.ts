@@ -1,3 +1,4 @@
+import { offerInKeyOrder } from '../../server/liveopsFeatures.mjs';
 import { findColumn, sheetHeaders } from './columns';
 import { CURRENCY_NAMES, SHOP_SOLD_IN, isCurrencySoldIn, resolveSoldIn } from './currencies';
 import { resolveLookup } from './lookups';
@@ -501,7 +502,11 @@ export function transformRollingOffer(input: RollingOfferTransformInput): Rollin
   // Replace an offer of this ID, or append. Order is the order the buttons are
   // drawn in, so an offer being updated keeps its place rather than jumping to
   // the end of the row.
-  const others = schedule.others ?? [];
+  //
+  // The rest are carried through as they are, bar the spelling: an offer live
+  // with its keys out of schema order would fail the check on every publish
+  // from here on, and it is not this sheet's to fix by hand.
+  const others = (schedule.others ?? []).map(offerInKeyOrder);
   const merged = others.filter((other) => other.OfferID !== offerId);
   const at = others.findIndex((other) => other.OfferID === offerId);
   if (at === -1) merged.push(offer);
