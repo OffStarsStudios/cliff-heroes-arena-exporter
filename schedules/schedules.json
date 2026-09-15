@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-15T16:35:09.440Z",
+  "updatedAt": "2026-09-15T16:40:13.854Z",
   "entries": [
     {
       "id": "sch_mtqvbx125twygr",
@@ -2099,6 +2099,6 @@
     }
   ],
   "mintedRunIds": [],
-  "lastTickAt": "2026-09-15T16:35:09.233Z",
-  "lastRetireSweepAt": "2026-09-15T15:35:10.194Z"
+  "lastTickAt": "2026-09-15T16:40:13.262Z",
+  "lastRetireSweepAt": "2026-09-15T16:40:13.262Z"
 }
