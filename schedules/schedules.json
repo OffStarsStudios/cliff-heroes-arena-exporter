@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-15T13:20:12.981Z",
+  "updatedAt": "2026-09-15T13:24:46.114Z",
   "entries": [
     {
       "id": "sch_mtqvbx125twygr",
@@ -1023,7 +1023,7 @@
       "payload": {
         "SeasonID": "pass.season2",
         "SeasonName": "SEASON 1",
-        "StartUtc": "2026-10-01 09:00",
+        "StartUtc": "2026-10-01 08:00",
         "DurationDays": 31,
         "TokensPerTier": 100,
         "PremiumProductID": "shop.pass.season1.tier2",
@@ -1297,13 +1297,14 @@
           }
         ]
       },
-      "payloadHash": "7190a33efb88dfb9",
-      "startsAt": "2026-10-01T09:00:00.000Z",
-      "endsAt": "2026-11-01T10:00:00.000Z",
+      "payloadHash": "69330a9b4301218f",
+      "startsAt": "2026-10-01T08:00:00.000Z",
+      "endsAt": "2026-11-01T09:00:00.000Z",
       "liveops": {
         "category": "seasonal",
-        "opensAt": "2026-10-01T09:00:00.000Z",
-        "sourceUrl": "https://docs.google.com/spreadsheets/d/1rmh9lMNQeMLJKuTpcAj416pDqZIyWBVpA4hkPP3cxh8/edit?gid=811971009#gid=811971009"
+        "opensAt": "2026-10-01T08:00:00.000Z",
+        "sourceUrl": "https://docs.google.com/spreadsheets/d/1rmh9lMNQeMLJKuTpcAj416pDqZIyWBVpA4hkPP3cxh8/edit?gid=811971009#gid=811971009",
+        "subjectId": "pass.season2"
       },
       "state": "scheduled",
       "createdAt": "2026-09-10T08:30:20.360Z",
@@ -1326,6 +1327,12 @@
           "action": "edited",
           "ok": true,
           "message": "Rescheduled for 2026-10-01T09:00:00.000Z."
+        },
+        {
+          "at": "2026-09-15T13:24:46.114Z",
+          "action": "edited",
+          "ok": true,
+          "message": "Rescheduled for 2026-10-01T08:00:00.000Z."
         }
       ]
     }
