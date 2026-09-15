@@ -323,6 +323,32 @@ describe('publishing from a feature page, which names only the base', () => {
     ]);
   });
 
+  it('gives two different offers opening on the same day their own IDs', async () => {
+    const page = (id: string) => ({
+      ...rollingOfferJson,
+      Offers: [{ ...rollingOfferJson.Offers[0], OfferID: id, StartUtc: '2026-09-10 09:00', DurationHours: 48 }],
+    });
+    const testro = await scheduler.publishLiveEvent({ domain: 'rollingOffer', environmentId: ENV, subjectId: 'offer.testro', payload: page('offer.testro'), resolveRun: true, now });
+    const other = await scheduler.publishLiveEvent({ domain: 'rollingOffer', environmentId: ENV, subjectId: 'offer.testro.1', payload: page('offer.testro.1'), resolveRun: true, now });
+    expect([testro.subjectId, other.subjectId]).toEqual(['offer.testro.r20260910', 'offer.testro.1.r20260910']);
+  });
+
+  it('never mints the ID of a run that was published from its page and has since been retired', async () => {
+    // Nothing booked it and ConfigCat no longer lists it - only the register remembers it, and the
+    // game's server still holds its players' progress.
+    const page = {
+      ...rollingOfferJson,
+      Offers: [{ ...rollingOfferJson.Offers[0], OfferID: 'offer.gone', StartUtc: '2026-09-10 09:00', DurationHours: 1 }],
+    };
+    const first = await scheduler.publishLiveEvent({ domain: 'rollingOffer', environmentId: ENV, subjectId: 'offer.gone', payload: page, resolveRun: true, now });
+    expect(first.subjectId).toBe('offer.gone.r20260910');
+    state.live[OFFERS_KEY] = JSON.stringify(rollingOfferJson);
+
+    const again = await scheduler.publishLiveEvent({ domain: 'rollingOffer', environmentId: ENV, subjectId: 'offer.gone', payload: page, resolveRun: true, now });
+    expect(again.subjectId).toBe('offer.gone.r20260910b');
+    expect(state.store.mintedRunIds).toEqual(['offer.gone.r20260910', 'offer.gone.r20260910b']);
+  });
+
   it('puts a season out as a run keyed by its own start', async () => {
     const next = { ...battlePassJson, SeasonID: 'pass.season2', StartUtc: '2026-10-01 00:00' };
     const result = await scheduler.publishLiveEvent({
