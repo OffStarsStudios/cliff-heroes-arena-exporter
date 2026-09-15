@@ -597,6 +597,9 @@ reloading its sheet or changing its art is the same run, and players keep their 
 Publishing from a feature's page changes the run that is in the game if there is one,
 and starts a new run otherwise, including when an ended run of that base is still listed.
 Two runs of one base cannot overlap. IDs from before run keys are their own base.
+Every minted run ID is also written to `mintedRunIds` in the schedule store and never
+minted again - a run published from a page has no booking, and once retired nothing
+else would remember its ID, while the game's server keeps its players' progress for good.
 
 **Ended runs are retired after seven days.** A run is never coming back under its ID,
 so its progress is only weight. The heartbeat looks once an hour at what every

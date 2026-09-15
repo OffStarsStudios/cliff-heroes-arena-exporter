@@ -128,7 +128,7 @@ const CATCH_UP_GRACE_MS = 15 * 60 * 1000;
 /* ---------------------------------------------------------------- store -- */
 
 function emptyStore() {
-  return { version: 1, updatedAt: null, entries: [] };
+  return { version: 1, updatedAt: null, entries: [], mintedRunIds: [] };
 }
 
 /**
@@ -253,6 +253,7 @@ async function takenIds(feature, domain, environmentId, store) {
     .filter((entry) => entry.domain === domain && entry.environmentId === environmentId)
     .map((entry) => subjectOfEntry(entry))
     .filter((id) => id !== null);
+  ids.push(...(store.mintedRunIds ?? []));
   try {
     const live = await readLive(environmentId, feature.settingKey);
     ids.push(...feature.eventsIn(live.payload).map((event) => event.subjectId));
@@ -260,6 +261,21 @@ async function takenIds(feature, domain, environmentId, store) {
     // Unreadable is not a reason to refuse a booking.
   }
   return ids;
+}
+
+/**
+ * Writes a run ID into the register of every run ID ever minted.
+ *
+ * A booking stays in the schedule for good, but a run published straight from
+ * a page has no booking - and once it is retired it is not in ConfigCat either.
+ * Nothing would then remember its ID, and a later run opening on the same day
+ * could be minted the same one. The game's server keeps a player's progress
+ * under an ID for ever, so that run would open with the old run's progress.
+ * The register is what makes a minted ID never come back.
+ */
+function rememberRun(store, id) {
+  const known = store.mintedRunIds ?? [];
+  if (!known.includes(id)) store.mintedRunIds = [...known, id];
 }
 
 /**
@@ -281,6 +297,7 @@ async function assignRun(entry, store) {
   entry.payload = renamed;
   entry.payloadHash = hashValue(toStoredValue(renamed));
   entry.liveops = { ...entry.liveops, baseId: baseOf(incoming), subjectId: runId };
+  rememberRun(store, runId);
   return [];
 }
 
@@ -840,6 +857,7 @@ export async function publishLiveEvent({
   // what is live at this moment: the run in the game if there is one, a new
   // run if not. The calendar names the exact run it opened.
   let subjectId = requested;
+  let freshRun = false;
   if (resolveRun) {
     const ownEvent = incoming === undefined ? undefined : feature.eventsIn(incoming).find((event) => baseOf(event.subjectId) === baseOf(requested));
     const taken = gitAvailable() ? await takenIds(feature, domain, environmentId, (await loadSchedule()).store) : [];
@@ -852,6 +870,7 @@ export async function publishLiveEvent({
     });
     if (run.id === null) return { ok: false, problems: [`Every run ID for ${baseOf(requested)} on that day is taken.`] };
     subjectId = run.id;
+    freshRun = run.fresh;
   }
 
   if (changedSince(feature, live.payload, subjectId, expected)) {
@@ -899,6 +918,18 @@ export async function publishLiveEvent({
   });
   const ok = result.status === 'written' || result.status === 'unchanged';
   if (!ok) return { ok: false, problems: [result.message ?? `The publish did not go through (${result.status}).`], result };
+
+  if (freshRun && gitAvailable()) {
+    // After the publish, so a refused publish mints nothing - and never allowed
+    // to turn a publish that went through into an error.
+    try {
+      const { store, sha } = await loadSchedule();
+      rememberRun(store, subjectId);
+      await saveSchedule(store, sha, `Record run ${subjectId}, published from its page`);
+    } catch (error) {
+      console.error(`[schedule] ${subjectId} went live but could not be added to the run register:`, error);
+    }
+  }
 
   const updated = await settleBookings({
     domain,
