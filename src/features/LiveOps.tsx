@@ -9,27 +9,40 @@ import { ENVIRONMENTS, liveEnvironment } from '../domains/account';
 import { DOMAIN_LABELS } from '../domains/types';
 import { useLiveOpsBoard, type LiveOpsBoard } from '../hooks/useLiveOpsBoard';
 import {
+  CALENDAR_RANGES,
   CATEGORY_COLOURS,
   CATEGORY_LABELS,
   LIVEOPS_DOMAINS,
   UNBOOKED_COLOUR,
+  calendarWindow,
   isInGame,
   type BoardEvent,
+  type CalendarRange,
 } from '../lib/liveops';
 import { relativeTime } from '../lib/schedule';
 
 type Mode = 'table' | 'calendar';
 
-/** How far the calendar looks, in days either side of today. */
-const RANGES = {
-  '6w': { label: '6 weeks', back: 7, forward: 35 },
-  '3m': { label: '3 months', back: 14, forward: 76 },
-  '6m': { label: '6 months', back: 30, forward: 150 },
-} as const;
+/** What the arrows step by, in words, for their accessible names. */
+const RANGE_UNITS: Record<CalendarRange, string> = {
+  day: 'day',
+  week: 'week',
+  '6w': 'six weeks',
+  '3m': 'three months',
+  '6m': 'six months',
+};
 
-type RangeKey = keyof typeof RANGES;
-
-const DAY_MS = 86400000;
+/** "Tue, 15 Sep 2026" for a day, "14 – 20 Sep 2026" for anything longer. */
+function windowLabel(range: CalendarRange, from: number, to: number): string {
+  const format = new Intl.DateTimeFormat(undefined, {
+    weekday: range === 'day' ? 'short' : undefined,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+  // The window ends on the midnight after its last day, which is not a day it shows.
+  return range === 'day' ? format.format(from) : format.formatRange(from, to - 1);
+}
 
 /**
  * The live ops calendar.
@@ -46,7 +59,9 @@ const DAY_MS = 86400000;
  */
 export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [mode, setMode] = useState<Mode>('calendar');
-  const [range, setRange] = useState<RangeKey>('3m');
+  const [range, setRange] = useState<CalendarRange>('week');
+  // Whole ranges away from the one holding today: -1 is last week on a week.
+  const [page, setPage] = useState(0);
   const [environmentId, setEnvironmentId] = useState((liveEnvironment() ?? ENVIRONMENTS[0]).environmentId);
   const board = useLiveOpsBoard(environmentId);
   const { view, events, now, loading } = board;
@@ -65,9 +80,7 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
   const live = events.filter(isInGame).length;
   const upcoming = events.filter((event) => event.phase === 'scheduled').length;
 
-  const { back, forward } = RANGES[range];
-  const from = now - back * DAY_MS;
-  const to = now + forward * DAY_MS;
+  const { from, to } = calendarWindow(range, now, page);
 
   /** Features that need an off state and have none cannot book an ending event. */
   const notReady = LIVEOPS_DOMAINS.filter(
@@ -107,12 +120,44 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
           ]}
         />
         {mode === 'calendar' && (
-          <Segmented
-            label="Range"
-            value={range}
-            onChange={setRange}
-            options={(Object.keys(RANGES) as RangeKey[]).map((key) => ({ value: key, label: RANGES[key].label }))}
-          />
+          <>
+            <Segmented
+              label="Range"
+              value={range}
+              onChange={(next) => {
+                setRange(next);
+                setPage(0);
+              }}
+              options={(Object.keys(CALENDAR_RANGES) as CalendarRange[]).map((key) => ({
+                value: key,
+                label: CALENDAR_RANGES[key].label,
+              }))}
+            />
+            <div className="pager" role="group" aria-label="Move the calendar">
+              <button
+                type="button"
+                className="btn btn--sm pager__step"
+                onClick={() => setPage(page - 1)}
+                aria-label={`Previous ${RANGE_UNITS[range]}`}
+              >
+                <Icon name="chevron" size={14} className="pager__icon pager__icon--back" />
+              </button>
+              <button type="button" className="btn btn--sm" onClick={() => setPage(0)} disabled={page === 0}>
+                Today
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm pager__step"
+                onClick={() => setPage(page + 1)}
+                aria-label={`Next ${RANGE_UNITS[range]}`}
+              >
+                <Icon name="chevron" size={14} className="pager__icon pager__icon--forward" />
+              </button>
+              <span className="pager__label" aria-live="polite">
+                {windowLabel(range, from, to)}
+              </span>
+            </div>
+          </>
         )}
         <label className="field field--inline">
           <span className="field__label">Environment</span>

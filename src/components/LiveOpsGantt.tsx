@@ -1,7 +1,15 @@
 import { useMemo } from 'react';
 import { eventColour, phaseChip } from './EventBoard';
 import { DOMAIN_LABELS } from '../domains/types';
-import { CATEGORY_LABELS, LIVEOPS_DOMAINS, layOutBars, ticksFor, type BoardEvent } from '../lib/liveops';
+import {
+  CATEGORY_LABELS,
+  LIVEOPS_DOMAINS,
+  barTimes,
+  isHourScale,
+  layOutBars,
+  ticksFor,
+  type BoardEvent,
+} from '../lib/liveops';
 import { localTime } from '../lib/schedule';
 
 interface LiveOpsGanttProps {
@@ -25,6 +33,8 @@ interface LiveOpsGanttProps {
  *
  * Everything is laid out in fractions by `layOutBars`, so this component only
  * turns numbers into percentages and never does date arithmetic of its own.
+ * Over a day or a week the bars are drawn taller, as cards carrying the hours
+ * each event opens and closes on.
  */
 export function LiveOpsGantt({ events, from, to, now, selectedKey, onOpen }: LiveOpsGanttProps) {
   const lanes = useMemo(
@@ -42,14 +52,17 @@ export function LiveOpsGantt({ events, from, to, now, selectedKey, onOpen }: Liv
   );
 
   const ticks = useMemo(() => ticksFor(from, to), [from, to]);
+  const labels = ticks.filter((tick) => tick.label !== '');
+  const lines = ticks.filter((tick) => tick.line);
+  const cards = isHourScale(from, to);
   const nowLeft = now >= from && now <= to ? ((now - from) / Math.max(to - from, 1)) * 100 : null;
 
   return (
-    <div className="gantt">
+    <div className={cards ? 'gantt gantt--cards' : 'gantt'}>
       <div className="gantt__ruler">
         <div className="gantt__lane-head" aria-hidden="true" />
         <div className="gantt__track">
-          {ticks.map((tick) => (
+          {labels.map((tick) => (
             <span
               key={tick.at}
               className={tick.major ? 'gantt__tick gantt__tick--major' : 'gantt__tick'}
@@ -73,7 +86,7 @@ export function LiveOpsGantt({ events, from, to, now, selectedKey, onOpen }: Liv
                 ),
               }}
             >
-              {ticks.map((tick) => (
+              {lines.map((tick) => (
                 <span
                   key={tick.at}
                   className={tick.major ? 'gantt__gridline gantt__gridline--major' : 'gantt__gridline'}
@@ -105,7 +118,7 @@ export function LiveOpsGantt({ events, from, to, now, selectedKey, onOpen }: Liv
                     style={{
                       left: `${bar.left * 100}%`,
                       width: `${bar.width * 100}%`,
-                      top: `${8 + bar.row * 40}px`,
+                      ['--row' as string]: String(bar.row),
                       // The preview slice is drawn as a hatch over the head of
                       // the bar: the config is live but the event is not, and
                       // those two facts have to be visible at once.
@@ -122,6 +135,7 @@ export function LiveOpsGantt({ events, from, to, now, selectedKey, onOpen }: Liv
                   >
                     <span className="gantt__bar-label">{event.name}</span>
                     <span className="gantt__bar-phase">{chip.label}</span>
+                    {cards && <span className="gantt__bar-times">{barTimes(event, from, to)}</span>}
                   </button>
                 );
               })}
