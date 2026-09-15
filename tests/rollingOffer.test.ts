@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import liveJson from '../config/rollingOffer.json';
+import { ROLLING_OFFER_EXPORTER } from '../src/exporters/rollingOffer';
 import { buildLookup } from '../src/lib/lookups';
 import { REWARDS } from '../src/lib/rewards';
 import { EMPTY_SCHEDULE, transformRollingOffer, type RollingOfferSchedule } from '../src/lib/rollingOffer';
@@ -178,6 +179,39 @@ describe('merging into the live schedule', () => {
     expect(validateRollingOfferConfig(result.config).map((issue) => issue.code)).toContain(
       'schema-reward-unknown',
     );
+  });
+});
+
+describe('the offers it merges into come from ConfigCat, never from memory', () => {
+  const controls = ROLLING_OFFER_EXPORTER.controls!;
+  const live = liveJson as RollingOfferConfig;
+
+  it('does not bring back a remembered offer list', () => {
+    // A browser that last opened the page before an offer went live would have
+    // published a list without it, retiring it and its players' progress.
+    const stale = { ...EMPTY_SCHEDULE, isTimed: false, others: [live.Offers[0]] };
+    const revived = controls.revive(JSON.parse(JSON.stringify(stale)));
+    expect(revived?.isTimed).toBe(false);
+    expect(revived?.others).toBeNull();
+  });
+
+  it('takes the list and the list-level art from the live payload', () => {
+    const followed = controls.followLive!({ ...EMPTY_SCHEDULE, others: [] }, { payload: live });
+    expect(followed.others?.map((offer) => offer.OfferID)).toEqual(live.Offers.map((offer) => offer.OfferID));
+    expect(followed.defaultBackgroundArt).toBe(live.DefaultBackgroundArt);
+    // What the page decides is left alone.
+    expect(followed.startUtc).toBe(EMPTY_SCHEDULE.startUtc);
+  });
+
+  it('reads a setting with nothing in it as no offers, and an unread one as unknown', () => {
+    expect(controls.followLive!(EMPTY_SCHEDULE, { payload: null }).others).toEqual([]);
+    expect(controls.followLive!({ ...EMPTY_SCHEDULE, others: live.Offers }, null).others).toBeNull();
+  });
+
+  it('refuses to export while the live list is unknown', () => {
+    const result = run(OFFER_ROWS, STEP_ROWS, { others: null });
+    expect(result.issues.map((issue) => issue.code)).toContain('rollingoffer-live-unread');
+    expect(result.stats.errors).toBeGreaterThan(0);
   });
 });
 

@@ -9,6 +9,7 @@ import { DOMAIN_LABELS, GIT_PATHS, SETTING_KEYS, type DomainId } from '../domain
 import { applyPublish, type ApplyResponse } from '../lib/liveConfig';
 import type { Release } from '../hooks/useRelease';
 import { LIVEOPS_FEATURES, isLiveOpsDomain } from '../lib/liveops';
+import { ScheduleRejected, republishEvent } from '../lib/schedule';
 
 interface ChangeReviewProps {
   domain: DomainId;
@@ -153,6 +154,22 @@ export function ChangeReview({
     setPublishing(true);
     setPublishError(null);
     try {
+      // One offer among several is merged into the list on the server, from the
+      // value it reads at that moment. The list on this page was read a while
+      // ago, and publishing it whole would retire any offer that went live since.
+      if (isLiveOpsDomain(domain) && LIVEOPS_FEATURES[domain].unit === 'list' && event?.subjectId != null) {
+        const { response: merged } = await republishEvent({
+          domain,
+          environmentId,
+          subjectId: event.subjectId,
+          payload,
+          reason: `Published ${settingKey} from the back office.`,
+        });
+        setResponse(merged);
+        setConfirmed(false);
+        release.reload();
+        return;
+      }
       const result = await applyPublish({
         configId: ACCOUNT.configId,
         environmentId,
@@ -172,7 +189,7 @@ export function ChangeReview({
       // The live value has moved, so the diff on screen is now history.
       release.reload();
     } catch (error) {
-      setPublishError((error as Error).message);
+      setPublishError(error instanceof ScheduleRejected ? error.problems.join(' ') : (error as Error).message);
     } finally {
       setPublishing(false);
     }

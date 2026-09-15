@@ -740,13 +740,13 @@ export async function publishLiveEvent({ domain, environmentId, subjectId, paylo
     if (next === null) return { ok: false, problems: ['That window cannot be written into this config.'] };
   }
 
-  const { result } = await publishPayload({
+  const { response, result } = await publishPayload({
     environmentId,
     payload: next,
     settingKey: feature.settingKey,
     gitPath: GIT_PATHS[domain],
     baselineHash: live.hash,
-    note: `Live ${feature.noun} "${subjectId}" changed by hand. ${reason ?? ''}`.trim(),
+    note: `Live ${feature.noun} "${subjectId}" ${payload === undefined ? 'changed by hand' : 'published'}. ${reason ?? ''}`.trim(),
   });
   const ok = result.status === 'written' || result.status === 'unchanged';
   if (!ok) return { ok: false, problems: [result.message ?? `The publish did not go through (${result.status}).`], result };
@@ -761,7 +761,7 @@ export async function publishLiveEvent({ domain, environmentId, subjectId, paylo
     details,
     message: window === undefined ? 'Config republished by hand.' : `Republished by hand to run until ${window.endsAt ?? 'further notice'}.`,
   });
-  return { ok: true, result, entry: updated[0] ?? null };
+  return { ok: true, result, response, entry: updated[0] ?? null };
 }
 
 /* ----------------------------------------------------------------- tick -- */

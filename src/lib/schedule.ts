@@ -7,7 +7,7 @@
  */
 
 import type { DomainId } from '../domains/types';
-import type { Change } from './liveConfig';
+import type { ApplyResponse, Change } from './liveConfig';
 import type { EventPhase, LiveOpsBlock } from './liveops';
 
 export type ScheduleState =
@@ -250,7 +250,9 @@ export interface EventRepublish {
   reason?: string;
 }
 
-export function republishEvent(input: EventRepublish): Promise<{ result: unknown; entry: ScheduleEntry | null }> {
+export function republishEvent(
+  input: EventRepublish,
+): Promise<{ result: unknown; response: ApplyResponse; entry: ScheduleEntry | null }> {
   return call('/api/schedule/event-publish', { method: 'POST', body: JSON.stringify(input) });
 }
 
