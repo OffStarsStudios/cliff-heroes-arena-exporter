@@ -55,10 +55,15 @@ export interface RollingOfferSchedule {
   defaultRewardArt: string;
   defaultButtonArt: string;
   /**
-   * Every other offer currently live, in order. This one is merged into them by
-   * ID; they are carried through untouched.
+   * Every offer currently live, in order. This one is merged into them by ID;
+   * the rest are carried through untouched.
+   *
+   * Always read from ConfigCat for the environment being published to, never
+   * remembered: a list this browser saw last week would retire every offer
+   * published since. Null until that read has landed, and nothing can be
+   * exported while it is.
    */
-  others: RollingOffer[];
+  others: RollingOffer[] | null;
 }
 
 export const EMPTY_SCHEDULE: RollingOfferSchedule = {
@@ -77,6 +82,14 @@ const START_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
 
 export function validateSchedule(schedule: RollingOfferSchedule): Issue[] {
   const issues: Issue[] = [];
+  if (schedule.others === null) {
+    issues.push({
+      severity: 'error',
+      code: 'rollingoffer-live-unread',
+      message:
+        'The offers live in ConfigCat have not been read yet, so this offer cannot be merged into them - publishing without them would retire every one. Re-check once ConfigCat is reachable.',
+    });
+  }
   if (!schedule.isTimed) return issues;
 
   if (schedule.startUtc.trim() === '') {
@@ -488,8 +501,9 @@ export function transformRollingOffer(input: RollingOfferTransformInput): Rollin
   // Replace an offer of this ID, or append. Order is the order the buttons are
   // drawn in, so an offer being updated keeps its place rather than jumping to
   // the end of the row.
-  const merged = schedule.others.filter((other) => other.OfferID !== offerId);
-  const at = schedule.others.findIndex((other) => other.OfferID === offerId);
+  const others = schedule.others ?? [];
+  const merged = others.filter((other) => other.OfferID !== offerId);
+  const at = others.findIndex((other) => other.OfferID === offerId);
   if (at === -1) merged.push(offer);
   else merged.splice(at, 0, offer);
 

@@ -151,9 +151,33 @@ describe('changing a live event by hand', () => {
       window: { startsAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-09-20T00:00:00.000Z' },
     });
     expect(result.ok).toBe(true);
+    // The whole publish response comes back, so a page can show it like any other publish.
+    expect(result.response.results[0].status).toBe('written');
     expect(offer('offer.roll.1')).toMatchObject({ StartUtc: '2026-09-01 00:00', DurationHours: 456 });
     expect(offer('offer.roll.1')).toHaveProperty('Steps', rollingOfferJson.Offers[0].Steps);
     expect(offer('offer.roll.2')).toEqual(rollingOfferJson.Offers[1]);
+  });
+});
+
+describe('publishing one offer from its page', () => {
+  it('keeps an offer that went live after the page read the list', async () => {
+    // The page built its payload from a list with only roll.1 and roll.2;
+    // ro.test.1 went live afterwards.
+    const pageBuilt = { ...rollingOfferJson, Offers: [{ ...rollingOfferJson.Offers[1], DisplayName: 'SPACE RUN II' }, rollingOfferJson.Offers[0]] };
+    const since = { OfferID: 'ro.test.1', DisplayName: 'SPACE BINGE', IsTimed: false, Steps: [] };
+    state.live[OFFERS_KEY] = JSON.stringify({ ...rollingOfferJson, Offers: [...rollingOfferJson.Offers, since] });
+
+    const result = await scheduler.publishLiveEvent({
+      domain: 'rollingOffer',
+      environmentId: ENV,
+      subjectId: 'offer.roll.2',
+      payload: pageBuilt,
+    });
+    expect(result.ok).toBe(true);
+    expect(liveOffers().Offers.map((candidate) => candidate.OfferID)).toEqual(['offer.roll.1', 'offer.roll.2', 'ro.test.1']);
+    expect(offer('offer.roll.2').DisplayName).toBe('SPACE RUN II');
+    // Only the offer this page is about comes from the page.
+    expect(offer('offer.roll.1')).toEqual(rollingOfferJson.Offers[0]);
   });
 });
 

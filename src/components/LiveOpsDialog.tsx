@@ -402,7 +402,12 @@ export function LiveOpsDialog({
                 <span className="field__label">Feature</span>
                 <select
                   value={domain}
-                  onChange={(change) => setDomain(change.target.value as LiveOpsDomain)}
+                  onChange={(change) => {
+                    const next = change.target.value as LiveOpsDomain;
+                    setDomain(next);
+                    // Only a feature with an evergreen form can have no end.
+                    if (!LIVEOPS_FEATURES[next].evergreen) setNoEnd(false);
+                  }}
                   // An event publishes one feature's setting; another feature
                   // would be another event, not this one changed.
                   disabled={event !== null || fixedDomain !== undefined || preset !== null}
@@ -520,6 +525,10 @@ export function LiveOpsDialog({
                 </p>
               ) : (
                 <EventConfigSource
+                  // One feature's settings are not another's: switching the
+                  // feature starts the config step again rather than handing a
+                  // season header to the offer panel.
+                  key={domain}
                   domain={domain}
                   environmentId={environmentId}
                   opensAt={opensIso}

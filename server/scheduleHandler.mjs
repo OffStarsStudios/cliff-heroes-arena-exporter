@@ -220,7 +220,11 @@ async function serveEventPublish(req, res) {
       sendJson(res, 422, { error: 'That event was not changed.', problems: result.problems });
       return;
     }
-    sendJson(res, 200, { result: result.result, entry: result.entry ? { ...result.entry, payload: undefined } : null });
+    sendJson(res, 200, {
+      result: result.result,
+      response: result.response,
+      entry: result.entry ? { ...result.entry, payload: undefined } : null,
+    });
   } catch (error) {
     fail(res, error);
   }

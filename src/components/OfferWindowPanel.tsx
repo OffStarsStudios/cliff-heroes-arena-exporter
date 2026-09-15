@@ -84,8 +84,13 @@ export function OfferWindowPanel({ value, onChange, fromEvent }: ControlsPanelPr
       )}
 
       <div className="field">
-        <span className="field__label">Also live</span>
-        {value.others.length === 0 ? (
+        <span className="field__label">Live now</span>
+        {value.others === null ? (
+          <p className="field__hint">
+            Not read from ConfigCat yet, so nothing can be published: without the live list this
+            offer would replace every other one.
+          </p>
+        ) : value.others.length === 0 ? (
           <p className="field__hint">
             Nothing else is running. This will be the only offer in the published schedule.
           </p>
@@ -99,9 +104,9 @@ export function OfferWindowPanel({ value, onChange, fromEvent }: ControlsPanelPr
               ))}
             </span>
             <p className="field__hint">
-              Carried through untouched. The client takes the offer list whole, so publishing sends
-              all of these as well as this one &mdash; an offer left out would be retired, and its
-              players&rsquo; progress dropped.
+              Read from ConfigCat just now. Publishing replaces the one with this sheet&rsquo;s ID, if
+              it is here, and carries the rest through untouched &mdash; the client takes the list
+              whole, so an offer left out would be retired and its players&rsquo; progress dropped.
             </p>
           </>
         )}

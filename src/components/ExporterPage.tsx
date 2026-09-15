@@ -78,7 +78,7 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
   );
   const { controls } = definition;
-  const [settings, setSettings] = useExporterSettings<TSettings>({
+  const [settings, setSettings, refreshLiveSettings] = useExporterSettings<TSettings>({
     domain: definition.domain,
     controls,
     environmentId,
@@ -126,6 +126,25 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
     environmentId,
     extraRegistry: result?.registry,
   });
+
+  /**
+   * Re-checking re-reads what is live for the page's own fields too.
+   *
+   * A rolling offer is merged into the offers live when it was read. A re-check
+   * that refreshed the diff and its baseline but not that list would turn a
+   * refused publish into one that goes through - and retires whatever went
+   * live in between.
+   */
+  const reviewRelease = useMemo(
+    () => ({
+      ...release,
+      reload: () => {
+        refreshLiveSettings();
+        release.reload();
+      },
+    }),
+    [release, refreshLiveSettings],
+  );
 
   const hasWorkbook = workbook !== null;
   const chosenTabs = definition.tabs.filter((tab) => selection[tab.key] !== null).length;
@@ -446,7 +465,7 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
                     payload={exportable.config}
                     json={exportable.json}
                     downloadFilename={definition.downloadFilename}
-                    release={release}
+                    release={reviewRelease}
                     environmentId={environmentId}
                     onEnvironmentChange={setEnvironmentId}
                     sheetBlocker={sheetBlocker}

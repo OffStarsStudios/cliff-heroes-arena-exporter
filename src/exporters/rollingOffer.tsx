@@ -54,11 +54,18 @@ function scheduleFrom(payload: unknown): RollingOfferSchedule | null {
   };
 }
 
-/** A stored panel value, which keeps the schedule it was last merged into. */
+/**
+ * A stored panel value: the window and the art, never the offer list.
+ *
+ * The list is what the offer is merged into, and it has to be the one live now.
+ * It used to be revived from here, which meant a browser that last opened the
+ * page before an offer went live would publish a list without it - retiring it,
+ * and dropping its players' progress. `followLive` fills it in instead.
+ */
 function reviveSchedule(stored: unknown): RollingOfferSchedule | null {
   if (stored === null || typeof stored !== 'object') return null;
   const record = stored as Partial<RollingOfferSchedule>;
-  if (typeof record.isTimed !== 'boolean' || !Array.isArray(record.others)) return null;
+  if (typeof record.isTimed !== 'boolean') return null;
   return {
     isTimed: record.isTimed,
     startUtc: typeof record.startUtc === 'string' ? record.startUtc : '',
@@ -67,7 +74,24 @@ function reviveSchedule(stored: unknown): RollingOfferSchedule | null {
     defaultTopBarArt: record.defaultTopBarArt ?? '',
     defaultRewardArt: record.defaultRewardArt ?? '',
     defaultButtonArt: record.defaultButtonArt ?? '',
-    others: record.others,
+    others: null,
+  };
+}
+
+/** The live offer list and the list-level art, onto whatever the panel holds. */
+function followLiveSchedule(value: RollingOfferSchedule, live: { payload: unknown } | null): RollingOfferSchedule {
+  if (live === null) return { ...value, others: null };
+  // A setting that holds nothing yet is a schedule with no offers, which is an
+  // answer - unlike a read that failed.
+  const fromLive = live.payload === null ? null : scheduleFrom(live.payload);
+  if (fromLive === null) return { ...value, others: [] };
+  return {
+    ...value,
+    defaultBackgroundArt: fromLive.defaultBackgroundArt,
+    defaultTopBarArt: fromLive.defaultTopBarArt,
+    defaultRewardArt: fromLive.defaultRewardArt,
+    defaultButtonArt: fromLive.defaultButtonArt,
+    others: fromLive.others,
   };
 }
 
@@ -132,6 +156,7 @@ export const ROLLING_OFFER_EXPORTER: ExporterDefinition<
     initial: EMPTY_SCHEDULE,
     fromLive: scheduleFrom,
     revive: reviveSchedule,
+    followLive: followLiveSchedule,
     Panel: OfferWindowPanel,
     validate: validateSchedule,
     summary: (schedule) => {

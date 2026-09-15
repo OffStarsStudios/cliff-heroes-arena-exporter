@@ -101,6 +101,15 @@ export interface ExporterControls<TSettings> {
   fromLive(payload: unknown): TSettings | null;
   /** Revives a stored value, or null when what was stored no longer fits. */
   revive(stored: unknown): TSettings | null;
+  /**
+   * Brings the fields live owns onto a value, whatever was stored or typed.
+   *
+   * `live` is the payload read for the environment being published to, or null
+   * while that read has not landed (or failed) - in which case those fields
+   * must read as unknown rather than keep an old answer. Absent for a config
+   * whose page fields are all its own.
+   */
+  followLive?(value: TSettings, live: { payload: unknown } | null): TSettings;
   Panel: ComponentType<ControlsPanelProps<TSettings>>;
   /** The step's status chip, e.g. "1 Sep - 1 Oct". */
   summary(value: TSettings): string;

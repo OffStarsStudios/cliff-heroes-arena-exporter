@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ExporterControls } from '../exporters/types';
 import type { ExporterDomain } from '../domains/types';
 import { recallSettings, rememberSettings } from '../lib/exporterSettings';
@@ -20,6 +20,14 @@ interface UseExporterSettingsInput<TSettings> {
   persist: boolean;
 }
 
+/** The live payload as last read, and which environment it was read from. */
+interface LiveRead {
+  environmentId: string;
+  /** Null when the read failed: nothing is known about what is live. */
+  payload: unknown | null;
+  ok: boolean;
+}
+
 /**
  * The value of a page's own fields, and where it came from.
  *
@@ -29,6 +37,12 @@ interface UseExporterSettingsInput<TSettings> {
  * game is actually running, so publishing without touching the panel
  * republishes that season rather than silently replacing it with a default.
  *
+ * Some fields are never the page's to decide at all, and those follow live
+ * whatever was stored: see `followLive`. They are re-read whenever the
+ * environment changes and whenever `refreshLive` is called, so what the page
+ * builds is built on what is live now rather than on what this browser saw
+ * last week.
+ *
  * Lives in a hook rather than on the page because two surfaces now collect the
  * same fields: the config's page, and the live ops booking form.
  */
@@ -37,42 +51,43 @@ export function useExporterSettings<TSettings>({
   controls,
   environmentId,
   persist,
-}: UseExporterSettingsInput<TSettings>): [TSettings, (next: TSettings) => void] {
+}: UseExporterSettingsInput<TSettings>): [TSettings, (next: TSettings) => void, () => void] {
   const stored = controls === undefined ? null : controls.revive(recallSettings(domain));
   const [value, setValue] = useState<TSettings>(
     () => stored ?? (controls === undefined ? (undefined as TSettings) : controls.initial),
   );
+  const [live, setLive] = useState<LiveRead | null>(null);
+  const [readId, setReadId] = useState(0);
+  const refreshLive = useCallback(() => setReadId((id) => id + 1), []);
   // Seeding is a one-shot: once somebody has typed in the panel, a slow live
   // response must not reach back and overwrite what they typed.
-  const seeded = useRef(false);
+  const seeded = useRef(stored !== null);
 
   useEffect(() => {
-    if (controls === undefined || seeded.current) return;
-    // Something stored that still fits wins. Something stored that no longer
-    // does counts as nothing, and falls through to the live season below.
-    if (stored !== null) {
-      seeded.current = true;
-      return;
-    }
+    if (controls === undefined) return;
     let cancelled = false;
     fetchLiveConfig(domain, environmentId)
       .then((view) => {
-        if (cancelled || seeded.current) return;
-        const fromLive = controls.fromLive(view.live.json);
+        if (cancelled) return;
+        setLive({ environmentId, payload: view.live.json, ok: true });
+        if (seeded.current) return;
+        // Something stored that still fits wins. Something stored that no
+        // longer does counts as nothing, and falls through to live.
         seeded.current = true;
+        const fromLive = controls.fromLive(view.live.json);
         if (fromLive !== null) setValue(fromLive);
       })
       // A page whose fields have to be filled in by hand is a far better
       // outcome than one that will not load because ConfigCat is unreachable.
       .catch(() => {
+        if (cancelled) return;
         seeded.current = true;
+        setLive({ environmentId, payload: null, ok: false });
       });
     return () => {
       cancelled = true;
     };
-    // `stored` is read once, on the first run; `seeded` closes the effect after.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controls, domain, environmentId]);
+  }, [controls, domain, environmentId, readId]);
 
   const update = useCallback(
     (next: TSettings) => {
@@ -83,5 +98,15 @@ export function useExporterSettings<TSettings>({
     [domain, persist],
   );
 
-  return [value, update];
+  // A read of another environment says nothing about this one, so until the
+  // right one lands the live-owned fields are unknown rather than stale.
+  const current = live !== null && live.environmentId === environmentId && live.ok ? { payload: live.payload } : null;
+  const followed = useMemo(
+    () => (controls?.followLive === undefined ? value : controls.followLive(value, current)),
+    // `current` is rebuilt each render; what it stands for is `live` and the environment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [controls, value, live, environmentId],
+  );
+
+  return [followed, update, refreshLive];
 }
