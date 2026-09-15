@@ -272,21 +272,29 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
     });
   }, []);
 
+  // Real links, so the browser's own gestures work on them: a middle click or
+  // ctrl + click opens the page in a new tab, and right-click offers to copy it.
   const renderLink = (item: NavItem) => (
-    <button
+    <a
       key={item.id}
-      type="button"
+      href={`#/${item.id}`}
       className={`navlink${view === item.id ? ' navlink--active' : ''}`}
       aria-current={view === item.id ? 'page' : undefined}
       // Collapsed, the icon is the only thing naming the page, so it carries
       // the name for a pointer (title) and for a screen reader (aria-label).
       title={railOpen ? undefined : item.label}
       aria-label={railOpen ? undefined : item.label}
-      onClick={() => onNavigate(item.id)}
+      onClick={(click) => {
+        // A plain click stays in this tab. Anything with a modifier is the
+        // browser's to handle - a new tab, a new window.
+        if (click.button !== 0 || click.ctrlKey || click.metaKey || click.shiftKey || click.altKey) return;
+        click.preventDefault();
+        onNavigate(item.id);
+      }}
     >
       <Icon name={item.icon} size={17} className="navlink__icon" />
       <span className="navlink__text">{item.label}</span>
-    </button>
+    </a>
   );
 
   const renderSection = (section: NavSection) => (

@@ -14,6 +14,7 @@ import {
   DOMAINS,
   cancelEntry,
   createEntry,
+  deleteEntry,
   endLiveEvent,
   publishLiveEvent,
   updateEntry,
@@ -252,6 +253,25 @@ async function serveCancel(req, res) {
 }
 
 /**
+ * `POST /api/schedule/delete` - erase a live ops booking that has nothing in
+ * the game, so its card leaves the calendar. Its run ID stays retired.
+ */
+async function serveDelete(req, res) {
+  try {
+    const body = await readJsonBody(req);
+    if (typeof body.id !== 'string' || body.id === '') throw new Error('"id" is required.');
+    const result = await deleteEntry(body.id);
+    if (!result.ok) {
+      sendJson(res, 422, { error: 'That booking was not deleted.', problems: result.problems });
+      return;
+    }
+    sendJson(res, 200, { deleted: result.entry.id });
+  } catch (error) {
+    fail(res, error);
+  }
+}
+
+/**
  * `GET|POST /api/schedule/default?domain=` - read or record the fallback.
  *
  * The fallback is what a config returns to when nothing is scheduled, so
@@ -376,6 +396,7 @@ const ROUTES = {
   '/api/schedule': (req, res) =>
     req.method === 'POST' ? serveCreate(req, res) : serveList(req, res),
   '/api/schedule/cancel': serveCancel,
+  '/api/schedule/delete': serveDelete,
   '/api/schedule/update': serveUpdate,
   '/api/schedule/event-end': serveEventEnd,
   '/api/schedule/event-publish': serveEventPublish,
@@ -398,6 +419,7 @@ export {
   serveCancel,
   serveCreate,
   serveDefault,
+  serveDelete,
   serveEventEnd,
   serveEventPublish,
   serveGitStatus,

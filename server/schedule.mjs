@@ -676,6 +676,37 @@ export async function cancelEntry(id, reason) {
   return { ok: true, entry, revert };
 }
 
+/**
+ * Erases a live ops booking - its calendar card and its history - from the
+ * schedule.
+ *
+ * Only a booking with nothing in the game: one still to come, or one that is
+ * over. A running one is refused rather than ended here, because taking an
+ * event out of the game is End now's job and asks its own question first.
+ *
+ * Its run ID goes into the register before the booking goes. The booking was
+ * one of the places that remembered the ID, and the game's server may still
+ * hold players' progress under it, so erasing the booking must not free the ID
+ * for a later run.
+ */
+export async function deleteEntry(id) {
+  const { store, sha } = await loadSchedule();
+  const entry = store.entries.find((candidate) => candidate.id === id);
+  if (entry === undefined) return { ok: false, problems: [`No schedule with id "${id}".`] };
+  if (!isLiveOpsEntry(entry)) {
+    return { ok: false, problems: ['Only a live ops booking can be deleted. A config window keeps its history.'] };
+  }
+  if (entry.state !== 'scheduled' && !isTerminal(entry)) {
+    return { ok: false, problems: [`"${entry.label || entry.id}" is ${entry.state}. End it or call it off first.`] };
+  }
+
+  const runId = subjectOfEntry(entry);
+  if (runId !== null) rememberRun(store, runId);
+  store.entries = store.entries.filter((candidate) => candidate.id !== id);
+  await saveSchedule(store, sha, `Delete schedule ${entry.domain}: ${entry.label || entry.id}`);
+  return { ok: true, entry };
+}
+
 /* ------------------------------------------------------- live ops events -- */
 
 /**

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
@@ -24,7 +24,11 @@ export function Portal({ children }: { children: ReactNode }) {
     host.current.className = 'portal';
   }
 
-  useEffect(() => {
+  // A layout effect, so the host is in the document before its children's
+  // parents lay out: a menu measures itself against the window to stay on
+  // screen, and a node outside the document measures as nothing and cannot
+  // take focus.
+  useLayoutEffect(() => {
     const node = host.current;
     if (node === null) return;
     document.body.appendChild(node);

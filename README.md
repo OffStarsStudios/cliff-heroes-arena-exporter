@@ -525,6 +525,7 @@ schedule looks like.
 | `GET /api/schedule` | Every window, the fallbacks, and the heartbeat's health |
 | `POST /api/schedule` | Book a window. Refused with the full list of failed guardrails. |
 | `POST /api/schedule/cancel` | Stop a window; if it is live, put the config back first |
+| `POST /api/schedule/delete` | Erase a live ops booking that is still to come or over, so its card leaves the calendar. Its run ID stays in the register. |
 | `POST /api/schedule/update` | Edit a window that has not finished. Only the fields sent change. A running event's new window or config is published straight away. |
 | `POST /api/schedule/event-end` | End one live ops event now, booked or not (`mode: end`), or take it out of the payload (`mode: remove`) |
 | `POST /api/schedule/event-publish` | Republish one live ops event now with a new window, a new config, or both |

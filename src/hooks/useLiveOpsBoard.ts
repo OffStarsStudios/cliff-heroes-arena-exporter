@@ -10,9 +10,21 @@ import {
   type BoardEvent,
   type LiveOpsDomain,
 } from '../lib/liveops';
-import { ScheduleRejected, cancelWindow, endEvent, fetchSchedule, type ScheduleView } from '../lib/schedule';
+import {
+  ScheduleRejected,
+  cancelWindow,
+  deleteWindow,
+  endEvent,
+  fetchSchedule,
+  type ScheduleView,
+} from '../lib/schedule';
 
-export type BoardAction = 'end' | 'remove' | 'cancel';
+/**
+ * `delete` takes the whole card off the calendar: whatever of the event is
+ * still listed comes out of ConfigCat, and its booking is erased. Never for an
+ * event in the game - that is End now.
+ */
+export type BoardAction = 'end' | 'remove' | 'cancel' | 'delete';
 
 export interface LiveOpsBoard {
   view: ScheduleView | null;
@@ -32,8 +44,8 @@ export interface LiveOpsBoard {
 
 /**
  * The live ops board for one environment: every booking, joined to what
- * ConfigCat is serving, plus the three things that can be done to an event
- * from a list.
+ * ConfigCat is serving, plus the things that can be done to an event from a
+ * list or its menu.
  *
  * One hook for both surfaces - the calendar and each feature's own page -
  * because "what is running" and "take it down" must mean exactly the same
@@ -103,8 +115,16 @@ export function useLiveOpsBoard(environmentId: string, domain?: LiveOpsDomain): 
       const feature = LIVEOPS_FEATURES[event.domain];
       const where = environmentName(environmentId);
       const players = isLiveEnvironment(environmentId) ? ` ${where} is what players are on.` : '';
+      if (action === 'delete' && isInGame(event)) return false;
+      const erased = 'Its booking and history are erased from the calendar; its run ID is never reused.';
       const question =
-        action === 'cancel'
+        action === 'delete'
+          ? event.live !== null
+            ? feature.unit === 'list'
+              ? `Delete "${event.name}"? It is taken out of ${feature.settingKey} in ${where} for good, and players' progress on it is dropped on their next launch.${event.entry !== null ? ` ${erased}` : ''}${players}`
+              : `Delete "${event.name}"? The off state is published in ${where} in its place.${event.entry !== null ? ` ${erased}` : ''}${players}`
+            : `Delete "${event.name}"? ${event.phase === 'scheduled' ? 'It has not started, so nothing' : 'Nothing'} is published. ${erased}`
+          : action === 'cancel'
           ? event.entry?.state === 'active'
             ? `Call off the booking for "${event.name}"? It is not in ConfigCat any more, so nothing is published.`
             : `Cancel "${event.name}"? It has not started, so nothing is published.`
@@ -121,7 +141,29 @@ export function useLiveOpsBoard(environmentId: string, domain?: LiveOpsDomain): 
       setNotice(null);
       setError(null);
       try {
-        if (action === 'cancel' || (event.live === null && event.entry !== null)) {
+        if (action === 'delete') {
+          // What is still listed comes out first, or the card would come
+          // straight back as an event nobody booked.
+          if (event.live !== null && event.subjectId !== null) {
+            await endEvent({
+              domain: event.domain,
+              environmentId,
+              subjectId: event.subjectId,
+              mode: 'remove',
+              expected: event.live.part,
+              reason: 'Deleted from the back office.',
+            });
+          }
+          if (event.entry !== null) {
+            // Booked as running but gone from ConfigCat: called off before it
+            // can be erased. Removing a listed one above already cancelled it.
+            if (event.live === null && event.entry.state === 'active') {
+              await cancelWindow(event.entry.id, 'Called off to be deleted from the back office.');
+            }
+            await deleteWindow(event.entry.id);
+          }
+          setNotice(`"${event.name}" was deleted.`);
+        } else if (action === 'cancel' || (event.live === null && event.entry !== null)) {
           if (event.entry === null) return false;
           await cancelWindow(event.entry.id, 'Cancelled from the back office.');
           setNotice(`"${event.name}" was called off.`);

@@ -43,6 +43,7 @@ export type IconName =
   | 'stop'
   | 'arrowRight'
   | 'dot'
+  | 'pencil'
   | 'zap';
 
 interface IconProps {
@@ -263,6 +264,12 @@ const PATHS: Record<IconName, JSX.Element> = {
     </>
   ),
   dot: <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />,
+  pencil: (
+    <>
+      <path d="M21.2 6.8a1 1 0 0 0-4-4L3.8 16.2a2 2 0 0 0-.5.8L2 21.4a.5.5 0 0 0 .6.6l4.4-1.3a2 2 0 0 0 .8-.5z" />
+      <path d="m15 5 4 4" />
+    </>
+  ),
   zap: <path d="M13 2 4 14h7l-1 8 9-12h-7z" />,
 };
 

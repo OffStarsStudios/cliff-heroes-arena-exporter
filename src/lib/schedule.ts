@@ -272,6 +272,17 @@ export function cancelWindow(id: string, reason?: string): Promise<{ entry: Sche
   });
 }
 
+/**
+ * Erases a live ops booking that has nothing in the game - still to come, or
+ * over - so its card leaves the calendar. Its run ID stays retired.
+ */
+export function deleteWindow(id: string): Promise<{ deleted: string }> {
+  return call<{ deleted: string }>('/api/schedule/delete', {
+    method: 'POST',
+    body: JSON.stringify({ id }),
+  });
+}
+
 export function fetchDefault(domain: DomainId): Promise<{ domain: DomainId; present: boolean; payload: unknown }> {
   return call(`/api/schedule/default?domain=${encodeURIComponent(domain)}`);
 }

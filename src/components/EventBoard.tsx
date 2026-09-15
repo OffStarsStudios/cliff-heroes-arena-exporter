@@ -29,8 +29,8 @@ export function eventColour(event: BoardEvent): string {
   return event.category === null ? UNBOOKED_COLOUR : CATEGORY_COLOURS[event.category];
 }
 
-/** What can be done to an event from a list, strongest first. */
-export function actionsFor(event: BoardEvent): { action: BoardAction; label: string; danger: boolean }[] {
+/** What can be done to an event from a list, strongest first. Deleting a card is only offered on the calendar's menu. */
+export function actionsFor(event: BoardEvent): { action: Exclude<BoardAction, 'delete'>; label: string; danger: boolean }[] {
   if (event.missingLive) return [{ action: 'cancel', label: 'Call off', danger: false }];
   if (event.live === null) {
     return event.entry?.state === 'scheduled' ? [{ action: 'cancel', label: 'Cancel', danger: true }] : [];
