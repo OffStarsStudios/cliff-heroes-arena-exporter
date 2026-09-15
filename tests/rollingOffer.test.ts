@@ -170,6 +170,25 @@ describe('merging into the live schedule', () => {
     expect(result.config.DefaultBackgroundArt).toBe('SharedBG');
   });
 
+  it('writes a live offer that was spelled out of order back in schema order', () => {
+    // What End now used to publish for an evergreen offer: its window tacked on
+    // after Steps. Carried through as it was, it failed the check on every
+    // publish of any offer, which is what blocked booking SPACE BINGE.
+    const { StartUtc: _start, DurationHours: _hours, ...rest } = others[1];
+    const shuffled = { ...rest, IsTimed: true, StartUtc: '2026-09-15 11:52', DurationHours: 1 } as RollingOffer;
+    const result = run(OFFER_ROWS, STEP_ROWS, { others: [others[0], shuffled] });
+    expect(validateRollingOfferConfig(result.config)).toEqual([]);
+    expect(result.config.Offers[1]).toEqual(shuffled);
+    expect(Object.keys(result.config.Offers[1]).slice(0, 6)).toEqual([
+      'OfferID',
+      'DisplayName',
+      'Subtitle',
+      'IsTimed',
+      'StartUtc',
+      'DurationHours',
+    ]);
+  });
+
   it('judges the offers it merges into, not just the one edited', () => {
     // An offer already live that has quietly become invalid must not ship just
     // because nobody touched its sheet.

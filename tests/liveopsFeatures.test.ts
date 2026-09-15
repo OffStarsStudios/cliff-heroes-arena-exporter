@@ -145,6 +145,31 @@ describe('ending an offer now', () => {
     expect(onTheMenu(ended, now)).toBe(false);
   });
 
+  it('writes the window it gives an evergreen offer in schema order', () => {
+    // Appended after Steps, it went live and failed the exporter's schema check
+    // on every publish of any offer from then on.
+    const { payload } = offers.endedNow(liveOffers, 'offer.roll.2', { now });
+    const keys = Object.keys(offerOf(payload, 'offer.roll.2'));
+    expect(keys.indexOf('StartUtc')).toBe(keys.indexOf('IsTimed') + 1);
+    expect(keys.indexOf('DurationHours')).toBe(keys.indexOf('IsTimed') + 2);
+    expect(keys.at(-1)).toBe('Steps');
+  });
+
+  it('heals an offer that is already live out of order on the next write', () => {
+    const shuffled = { ...rollingOfferJson.Offers[0], OfferID: 'offer.shuffled' } as Record<string, unknown>;
+    const { StartUtc, DurationHours, ...rest } = shuffled;
+    const live = { ...rollingOfferJson, Offers: [...rollingOfferJson.Offers, { ...rest, StartUtc, DurationHours }] };
+    expect(Object.keys(live.Offers[2]).at(-1)).toBe('DurationHours');
+
+    const { payload: ended } = offers.endedNow(live, 'offer.roll.1', { now });
+    const { payload: removed } = offers.withoutPart(live, 'offer.roll.1');
+    for (const payload of [ended, removed]) {
+      // Same offer, same values - only the spelling moves.
+      expect(offerOf(payload, 'offer.shuffled')).toEqual(live.Offers[2]);
+      expect(Object.keys(offerOf(payload, 'offer.shuffled')).at(-1)).toBe('Steps');
+    }
+  });
+
   it('works on the last offer listed, which removing could not', () => {
     // The client ignores an empty list and keeps what it had, so taking the
     // only offer out would leave it running. Closing its window does not.
@@ -266,6 +291,10 @@ describe('writing an event window into its payload', () => {
       endsAt: '2026-09-22T06:30:00.000Z',
     });
     expect(offerOf(timed, 'offer.roll.2')).toMatchObject({ IsTimed: true, StartUtc: '2026-09-20 18:00', DurationHours: 36.5 });
+
+    // roll.2 is evergreen in the fixture, so its window is new keys - which
+    // belong after IsTimed, not after Steps.
+    expect(Object.keys(offerOf(timed, 'offer.roll.2')).slice(3, 6)).toEqual(['IsTimed', 'StartUtc', 'DurationHours']);
 
     const evergreen = offers.withWindow(liveOffers, 'offer.roll.1', { startsAt: null, endsAt: null });
     const offer = offerOf(evergreen, 'offer.roll.1');
