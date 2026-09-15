@@ -1,3 +1,4 @@
+import { withAuth } from '../server/authHandler.mjs';
 import { serveDrift } from '../server/configcatHandler.mjs';
 
 /**
@@ -6,6 +7,6 @@ import { serveDrift } from '../server/configcatHandler.mjs';
  *
  * Structural comparison of two environments, setting by setting.
  */
-export default async function handler(req, res) {
+export default withAuth(async function handler(req, res) {
   await serveDrift(req, res);
-}
+});

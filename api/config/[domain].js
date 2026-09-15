@@ -1,3 +1,4 @@
+import { withAuth } from '../../server/authHandler.mjs';
 import { serveLiveConfig } from '../../server/liveHandler.mjs';
 
 /**
@@ -9,6 +10,6 @@ import { serveLiveConfig } from '../../server/liveHandler.mjs';
  * One dynamic function for all eight configs, both because they are the same
  * request and because Vercel's Hobby plan allows twelve per deployment.
  */
-export default async function handler(req, res) {
+export default withAuth(async function handler(req, res) {
   await serveLiveConfig(req, res);
-}
+});

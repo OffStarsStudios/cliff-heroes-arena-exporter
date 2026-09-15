@@ -1,6 +1,7 @@
 /**
- * Minimal production server: serves the built `dist/` folder and the
- * `/api/gsheet` proxy. Zero dependencies beyond Node itself.
+ * Minimal production server: serves the built `dist/` folder and the `/api`
+ * routes, behind the same sign-in gate as Vercel. Zero dependencies beyond
+ * Node itself.
  *
  *   npm run build && npm start
  */
@@ -8,6 +9,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gateRequest, handleAuthRequest } from './authHandler.mjs';
 import { handleGSheetRequest } from './gsheetHandler.mjs';
 import { handleConfigCatRequest } from './configcatHandler.mjs';
 import { handlePublishRequest } from './publishHandler.mjs';
@@ -41,6 +43,10 @@ async function readIfFile(path) {
 }
 
 const server = createServer(async (req, res) => {
+  // Unlike the Vite dev server, this one keeps the API shut when sign-in is not
+  // configured: it is the one that could end up somewhere public.
+  if (await handleAuthRequest(req, res)) return;
+  if (!(await gateRequest(req, res))) return;
   if (await handleGSheetRequest(req, res)) return;
   if (await handleConfigCatRequest(req, res)) return;
   if (await handlePublishRequest(req, res)) return;

@@ -1,3 +1,4 @@
+import { withAuth } from '../../server/authHandler.mjs';
 import { handleScheduleRequest } from '../../server/scheduleHandler.mjs';
 
 /**
@@ -11,11 +12,11 @@ import { handleScheduleRequest } from '../../server/scheduleHandler.mjs';
  * Vercel preserves in `req.url` for a dynamic route - so this needs no routing
  * logic of its own, and the dev server keeps calling the same handler.
  */
-export default async function handler(req, res) {
+export default withAuth(async function handler(req, res) {
   const handled = await handleScheduleRequest(req, res);
   if (handled) return;
 
   res.statusCode = 404;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify({ error: `No scheduling route at ${req.url}.` }));
-}
+});

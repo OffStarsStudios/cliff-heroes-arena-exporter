@@ -163,6 +163,10 @@ single most common reason a fix appears not to have worked.
 
 | Variable | Needed for | If it is missing |
 | --- | --- | --- |
+| `GOOGLE_CLIENT_ID` | sign-in | the API is closed to everyone (503) |
+| `GOOGLE_CLIENT_SECRET` | sign-in | the API is closed to everyone (503) |
+| `AUTH_SECRET` | sign-in: signs the session cookie, 32+ characters | the API is closed to everyone (503) |
+| `ALLOWED_EMAILS` | sign-in: who may get in, comma-separated | the API is closed to everyone (503) |
 | `CONFIGCAT_API_USER` | reading and publishing | the console can read nothing |
 | `CONFIGCAT_API_PASS` | reading and publishing | the console can read nothing |
 | `GITHUB_TOKEN` | git history, and all scheduling | publishes still work but are not recorded; scheduling is unavailable |
@@ -171,6 +175,7 @@ single most common reason a fix appears not to have worked.
 | `GITHUB_BRANCH` | optional | defaults to `main` |
 | `CONFIGCAT_CONFIG_ID` | optional | defaults to the `CliffHeroes` config |
 | `CONFIGCAT_PRODUCT_ID` | optional | defaults to the `Cliff Heroes` product |
+| `AUTH_ORIGIN` | optional | Google sends people back to the host the request arrived on |
 
 None of them may be `VITE_`-prefixed. Vite copies every `VITE_` variable into the
 public browser bundle, which for these would publish write access to the live game
@@ -179,12 +184,50 @@ config to anyone who opens the page.
 The **Overview** page shows the state of all three dependencies, so a variable that
 was set but never redeployed is visible rather than discovered during a publish.
 
-### Sharing it with teammates
+### Who can get in
 
-The production URL is public to anyone who has it. To restrict it, use
-**Project Settings > Deployment Protection** (Vercel Authentication limits access to
-your Vercel team; password protection is the alternative). Check what your plan
-includes before relying on it.
+The back office writes to the live game, so every `/api` route answers only to a
+signed-in Google account listed in `ALLOWED_EMAILS`. Anyone else who opens the URL
+gets a sign-in screen, and a request made around it gets a 401. The page itself is
+still served to anyone - the repository is public, so its code is no secret - but
+without the API it can read nothing and change nothing.
+
+- **Sign-in** is Google's OAuth code flow with PKCE, run server-side in
+  `server/authHandler.mjs`. The session is an HttpOnly, SameSite=Lax cookie signed
+  with `AUTH_SECRET`, good for a week.
+- **The list is checked on every request**, not only at sign-in. Removing an email and
+  redeploying locks that person out straight away, whatever their cookie says.
+  Rotating `AUTH_SECRET` signs everyone out.
+- **The list lives in Vercel, not in git**, because the repository is public. To add
+  somebody: edit `ALLOWED_EMAILS`, then redeploy. A refused sign-in is logged in the
+  function logs with the account that tried, so "it says I'm not on the list" can be
+  answered with the exact email to add.
+- **The heartbeat is the one exception.** `/api/schedule/tick` is called by pingers,
+  not people, so it is guarded by `CRON_SECRET` instead - which makes that secret
+  mandatory in practice, not optional.
+- **Missing settings close the API, never open it.** On Vercel, and on
+  `server/index.mjs`, any missing sign-in variable turns every route into a 503 naming
+  what is missing. Only the local Vite dev server runs with sign-in off when none of
+  them are set, and the top bar says so.
+- **Every file in `api/` must wrap its handler in `withAuth`.** Vercel serves each one
+  as its own public function, so a new route that forgets is open to the internet;
+  `tests/auth.test.ts` fails the build if one does. `api/auth/[action].js` is the only
+  file exempt.
+
+Setting it up, once:
+
+1. [Google Cloud Console](https://console.cloud.google.com/) -> **Google Auth
+   Platform**. Give the app a name and support email; audience **External**. Publish
+   it (**Audience -> Publish app**): it asks only for `openid`, `email` and `profile`,
+   which need no Google review, and leaving it in Testing means maintaining a second
+   list of test users there as well.
+2. **Clients -> Create client -> Web application**, with the authorised redirect URIs
+   `https://cliff-heroes-back-office.vercel.app/api/auth/callback` and
+   `http://localhost:5173/api/auth/callback`.
+3. Put its ID and secret, a fresh `AUTH_SECRET` and `ALLOWED_EMAILS` in the Vercel
+   environment variables **before** deploying this - see
+   [Environment variables](#environment-variables). A preview deployment's random URL
+   is not a registered redirect URI, so sign-in works on production and localhost only.
 
 ## ConfigCat
 
@@ -1294,6 +1337,9 @@ src/liveops.css           the live-ops surfaces (overview, schedule, diff, modal
 scripts/auditLive.ts      every sheet vs what ConfigCat is serving
 scripts/sheets.json       which spreadsheet backs which config
 scripts/sheets/           Apps Script for the Google Sheets: the shop upgrade, the enum dropdowns
+server/auth.mjs           who may use the API: allowlist, signed session cookie, Google ID token checks
+server/authHandler.mjs    the /api/auth routes, and the gate (withAuth) every other API route sits behind
+src/components/AuthGate.tsx  the sign-in screen in front of the app, and the account in the top bar
 server/git.mjs            GitHub Contents API: publish history, schedule store, diagnostics
 server/schedule.mjs       the scheduling model, its guardrails, and the tick
 server/                   Google Sheets proxy, ConfigCat client, publish + schedule routes

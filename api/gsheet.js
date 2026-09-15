@@ -1,3 +1,4 @@
+import { withAuth } from '../server/authHandler.mjs';
 import { serveGSheet } from '../server/gsheetHandler.mjs';
 
 /**
@@ -7,6 +8,6 @@ import { serveGSheet } from '../server/gsheetHandler.mjs';
  * cannot fetch them directly. This forwards the request server-side. The shared
  * handler only ever forwards to docs.google.com, so it is not an open relay.
  */
-export default async function handler(req, res) {
+export default withAuth(async function handler(req, res) {
   await serveGSheet(req, res);
-}
+});

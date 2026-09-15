@@ -1,3 +1,4 @@
+import { withAuth } from '../../server/authHandler.mjs';
 import { serveTree } from '../../server/configcatHandler.mjs';
 
 /**
@@ -6,6 +7,6 @@ import { serveTree } from '../../server/configcatHandler.mjs';
  * Lists products, configs, environments and settings. The ConfigCat
  * credentials are organization-wide, so this must stay server-side.
  */
-export default async function handler(req, res) {
+export default withAuth(async function handler(req, res) {
   await serveTree(req, res);
-}
+});
