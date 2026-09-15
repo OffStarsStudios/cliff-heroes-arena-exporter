@@ -1,3 +1,4 @@
+import { withAuth } from '../../server/authHandler.mjs';
 import { servePlan } from '../../server/publishHandler.mjs';
 
 /**
@@ -6,6 +7,6 @@ import { servePlan } from '../../server/publishHandler.mjs';
  * Reports what publishing would change, and issues the baseline hash that
  * `apply` requires. Writes nothing.
  */
-export default async function handler(req, res) {
+export default withAuth(async function handler(req, res) {
   await servePlan(req, res);
-}
+});

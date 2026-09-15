@@ -8,7 +8,17 @@ export default defineConfig(({ mode }) => {
   // process.env during dev, where the API handlers run in this process rather
   // than as serverless functions - so load them explicitly.
   const env = loadEnv(mode, process.cwd(), '');
-  for (const key of ['CONFIGCAT_API_USER', 'CONFIGCAT_API_PASS', 'GITHUB_TOKEN']) {
+  const SERVER_KEYS = [
+    'CONFIGCAT_API_USER',
+    'CONFIGCAT_API_PASS',
+    'GITHUB_TOKEN',
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET',
+    'AUTH_SECRET',
+    'ALLOWED_EMAILS',
+    'AUTH_ORIGIN',
+  ];
+  for (const key of SERVER_KEYS) {
     if (env[key] && !process.env[key]) process.env[key] = env[key];
   }
 

@@ -1,3 +1,4 @@
+import { withAuth } from '../../server/authHandler.mjs';
 import { serveApply } from '../../server/publishHandler.mjs';
 
 /**
@@ -5,6 +6,6 @@ import { serveApply } from '../../server/publishHandler.mjs';
  *
  * The only route in this app that can change what the game serves.
  */
-export default async function handler(req, res) {
+export default withAuth(async function handler(req, res) {
   await serveApply(req, res);
-}
+});

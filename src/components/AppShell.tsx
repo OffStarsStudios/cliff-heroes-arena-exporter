@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { AccountMenu } from './AuthGate';
 import { Icon, type IconName } from './Icon';
 import { PixelHeart } from './PixelHeart';
 import type { RawWorkbook } from '../lib/types';
@@ -365,14 +366,15 @@ export function AppShell({ view, onNavigate, source, children }: AppShellProps) 
             <span className="crumbs__current">{labelOf(view)}</span>
           </nav>
 
-          {workbook !== null && (
-            <div className="topbar__actions">
+          <div className="topbar__actions">
+            {workbook !== null && (
               <span className="chip chip--neutral">
                 <Icon name="sheet" size={12} />
                 {workbook.sourceName}
               </span>
-            </div>
-          )}
+            )}
+            <AccountMenu />
+          </div>
         </header>
 
         {/* Keyed on the view so each page fades in rather than snapping. */}
