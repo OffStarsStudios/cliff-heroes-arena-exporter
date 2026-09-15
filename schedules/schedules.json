@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-15T13:25:09.458Z",
+  "updatedAt": "2026-09-15T13:25:56.275Z",
   "entries": [
     {
       "id": "sch_mtqvbx125twygr",
@@ -1333,6 +1333,383 @@
           "action": "edited",
           "ok": true,
           "message": "Rescheduled for 2026-10-01T08:00:00.000Z."
+        }
+      ]
+    },
+    {
+      "id": "sch_mu2pg59ucx6t3u",
+      "domain": "rollingOffer",
+      "settingKey": "rollingOfferSettings",
+      "gitPath": "config/rollingOffer.json",
+      "environmentId": "08ded206-347f-4a76-8b9d-e895d64f72f2",
+      "environmentName": "Test Environment",
+      "label": "SPACE BINGE",
+      "note": null,
+      "payload": {
+        "DefaultBackgroundArt": "",
+        "DefaultTopBarArt": "",
+        "DefaultRewardArt": "",
+        "DefaultButtonArt": "",
+        "Offers": [
+          {
+            "OfferID": "offer.roll.1",
+            "DisplayName": "ROLL FOR REWARDS",
+            "Subtitle": "Claim each step to unlock the next.",
+            "IsTimed": true,
+            "StartUtc": "2026-09-15 08:08",
+            "DurationHours": 24,
+            "BackgroundArt": "FlickGhostOfferBG",
+            "TopBarArt": "FlickGhostOfferTop",
+            "RewardArt": "",
+            "ButtonArt": "FlickGhostOfferButton",
+            "CompletionText": "COMPLETE ALL STEPS TO UNLOCK {0}!",
+            "CompletionReward": {
+              "RewardID": "reward.skin.flick.ghost",
+              "Amount": 1
+            },
+            "Steps": [
+              {
+                "SoldIn": "Free",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 500
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Gems",
+                "Price": 80,
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 25
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Free",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 750
+                  },
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 15
+                  }
+                ]
+              },
+              {
+                "SoldIn": "RealMoney",
+                "PriceTier": 2,
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 60
+                  },
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 2500
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.gems",
+                    "Amount": 25
+                  },
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 500
+                  }
+                ]
+              },
+              {
+                "SoldIn": "RealMoney",
+                "PriceTier": 3,
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.gems",
+                    "Amount": 300
+                  },
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 120
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Gems",
+                "Price": 450,
+                "Rewards": [
+                  {
+                    "RewardID": "reward.lootbox.common",
+                    "Amount": 2
+                  }
+                ]
+              },
+              {
+                "SoldIn": "RealMoney",
+                "PriceTier": 5,
+                "Rewards": [
+                  {
+                    "RewardID": "reward.hero.glint",
+                    "Amount": 1
+                  },
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 6000
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "OfferID": "offer.roll.2",
+            "DisplayName": "SPACE RUN",
+            "Subtitle": "Claim each step to unlock the next.",
+            "IsTimed": true,
+            "StartUtc": "2026-09-15 11:52",
+            "DurationHours": 1,
+            "BackgroundArt": "GuySuperSpaceBG",
+            "TopBarArt": "GuySuperSpaceTop",
+            "RewardArt": "",
+            "ButtonArt": "GuySuperSpaceButton",
+            "CompletionText": "COMPLETE ALL STEPS TO UNLOCK {0}!",
+            "CompletionReward": {
+              "RewardID": "reward.skin.guy.superspace",
+              "Amount": 1
+            },
+            "Steps": [
+              {
+                "SoldIn": "Free",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 300
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 10
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Gems",
+                "Price": 150,
+                "Rewards": [
+                  {
+                    "RewardID": "reward.lootbox.common",
+                    "Amount": 1
+                  }
+                ]
+              },
+              {
+                "SoldIn": "RealMoney",
+                "PriceTier": 3,
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 1500
+                  },
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 40
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "OfferID": "ro.test.1",
+            "DisplayName": "SPACE BINGE",
+            "Subtitle": "Watch videos and unlock rewards",
+            "IsTimed": true,
+            "StartUtc": "2026-09-15 11:55",
+            "DurationHours": 48,
+            "BackgroundArt": "GuySuperSpaceBG",
+            "TopBarArt": "GuySuperSpaceTop",
+            "ButtonArt": "GuySuperSpaceButton",
+            "CompletionText": "COMPLETE ALL STEPS TO UNLOCK {0}!",
+            "CompletionReward": {
+              "RewardID": "reward.skin.guy.space",
+              "Amount": 1
+            },
+            "Steps": [
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 50
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 5
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 75
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.gems",
+                    "Amount": 10
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 100
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 15
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 150
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "OfferID": "offer.testro.1",
+            "DisplayName": "SPACE BINGE",
+            "Subtitle": "Watch videos and unlock rewards",
+            "IsTimed": true,
+            "StartUtc": "2026-09-17 08:00",
+            "DurationHours": 24,
+            "BackgroundArt": "GuySuperSpaceBG",
+            "TopBarArt": "GuySuperSpaceTop",
+            "ButtonArt": "GuySuperSpaceButton",
+            "CompletionText": "COMPLETE ALL STEPS TO UNLOCK {0}!",
+            "CompletionReward": {
+              "RewardID": "reward.skin.guy.space",
+              "Amount": 1
+            },
+            "Steps": [
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 50
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 5
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 75
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.gems",
+                    "Amount": 10
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 100
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.cards",
+                    "Amount": 15
+                  }
+                ]
+              },
+              {
+                "SoldIn": "Ad",
+                "Rewards": [
+                  {
+                    "RewardID": "reward.currency.coins",
+                    "Amount": 150
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "payloadHash": "f3694a1f0a83a5f5",
+      "startsAt": "2026-09-17T08:00:00.000Z",
+      "endsAt": "2026-09-18T08:00:00.000Z",
+      "liveops": {
+        "category": "monetization",
+        "opensAt": "2026-09-17T08:00:00.000Z",
+        "sourceUrl": "https://docs.google.com/spreadsheets/d/1xck3C_wolW7XK3g6ed7O2ktqbEFgGbFh5WSLsDZMa1Y/edit?gid=570226268#gid=570226268",
+        "subjectId": "offer.testro.1"
+      },
+      "state": "scheduled",
+      "createdAt": "2026-09-15T13:25:56.012Z",
+      "createdBy": "back office",
+      "history": [
+        {
+          "at": "2026-09-15T13:25:56.275Z",
+          "action": "created",
+          "ok": true,
+          "message": "Scheduled for 2026-09-17T08:00:00.000Z."
         }
       ]
     }
