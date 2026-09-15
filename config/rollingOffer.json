@@ -124,7 +124,7 @@
       "OfferID": "offer.roll.2",
       "DisplayName": "SPACE RUN",
       "Subtitle": "Claim each step to unlock the next.",
-      "IsTimed": false,
+      "IsTimed": true,
       "BackgroundArt": "GuySuperSpaceBG",
       "TopBarArt": "GuySuperSpaceTop",
       "RewardArt": "",
@@ -177,7 +177,9 @@
             }
           ]
         }
-      ]
+      ],
+      "StartUtc": "2026-09-15 11:52",
+      "DurationHours": 1
     },
     {
       "OfferID": "ro.test.1",
