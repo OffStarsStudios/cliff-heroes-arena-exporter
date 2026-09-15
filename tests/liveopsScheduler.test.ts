@@ -454,3 +454,54 @@ describe('the heartbeat retiring ended runs', () => {
     expect(liveOffers().Offers).toHaveLength(1);
   });
 });
+
+describe('deleting a booking from the calendar', () => {
+  const booking = (state_: string, subjectId = 'offer.old.r20260901') => ({
+    id: `sch_${state_}`,
+    domain: 'rollingOffer',
+    settingKey: OFFERS_KEY,
+    environmentId: ENV,
+    label: 'Old offer',
+    state: state_,
+    startsAt: '2026-09-01T00:00:00.000Z',
+    endsAt: '2026-09-03T00:00:00.000Z',
+    payload: rollingOfferJson,
+    liveops: { category: 'monetization', opensAt: '2026-09-01T00:00:00.000Z', subjectId },
+    history: [],
+  });
+
+  it('erases a finished booking and keeps its run ID from ever being minted again', async () => {
+    // Booked before the register existed, so only the booking remembered its ID.
+    state.store.entries = [booking('completed')];
+    const result = await scheduler.deleteEntry('sch_completed');
+    expect(result.ok).toBe(true);
+    expect(state.store.entries).toEqual([]);
+    expect(state.store.mintedRunIds).toEqual(['offer.old.r20260901']);
+    expect(state.published).toEqual([]);
+  });
+
+  it('erases a booking still to come without publishing anything', async () => {
+    const { entry } = await book();
+    const result = await scheduler.deleteEntry(entry.id);
+    expect(result.ok).toBe(true);
+    expect(state.store.entries).toEqual([]);
+    expect(state.published).toEqual([]);
+
+    const again = await book();
+    expect(again.entry.liveops.subjectId).toBe('offer.spacebinge.r20990310b');
+  });
+
+  it('refuses a running booking, which has to be ended first', async () => {
+    state.store.entries = [booking('active')];
+    const result = await scheduler.deleteEntry('sch_active');
+    expect(result.ok).toBe(false);
+    expect(state.store.entries).toHaveLength(1);
+  });
+
+  it('refuses a core config window, which keeps its history', async () => {
+    state.store.entries = [{ ...booking('completed'), liveops: null, domain: 'shop' }];
+    const result = await scheduler.deleteEntry('sch_completed');
+    expect(result.ok).toBe(false);
+    expect(state.store.entries).toHaveLength(1);
+  });
+});
