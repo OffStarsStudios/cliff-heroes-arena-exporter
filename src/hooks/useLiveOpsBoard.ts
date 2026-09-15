@@ -5,6 +5,7 @@ import {
   LIVEOPS_DOMAINS,
   LIVEOPS_FEATURES,
   boardEvents,
+  RETIRE_AFTER_DAYS,
   isInGame,
   type BoardEvent,
   type LiveOpsDomain,
@@ -112,8 +113,8 @@ export function useLiveOpsBoard(environmentId: string, domain?: LiveOpsDomain): 
               ? `Remove "${event.name}" from ${feature.settingKey} in ${where}? It is taken out of the list for good, and players' progress on it is dropped on their next launch.${players}`
               : `Remove "${event.name}" from ${where}? The off state is published in its place.${players}`
             : feature.unit === 'list'
-              ? `End "${event.name}" now in ${where}? Its window is closed, so it leaves the menu on players' next launch. It stays listed, so their progress is kept.${players}`
-              : `End "${event.name}" now in ${where}? The off state is published, so the ${feature.noun} leaves the game on players' next launch. Progress is kept if the same ${feature.noun} is published again.${players}`;
+              ? `End "${event.name}" now in ${where}? Its window is closed, so it leaves the menu on players' next launch. It stays listed for ${RETIRE_AFTER_DAYS} days, then is retired - a re-run is a new run, starting everyone fresh.${players}`
+              : `End "${event.name}" now in ${where}? The off state is published, so the ${feature.noun} leaves the game on players' next launch.${players}`;
       if (!window.confirm(question)) return false;
 
       setBusyKey(event.key);

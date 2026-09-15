@@ -750,6 +750,68 @@
   grid-column: span 2;
 }
 
+/* A named group of fields: a fieldset, so the name is announced with every
+   field in it, drawn like the disclosures beside it. */
+.formgroup {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  min-width: 0;
+  padding: 10px 12px 12px;
+}
+
+.formgroup__legend {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.formgroup__caption {
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 2px 0 0;
+  padding-top: 10px;
+  text-transform: uppercase;
+}
+
+.formgroup:disabled .field__note {
+  opacity: 0.7;
+}
+
+/* Four pictures: across the modal when there is room, two by two when not. */
+.artgrid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.field__required {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* An address under a picker: one line, the rest on hover. */
+.field__note--clip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field__note--warn {
+  color: var(--warn);
+}
+
+input[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
 /* A label and the one action that belongs to it, on the same line - the action
    is where the sentence explaining the field used to be. */
 .field__labelrow {

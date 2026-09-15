@@ -77,6 +77,7 @@ npm run build && npm start
 | `npm run typecheck` | TypeScript only |
 | `npm run check:graph` | Cross-config validation over the payloads in `config/` |
 | `npm run audit:live` | Diff every Google Sheet against what ConfigCat is serving |
+| `npm run sync:offer-art` | Check the offer art library against the game's `Offers` addressable group (`-- --write` to update it) |
 
 ## Using it
 
@@ -571,10 +572,9 @@ without opening ConfigCat:
   empty ID, so nobody's progress is rolled - publishing the same season again picks
   it back up.
 - An **offer** ends by **closing its window** and staying listed. The client hides an
-  offer outside its window, keeps its progress while it is listed, and ignores a list
-  with no offers at all - so closing works for the last offer too, where removing it
-  would leave it running. An offer that has run can then be **removed** from the list,
-  which is what retires its progress.
+  offer outside its window and ignores a list with no offers at all - so closing works
+  for the last offer too, where removing it would leave it running. It is **retired**
+  (taken out of the list) seven days after its window closed, or sooner by **Remove**.
 
 Ending checks the event against what the page last showed: if it changed in ConfigCat
 in the meantime, the end is refused rather than done blind. The booking that was
@@ -585,6 +585,34 @@ payload players read, so saving a new end time, a new start, evergreen on or off
 config reloaded from its sheet publishes straight away. For a rolling offer the change
 is merged into the offers live at that moment. Renaming a booked event, or changing
 its note or category, publishes nothing.
+
+**Every run is a new ID.** The game files a player's progress under the event's ID and
+keeps it while that ID is served, so republishing an ID resumes every player where they
+left off - prize claimed and all. So a sheet, or the season header, names a **base ID**
+(`offer.spacebinge`, `pass.season2`), and each run goes out as the base plus the UTC day
+it opens: `offer.spacebinge.r20260917`. A second run of one base on the same day gets a
+letter (`r20260917b`). The run key is decided once - when the event is booked, or when a
+page publishes a base with no run of it in the game - and kept: moving a run's dates,
+reloading its sheet or changing its art is the same run, and players keep their place.
+Publishing from a feature's page changes the run that is in the game if there is one,
+and starts a new run otherwise, including when an ended run of that base is still listed.
+Two runs of one base cannot overlap. IDs from before run keys are their own base.
+
+**Ended runs are retired after seven days.** A run is never coming back under its ID,
+so its progress is only weight. The heartbeat looks once an hour at what every
+environment is serving and takes out every offer whose window closed seven or more days
+ago - booked or published directly - keeping the last one listed, since the client
+ignores an empty list. The week is there so a real-money step bought in a run's last
+minutes can still be granted when the app next opens.
+
+**An offer's text and art are set in the back office**, on the event - from the calendar
+or the offer's Events tab - or on the offer's page: display name, subtitle, completion
+text, and the four pictures (background, top bar, prize, menu button). The pictures are
+picked from the **offer art library**, generated from the game's `Offers` addressable
+group (`npm run sync:offer-art`); a name the library does not have is flagged, not
+replaced. The completion text may only use `{0}` - the client formats it with
+`string.Format`, and any other brace stops the offer page drawing. Changing the text or
+art of a running offer publishes straight away, without the sheet.
 
 **The event's dates are the one answer for its window.** A season's `StartUtc` and
 `DurationDays` and an offer's `StartUtc` and `DurationHours` are written from the
@@ -607,8 +635,10 @@ disagree about what an event is. Each feature answers six questions about its pa
 | `withWindow` | Write an event's window into the payload. |
 | `endedNow` | Take one event out of the game now. |
 | `withoutPart` | Take one event out of the payload altogether. |
+| `withSubjectId` | Put the same event out under another ID - how a run gets its run key. |
 
-plus `unit` - `whole` when the payload is one event (two bookings always collide, and
+plus, where they apply, `presentationOf` / `withPresentation` (text and art set on the
+event) and `retiredBy` (ended events retired from a list), plus `unit` - `whole` when the payload is one event (two bookings always collide, and
 an off state is required), `list` when each entry is one (events run side by side) -
 and `evergreen`, whether an event may have no end. Then add the exporter to
 `LIVEOPS_EXPORTERS`, give its analysis a `subject` naming the event its sheet
@@ -628,10 +658,14 @@ feature's page, **Schedule it** opens the same form with the config the page alr
 built and checked. What is booked is a **snapshot**: editing the sheet afterwards does
 not change a booked event. The link is kept as provenance.
 
+The form shows the **Published ID** before anything is saved: for a new event, the base
+its config names plus the day it opens; for an existing one, the run it already has.
+For a rolling offer it also asks **what players see** - the text and the art.
+
 Publishing a season from its page whose start is in the future warns first: the
-client shows a pass as soon as it is published, whatever its start, and a new Season
-ID rolls every player's progress on their next launch - so publishing next season
-early ends this one early. Schedule it instead.
+client shows a pass as soon as it is published, whatever its start, and a new run
+rolls every player's progress on their next launch - so publishing next season early
+ends this one early. Schedule it instead.
 
 There are no preview hours. Events booked before they were removed still carry theirs,
 and the calendar still draws their preview slice.

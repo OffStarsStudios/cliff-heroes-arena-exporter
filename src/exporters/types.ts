@@ -91,6 +91,8 @@ export interface ControlsPanelProps<TSettings> {
 export interface ExporterControls<TSettings> {
   /** Step title, e.g. "Set the season window". */
   title: string;
+  /** The title in the event form, where the event owns some of these fields and they are not shown. */
+  eventTitle?: string;
   /** Step subtitle. */
   hint: string;
   /** Shown above the fields: why these are here and not in the sheet. */

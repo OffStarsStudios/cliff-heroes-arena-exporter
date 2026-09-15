@@ -1,7 +1,15 @@
-import { offerInKeyOrder } from '../../server/liveopsFeatures.mjs';
+import {
+  baseOf,
+  checkPresentation,
+  emptyPresentation,
+  hasRunKey,
+  offerInKeyOrder,
+  type Presentation,
+} from '../../server/liveopsFeatures.mjs';
 import { findColumn, sheetHeaders } from './columns';
 import { CURRENCY_NAMES, SHOP_SOLD_IN, isCurrencySoldIn, resolveSoldIn } from './currencies';
 import { resolveLookup } from './lookups';
+import { ART_FIELDS, artNamed } from './offerArt';
 import { cellText, isBlank, isBlankRow, parseNumber } from './normalize';
 import { PRICE_TIERS, isPriceTier, nearestPriceTiers } from './priceTiers';
 import type {
@@ -36,6 +44,12 @@ import type {
  * and how long it runs come from the live ops event that books it, for the same
  * reason the battle pass season header does - one answer rather than two that
  * have to be kept agreeing.
+ *
+ * **Nor is what players see of it.** The title, the subtitle, the completion
+ * line and the four pictures are set in the back office, on the event or on
+ * this page: a re-run with new art is a decision about that run, and the art
+ * can only be picked from what the game has. The sheet is the chain and its
+ * prize, under a *base* ID that each run adds its own run key to.
  */
 
 /* ------------------------------------------------------------- settings -- */
@@ -56,6 +70,14 @@ export interface RollingOfferSchedule {
   defaultRewardArt: string;
   defaultButtonArt: string;
   /**
+   * The offer's text and art, as typed on this page.
+   *
+   * Null when a live ops event owns them: the event form sets them and the
+   * server writes them in, so the config built from the sheet leaves them blank
+   * rather than holding a second answer.
+   */
+  presentation: Presentation | null;
+  /**
    * Every offer currently live, in order. This one is merged into them by ID;
    * the rest are carried through untouched.
    *
@@ -75,6 +97,7 @@ export const EMPTY_SCHEDULE: RollingOfferSchedule = {
   defaultTopBarArt: '',
   defaultRewardArt: '',
   defaultButtonArt: '',
+  presentation: emptyPresentation(),
   others: [],
 };
 
@@ -91,6 +114,7 @@ export function validateSchedule(schedule: RollingOfferSchedule): Issue[] {
         'The offers live in ConfigCat have not been read yet, so this offer cannot be merged into them - publishing without them would retire every one. Re-check once ConfigCat is reachable.',
     });
   }
+  if (schedule.presentation !== null) issues.push(...presentationIssues(schedule.presentation));
   if (!schedule.isTimed) return issues;
 
   if (schedule.startUtc.trim() === '') {
@@ -116,15 +140,47 @@ export function validateSchedule(schedule: RollingOfferSchedule): Issue[] {
   return issues;
 }
 
+/**
+ * What is wrong with an offer's text and art.
+ *
+ * The rules that can break the page are errors, shared with the server so a
+ * booking is held to them too. A picture the art library does not list is a
+ * warning: the library is synced from the game by hand, and a picture added
+ * since is a normal thing to be ahead of it.
+ */
+export function presentationIssues(presentation: Presentation): Issue[] {
+  const issues: Issue[] = checkPresentation(presentation).map((message) => ({
+    severity: 'error',
+    code: 'rollingoffer-presentation-invalid',
+    message,
+  }));
+  for (const { field, label } of ART_FIELDS) {
+    const name = presentation[field];
+    if (name !== '' && artNamed(name) === null) {
+      issues.push({
+        severity: 'warning',
+        code: 'rollingoffer-art-unknown',
+        message: `The ${label.toLowerCase()} "${name}" is not in the offer art library, so the game may draw nothing there. Run npm run sync:offer-art if it was added since.`,
+      });
+    }
+  }
+  return issues;
+}
+
 /* ------------------------------------------------------------ the offer -- */
 
 /** The Offer tab's rows, by the label in its first column. */
-const OFFER_FIELDS = [
-  'Offer ID',
+const OFFER_FIELDS = ['Base ID', 'Completion Reward', 'Completion Amount'] as const;
+
+type OfferField = (typeof OFFER_FIELDS)[number];
+
+/** Older spellings of a row, read as the field they became. */
+const OFFER_ALIASES: Record<string, OfferField> = { 'offer id': 'Base ID' };
+
+/** Rows that moved to the back office. Still read, so a sheet that has them can say so, and never used. */
+const MOVED_FIELDS = [
   'Display Name',
   'Subtitle',
-  'Completion Reward',
-  'Completion Amount',
   'Completion Text',
   'Background Art',
   'Top Bar Art',
@@ -132,10 +188,8 @@ const OFFER_FIELDS = [
   'Button Art',
 ] as const;
 
-type OfferField = (typeof OFFER_FIELDS)[number];
-
-/** IDs the client reads verbatim; the convention is `offer.<name>`. */
-const ID_PATTERN = /^offer\.[a-z0-9]+(\.[a-z0-9]+)+$/;
+/** Base IDs follow `offer.<name>`; each run adds `.r<date>` to it. */
+const ID_PATTERN = /^offer\.[a-z0-9]+(\.[a-z0-9]+)*$/;
 
 /**
  * Reads the key/value Offer tab.
@@ -153,7 +207,22 @@ function readOffer(sheet: RawSheet, issues: Issue[]): Partial<Record<OfferField,
     const label = cellText(row[0] ?? null);
     if (label === null) continue;
 
-    const field = OFFER_FIELDS.find((candidate) => candidate.toLowerCase() === label.toLowerCase());
+    const moved = MOVED_FIELDS.find((candidate) => candidate.toLowerCase() === label.toLowerCase());
+    if (moved !== undefined) {
+      if (cellText(row[1] ?? null) !== null) {
+        issues.push({
+          severity: 'warning',
+          code: 'rollingoffer-field-moved',
+          message: `"${moved}" on the "${sheet.name}" tab is ignored: it is set in the back office now, on the event or on this page. Delete the row.`,
+          sheetRow: r + 1,
+        });
+      }
+      continue;
+    }
+
+    const field =
+      OFFER_FIELDS.find((candidate) => candidate.toLowerCase() === label.toLowerCase()) ??
+      OFFER_ALIASES[label.toLowerCase()];
     if (field === undefined) continue;
     if (seen.has(field)) {
       issues.push({
@@ -229,20 +298,28 @@ export function transformRollingOffer(input: RollingOfferTransformInput): Rollin
   issues.push(...validateSchedule(schedule));
 
   const fields = readOffer(input.offer, issues);
-  const offerId = fields['Offer ID'] ?? '';
+  // The base the sheet names. Each run goes out as this plus a run key, which
+  // the back office adds when the run is booked or published.
+  const offerId = fields['Base ID'] ?? '';
   const where = offerId === '' ? `the "${input.offer.name}" tab` : `"${offerId}"`;
 
   if (offerId === '') {
     issues.push({
       severity: 'error',
       code: 'rollingoffer-id-missing',
-      message: 'The offer has no ID. It is what a player’s progress is filed under, so it cannot be blank.',
+      message: 'The offer has no Base ID. Each run goes out under it plus the day it opens, so it cannot be blank.',
+    });
+  } else if (hasRunKey(offerId)) {
+    issues.push({
+      severity: 'error',
+      code: 'rollingoffer-id-run-key',
+      message: `${where} already ends in a run key. Give the base, ${baseOf(offerId)}: the back office adds the run key, so a re-run never picks up an old run's progress.`,
     });
   } else if (!ID_PATTERN.test(offerId)) {
     issues.push({
       severity: 'warning',
       code: 'rollingoffer-id-format',
-      message: `${where} does not follow the offer.<name> pattern (lowercase letters and digits). Progress is filed under the exact ID.`,
+      message: `${where} does not follow the offer.<name> pattern (lowercase letters, digits and dots).`,
     });
   }
 
@@ -473,29 +550,24 @@ export function transformRollingOffer(input: RollingOfferTransformInput): Rollin
 
   /* ---------------------------------------------------------- the merge -- */
 
+  // Blank when the event owns the text and art: the server writes them in.
+  const presentation = schedule.presentation ?? emptyPresentation();
   const offer: RollingOffer = {
     OfferID: offerId,
-    DisplayName: fields['Display Name'] ?? '',
-    Subtitle: fields.Subtitle ?? '',
+    DisplayName: presentation.DisplayName,
+    Subtitle: presentation.Subtitle,
     IsTimed: schedule.isTimed,
   } as RollingOffer;
   if (schedule.isTimed) {
     offer.StartUtc = schedule.startUtc.trim();
     offer.DurationHours = schedule.durationHours;
   }
-  for (const [key, field] of [
-    ['BackgroundArt', 'Background Art'],
-    ['TopBarArt', 'Top Bar Art'],
-    ['RewardArt', 'Reward Art'],
-    ['ButtonArt', 'Button Art'],
-  ] as const) {
-    const value = fields[field];
-    if (value !== undefined && value !== '') offer[key] = value;
+  for (const { field } of ART_FIELDS) {
+    if (presentation[field] !== '') offer[field] = presentation[field];
   }
   // The live payload puts the text before the reward, and key order is what a
   // published diff is read against.
-  const completionText = fields['Completion Text'];
-  if (completionText !== undefined && completionText !== '') offer.CompletionText = completionText;
+  if (presentation.CompletionText !== '') offer.CompletionText = presentation.CompletionText;
   if (completion !== undefined) offer.CompletionReward = completion;
   offer.Steps = steps;
 

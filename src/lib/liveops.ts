@@ -8,6 +8,7 @@ import {
   type EventCategory,
   type LiveOpsDomain,
   type PayloadEvent,
+  type Presentation,
 } from '../../server/liveopsFeatures.mjs';
 
 /**
@@ -33,11 +34,26 @@ export {
   EVENT_CATEGORIES,
   LIVEOPS_DOMAINS,
   LIVEOPS_FEATURES,
+  PRESENTATION_FIELDS,
   REASON_TEXT,
+  RETIRE_AFTER_DAYS,
+  baseOf,
+  checkPresentation,
+  emptyPresentation,
   featureFor,
+  hasRunKey,
+  mintRunId,
   phaseOfWindow,
+  runIdFor,
 } from '../../server/liveopsFeatures.mjs';
-export type { EventCategory, LiveOpsDomain, LiveOpsFeature, PayloadEvent } from '../../server/liveopsFeatures.mjs';
+export type {
+  EventCategory,
+  LiveOpsDomain,
+  LiveOpsFeature,
+  PayloadEvent,
+  Presentation,
+  PresentationField,
+} from '../../server/liveopsFeatures.mjs';
 
 export function isLiveOpsDomain(domain: DomainId): domain is LiveOpsDomain {
   return (LIVEOPS_DOMAINS as readonly string[]).includes(domain);
@@ -100,6 +116,10 @@ export interface LiveOpsBlock {
    * feature whose payload is wholly its own, like the battle pass.
    */
   subjectId?: string | null;
+  /** The ID the sheet names, without the run key the booking added. Sent back by the server; never sent to it. */
+  baseId?: string | null;
+  /** What a booked offer shows players - its text and art - read back off the payload it will publish. */
+  presentation?: Presentation | null;
 }
 
 /** Preview hours, for the entries old enough to have them. */

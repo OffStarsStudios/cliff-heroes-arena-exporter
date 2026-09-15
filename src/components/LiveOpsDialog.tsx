@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { actionsFor, phaseChip } from './EventBoard';
 import { EventConfigSource, type EventConfig } from './EventConfigSource';
 import { Icon } from './Icon';
+import { OfferDetailsFields } from './OfferDetailsFields';
 import { Portal } from './Portal';
 import { Segmented } from './Segmented';
 import { environmentName, isLiveEnvironment } from '../domains/account';
@@ -11,12 +12,18 @@ import {
   EVENT_CATEGORIES,
   LIVEOPS_DOMAINS,
   LIVEOPS_FEATURES,
+  PRESENTATION_FIELDS,
+  RETIRE_AFTER_DAYS,
+  checkPresentation,
   durationLabel,
+  emptyPresentation,
   eventDuration,
   isLingering,
+  mintRunId,
   type BoardEvent,
   type EventCategory,
   type LiveOpsDomain,
+  type Presentation,
 } from '../lib/liveops';
 import {
   ScheduleRejected,
@@ -52,6 +59,22 @@ interface LiveOpsDialogProps {
   onClose: () => void;
   /** Something changed; the caller reloads. */
   onDone: () => void;
+  /**
+   * Every event ID already in use here, so the ID a new run will get can be
+   * shown exactly - a second run of an offer on the same day gets a letter.
+   */
+  takenIds?: readonly string[];
+}
+
+/** An event's text and art, read off its own part of the payload. */
+function presentationFrom(part: unknown): Presentation {
+  const presentation = emptyPresentation();
+  if (part === null || typeof part !== 'object') return presentation;
+  for (const field of PRESENTATION_FIELDS) {
+    const value = (part as Record<string, unknown>)[field];
+    if (typeof value === 'string') presentation[field] = value;
+  }
+  return presentation;
 }
 
 /** Next whole hour: events open on the hour, not at 18:07. */
@@ -91,6 +114,7 @@ export function LiveOpsDialog({
   preset = null,
   onClose,
   onDone,
+  takenIds = [],
 }: LiveOpsDialogProps) {
   const entry = event?.entry ?? null;
   // The booking that still runs this event. A finished booking is history: the
@@ -132,11 +156,31 @@ export function LiveOpsDialog({
   );
   const [confirmed, setConfirmed] = useState(false);
 
+  /**
+   * What players see of it - for a feature that has text and art of its own.
+   *
+   * The event owns these, the way it owns its dates: they open on what the
+   * event already publishes (live, or booked), or on what the page that sent it
+   * here typed, and are written into the config when it is saved.
+   */
+  const hasPresentation = typeof feature.presentationOf === 'function';
+  const initialPresentation = useMemo<Presentation>(() => {
+    if (event?.live != null) return presentationFrom(event.live.part);
+    if (entry?.liveops.presentation != null) return entry.liveops.presentation;
+    if (preset !== null && presetEvent !== null) {
+      return feature.presentationOf?.(preset.payload, presetEvent.subjectId) ?? emptyPresentation();
+    }
+    return emptyPresentation();
+  }, [event, entry, preset, presetEvent, feature]);
+  const [presentation, setPresentation] = useState<Presentation>(initialPresentation);
+  useEffect(() => setPresentation(initialPresentation), [initialPresentation]);
+
   const [config, setConfig] = useState<EventConfig>({
     payload: preset?.payload ?? null,
     sourceUrl: preset?.sourceUrl ?? entry?.liveops.sourceUrl ?? null,
     blocker: mode === 'new' && preset === null ? 'Load the sheet this event publishes.' : null,
     subjectId: preset?.subjectId ?? event?.subjectId ?? null,
+    baseId: preset?.subjectId ?? event?.subjectId ?? null,
     touched: false,
   });
 
@@ -216,6 +260,20 @@ export function LiveOpsDialog({
 
   /** A new config only goes with the save when somebody asked for one. */
   const sendConfig = mode === 'new' || config.touched;
+  const presentationChanged =
+    hasPresentation && PRESENTATION_FIELDS.some((field) => presentation[field] !== initialPresentation[field]);
+  const presentationProblems = hasPresentation && editable ? checkPresentation(presentation) : [];
+
+  /**
+   * The ID players' progress is filed under. A new event is a new run: the base
+   * the sheet names, plus the day it opens. An existing one keeps the run it has.
+   */
+  const publishedId =
+    mode === 'new'
+      ? config.baseId === null
+        ? null
+        : mintRunId(config.baseId, opensIso ?? now, takenIds)
+      : (event?.subjectId ?? null);
   const windowMoved = event !== null && (opensIso !== event.startsAt || endsIso !== event.endsAt);
   const detailsChanged =
     owning !== null && (label !== owning.label || note !== (owning.note ?? '') || category !== owning.liveops.category);
@@ -238,6 +296,7 @@ export function LiveOpsDialog({
           endsAt: endsIso,
           startNow,
           liveops: { category, opensAt: opensIso, sourceUrl: config.sourceUrl, subjectId: config.subjectId },
+          presentation: hasPresentation ? presentation : undefined,
         });
         if (startNow && started !== null && !started.ok) {
           setStartedLate(started.detail ?? 'the publish was refused');
@@ -258,6 +317,7 @@ export function LiveOpsDialog({
             sourceUrl: config.sourceUrl ?? owning.liveops.sourceUrl ?? null,
             subjectId: config.subjectId ?? owning.liveops.subjectId ?? null,
           },
+          presentation: presentationChanged ? presentation : undefined,
         });
       } else if (event !== null && event.subjectId !== null) {
         // In the game with nobody's booking behind it: republish it as it is,
@@ -268,6 +328,7 @@ export function LiveOpsDialog({
           subjectId: event.subjectId,
           payload: sendConfig && config.payload !== null ? config.payload : undefined,
           window: windowMoved ? { startsAt: opensIso, endsAt: endsIso } : undefined,
+          presentation: presentationChanged ? presentation : undefined,
           expected: event.live?.part,
           reason: 'Changed from the live ops calendar.',
         });
@@ -291,7 +352,7 @@ export function LiveOpsDialog({
             }`
           : `End "${event.name}" now in ${where}? ${
               feature.unit === 'list'
-                ? "Its window is closed, so it leaves the menu on players' next launch. Their progress is kept."
+                ? `Its window is closed, so it leaves the menu on players' next launch. It stays listed for ${RETIRE_AFTER_DAYS} days, then is retired.`
                 : `The off state is published, so the ${feature.noun} leaves the game on players' next launch.`
             }`;
     if (!window.confirm(question)) return;
@@ -324,12 +385,14 @@ export function LiveOpsDialog({
   const datesReady =
     (mode === 'live' && noEnd) || (opensIso !== null && (endsIso === null ? noEnd : duration !== null));
 
-  const changed = mode === 'new' || windowMoved || detailsChanged || (config.touched && config.payload !== null);
+  const changed =
+    mode === 'new' || windowMoved || detailsChanged || presentationChanged || (config.touched && config.payload !== null);
   const ready =
     editable &&
     datesReady &&
     (mode !== 'new' || offReady) &&
     label.trim() !== '' &&
+    presentationProblems.length === 0 &&
     (mode === 'new' ? config.payload !== null : !config.touched || config.blocker === null) &&
     changed &&
     (!targetsLive || confirmed);
@@ -340,7 +403,9 @@ export function LiveOpsDialog({
       : 'Both dates are needed, with the end after the start.'
     : label.trim() === ''
       ? 'Give the event a name.'
-      : config.blocker !== null && (mode === 'new' || config.touched)
+      : presentationProblems.length > 0
+        ? presentationProblems[0]
+        : config.blocker !== null && (mode === 'new' || config.touched)
         ? config.blocker
         : mode === 'new' && !offReady
           ? 'Record the off state first.'
@@ -350,7 +415,13 @@ export function LiveOpsDialog({
 
   const goesLiveNow = mode === 'live' || (mode === 'new' && startNow);
   const primaryLabel =
-    mode === 'new' ? (startNow ? 'Publish now' : 'Schedule it') : mode === 'live' && (windowMoved || config.touched) ? 'Publish changes' : 'Save changes';
+    mode === 'new'
+      ? startNow
+        ? 'Publish now'
+        : 'Schedule it'
+      : mode === 'live' && (windowMoved || config.touched || presentationChanged)
+        ? 'Publish changes'
+        : 'Save changes';
   const actions = event === null ? [] : actionsFor(event);
   const chip = event === null ? null : phaseChip(event);
 
@@ -443,21 +514,40 @@ export function LiveOpsDialog({
               )}
             </div>
 
-            <label className="field">
-              <span className="field__label">Name</span>
-              <input
-                type="text"
-                value={label}
-                placeholder={feature.unit === 'list' ? 'Weekend roll offer' : 'Season 2 battle pass'}
-                // An unbooked event's name is its display name in the payload,
-                // which is the config's business, not the calendar's.
-                disabled={!editable || (event !== null && owning === null)}
-                onChange={(change) => setLabel(change.target.value)}
-              />
-              {event?.subjectId !== null && event?.subjectId !== undefined && (
-                <span className="field__note mono">{event.subjectId}</span>
-              )}
-            </label>
+            <div className="grid-2">
+              <label className="field">
+                <span className="field__label">Event name</span>
+                <input
+                  type="text"
+                  value={label}
+                  placeholder={feature.unit === 'list' ? 'Weekend roll offer' : 'Season 2 battle pass'}
+                  // An unbooked event's name is its display name in the payload,
+                  // which is the config's business, not the calendar's.
+                  disabled={!editable || (event !== null && owning === null)}
+                  onChange={(change) => setLabel(change.target.value)}
+                />
+                <span className="field__note">
+                  {event !== null && owning === null ? 'Its display name, since nobody booked it.' : 'On the calendar only.'}
+                </span>
+              </label>
+
+              {/* Read-only, and drawn as such: it is worked out, never typed. */}
+              <div className="field">
+                <span className="field__label" id="liveops-published-id">
+                  Published ID
+                </span>
+                <output className="field__readout mono" aria-labelledby="liveops-published-id">
+                  {publishedId ?? '-'}
+                </output>
+                <span className="field__note">
+                  {mode === 'new'
+                    ? publishedId === null
+                      ? 'Set once the config is loaded: its base ID plus the day it opens.'
+                      : 'A new run, so every player starts it from the beginning.'
+                    : 'Players keep their progress in this run while it is changed.'}
+                </span>
+              </div>
+            </div>
 
             {mode === 'new' && (
               <Segmented
@@ -516,6 +606,15 @@ export function LiveOpsDialog({
                 </output>
               </div>
             </div>
+
+            {hasPresentation && (
+              <OfferDetailsFields
+                value={presentation}
+                onChange={setPresentation}
+                disabled={!editable}
+                showAllErrors={mode !== 'new'}
+              />
+            )}
 
             {editable &&
               (preset !== null && !config.touched ? (

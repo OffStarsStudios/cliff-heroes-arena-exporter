@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { NumberInput } from './NumberInput';
 import type { ControlsPanelProps } from '../exporters/types';
 import {
   CONFIRMED_SKIP_CURRENCY,
@@ -9,6 +10,7 @@ import {
   type BattlePassSeason,
 } from '../lib/battlePass';
 import { fetchLiveConfig } from '../lib/liveConfig';
+import { baseOf } from '../lib/liveops';
 import type { ShopConfig } from '../lib/types';
 
 /**
@@ -84,10 +86,11 @@ function productsFrom(payload: unknown): ShopProductOption[] {
     }));
 }
 
+/** The live season's base ID - what the next season is numbered from, without the run key. */
 function seasonIdFrom(payload: unknown): string | null {
   if (payload === null || typeof payload !== 'object') return null;
   const id = (payload as Record<string, unknown>).SeasonID;
-  return typeof id === 'string' && id.trim() !== '' ? id.trim() : null;
+  return typeof id === 'string' && id.trim() !== '' ? baseOf(id.trim()) : null;
 }
 
 /**
@@ -208,9 +211,9 @@ export function SeasonPanel({ value, onChange, environmentId, fromEvent }: Contr
             <label
               className="field__label"
               htmlFor={`${ids}-id`}
-              title="Player progress is stored against this ID, so a new season needs a new one."
+              title="Each run goes out as this ID plus the day it opens - pass.season2.r20260917 - so every run starts players fresh, even a re-run of the same season."
             >
-              Season ID
+              Base ID
             </label>
             {suggestedId !== null && value.seasonId !== suggestedId && (
               <button
@@ -285,16 +288,13 @@ export function SeasonPanel({ value, onChange, environmentId, fromEvent }: Contr
               <label className="field__label" htmlFor={`${ids}-duration`} title="Whole days.">
                 Duration, days
               </label>
-              <input
+              <NumberInput
                 id={`${ids}-duration`}
-                type="number"
                 min={1}
-                step={1}
-                value={Number.isFinite(value.durationDays) && value.durationDays !== 0 ? value.durationDays : ''}
-                onChange={(event) => {
-                  const parsed = Number.parseInt(event.target.value, 10);
-                  onChange({ ...value, durationDays: Number.isNaN(parsed) ? 0 : parsed });
-                }}
+                integer
+                blankWhen={0}
+                value={value.durationDays}
+                onChange={(durationDays) => onChange({ ...value, durationDays })}
               />
             </div>
           </>
@@ -304,16 +304,13 @@ export function SeasonPanel({ value, onChange, environmentId, fromEvent }: Contr
           <label className="field__label" htmlFor={`${ids}-tokens`} title="How much progress one tier costs.">
             Tokens per tier
           </label>
-          <input
+          <NumberInput
             id={`${ids}-tokens`}
-            type="number"
             min={1}
-            step={1}
-            value={Number.isFinite(value.tokensPerTier) && value.tokensPerTier !== 0 ? value.tokensPerTier : ''}
-            onChange={(event) => {
-              const parsed = Number.parseInt(event.target.value, 10);
-              onChange({ ...value, tokensPerTier: Number.isNaN(parsed) ? 0 : parsed });
-            }}
+            integer
+            blankWhen={0}
+            value={value.tokensPerTier}
+            onChange={(tokensPerTier) => onChange({ ...value, tokensPerTier })}
           />
         </div>
 
@@ -394,16 +391,12 @@ export function SeasonPanel({ value, onChange, environmentId, fromEvent }: Contr
           <label className="field__label" htmlFor={`${ids}-skip-cost`} title="Zero for a free skip.">
             Skip cost
           </label>
-          <input
+          <NumberInput
             id={`${ids}-skip-cost`}
-            type="number"
             min={0}
-            step={1}
-            value={Number.isFinite(value.skipTierCost) ? value.skipTierCost : ''}
-            onChange={(event) => {
-              const parsed = Number.parseInt(event.target.value, 10);
-              onChange({ ...value, skipTierCost: Number.isNaN(parsed) ? 0 : parsed });
-            }}
+            integer
+            value={value.skipTierCost}
+            onChange={(skipTierCost) => onChange({ ...value, skipTierCost })}
           />
         </div>
 

@@ -126,6 +126,7 @@ async function serveCreate(req, res) {
       endsAt: body.endsAt ?? null,
       createdBy: body.createdBy,
       liveops: body.liveops ?? null,
+      presentation: body.presentation ?? undefined,
       startNow: body.startNow === true,
     });
     if (!result.ok) {
@@ -157,6 +158,7 @@ async function serveUpdate(req, res) {
       endsAt: body.endsAt,
       payload: body.payload,
       liveops: body.liveops ?? undefined,
+      presentation: body.presentation ?? undefined,
     });
     if (!result.ok) {
       sendJson(res, 422, { error: 'This window was not changed.', problems: result.problems });
@@ -213,6 +215,8 @@ async function serveEventPublish(req, res) {
       subjectId: body.subjectId,
       payload: body.payload ?? undefined,
       window: body.window ?? undefined,
+      presentation: body.presentation ?? undefined,
+      resolveRun: body.resolveRun === true,
       expected: body.expected,
       reason: typeof body.reason === 'string' ? body.reason : undefined,
     });
@@ -223,6 +227,7 @@ async function serveEventPublish(req, res) {
     sendJson(res, 200, {
       result: result.result,
       response: result.response,
+      subjectId: result.subjectId,
       entry: result.entry ? { ...result.entry, payload: undefined } : null,
     });
   } catch (error) {

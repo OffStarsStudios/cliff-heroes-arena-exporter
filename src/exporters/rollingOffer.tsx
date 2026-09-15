@@ -1,5 +1,6 @@
 import { RollingOfferPreviewTable } from '../components/RollingOfferPreviewTable';
 import { OfferWindowPanel } from '../components/OfferWindowPanel';
+import { PRESENTATION_FIELDS, emptyPresentation, type Presentation } from '../lib/liveops';
 import { buildLookup } from '../lib/lookups';
 import {
   EMPTY_SCHEDULE,
@@ -12,6 +13,17 @@ import { serializeRollingOfferConfig, validateRollingOfferConfig } from '../lib/
 import type { RollingOffer, RollingOfferConfig, RollingOfferPreviewRow } from '../lib/types';
 import { rewardRegistryFromLookup } from '../workspace/registry';
 import type { ExporterDefinition } from './types';
+
+/** A stored panel's text and art, field by field, with anything missing left blank. */
+function revivePresentation(stored: unknown): Presentation {
+  const presentation = emptyPresentation();
+  if (stored === null || typeof stored !== 'object') return presentation;
+  for (const field of PRESENTATION_FIELDS) {
+    const value = (stored as Record<string, unknown>)[field];
+    if (typeof value === 'string') presentation[field] = value;
+  }
+  return presentation;
+}
 
 /**
  * Reads the schedule out of anything shaped like a published
@@ -50,6 +62,7 @@ function scheduleFrom(payload: unknown): RollingOfferSchedule | null {
     defaultTopBarArt: text('DefaultTopBarArt'),
     defaultRewardArt: text('DefaultRewardArt'),
     defaultButtonArt: text('DefaultButtonArt'),
+    presentation: revivePresentation(stored.presentation),
     others: offers,
   };
 }
@@ -74,6 +87,7 @@ function reviveSchedule(stored: unknown): RollingOfferSchedule | null {
     defaultTopBarArt: record.defaultTopBarArt ?? '',
     defaultRewardArt: record.defaultRewardArt ?? '',
     defaultButtonArt: record.defaultButtonArt ?? '',
+    presentation: revivePresentation(record.presentation),
     others: null,
   };
 }
@@ -118,8 +132,9 @@ export const ROLLING_OFFER_EXPORTER: ExporterDefinition<
   title: 'Rolling offers',
   lead: (
     <>
-      One workbook per offer. The offer is merged into the live schedule by its ID, and the whole
-      list is published &mdash; the client takes it whole, so an offer left out is an offer retired.
+      One workbook per offer, under a base ID. Each run goes out as the base plus the day it opens, so a re-run
+      starts every player fresh. It is merged into the live schedule and the whole list is published &mdash; the
+      client takes it whole, so an offer left out is an offer retired.
     </>
   ),
   icon: 'zap',
@@ -130,7 +145,7 @@ export const ROLLING_OFFER_EXPORTER: ExporterDefinition<
     {
       key: 'offer',
       label: 'Offer',
-      note: 'The key/value tab: ID, names, completion reward and art.',
+      note: 'The key/value tab: the base ID and the completion reward.',
     },
     {
       key: 'steps',
@@ -145,11 +160,12 @@ export const ROLLING_OFFER_EXPORTER: ExporterDefinition<
   ],
   autoSelect: autoSelectRollingOfferSheets,
   controls: {
-    title: 'Set the window',
-    hint: 'When it runs, and what it joins',
+    title: 'Offer details and window',
+    eventTitle: 'Window and live offers',
+    hint: 'What players see, when it runs, and what it joins',
     note: (
       <>
-        Set here, not on the sheet: an offer&rsquo;s dates are a decision about a live run, and when
+        Set here, not on the sheet: an offer&rsquo;s title, art and dates are decisions about a live run. When
         it is booked on the calendar the event owns them outright.
       </>
     ),
@@ -160,12 +176,14 @@ export const ROLLING_OFFER_EXPORTER: ExporterDefinition<
     Panel: OfferWindowPanel,
     validate: validateSchedule,
     summary: (schedule) => {
-      if (!schedule.isTimed) return 'Evergreen';
-      if (schedule.startUtc.trim() === '') return 'No start set';
+      const name = schedule.presentation?.DisplayName.trim() ?? '';
+      const titled = (text: string) => (name === '' ? text : `${name}, ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
+      if (!schedule.isTimed) return titled('Evergreen');
+      if (schedule.startUtc.trim() === '') return titled('No start set');
       const days = schedule.durationHours / 24;
       const length =
         days >= 1 && Number.isInteger(days) ? `${days} day${days === 1 ? '' : 's'}` : `${schedule.durationHours}h`;
-      return `${schedule.startUtc} for ${length}`;
+      return titled(`${schedule.startUtc} for ${length}`);
     },
   },
   eventSettings(base, { opensAt, endsAt }) {
@@ -173,11 +191,13 @@ export const ROLLING_OFFER_EXPORTER: ExporterDefinition<
     // the booking is the answer. An event with no end is an evergreen offer -
     // which is also how an offer with no window is drawn on the calendar.
     const hours = opensAt === null || endsAt === null ? NaN : (Date.parse(endsAt) - Date.parse(opensAt)) / 3600000;
+    // The event form sets the text and art, and the server writes them in.
     if (opensAt === null || !Number.isFinite(hours) || hours <= 0) {
-      return { ...base, isTimed: false, startUtc: '', durationHours: 0 };
+      return { ...base, presentation: null, isTimed: false, startUtc: '', durationHours: 0 };
     }
     return {
       ...base,
+      presentation: null,
       isTimed: true,
       startUtc: toClientUtc(opensAt),
       // Hundredths of an hour, the same rounding the scheduler writes into the

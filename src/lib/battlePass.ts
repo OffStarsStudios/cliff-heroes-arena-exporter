@@ -1,3 +1,4 @@
+import { baseOf, hasRunKey } from '../../server/liveopsFeatures.mjs';
 import { resolveColumns, type ColumnSpec } from './columns';
 import { resolveLookup } from './lookups';
 import { cellText, isBlank, isBlankRow, parseNumber } from './normalize';
@@ -184,7 +185,12 @@ export function validateSeason(season: BattlePassSeason): Issue[] {
   if (seasonId === '') {
     error(
       'battlepass-season-id-missing',
-      'The season has no ID. Player progress is stored against it, so it is also what ends one season and starts the next.',
+      'The season has no base ID. Each run goes out as this ID plus the day it opens, and player progress is stored against that.',
+    );
+  } else if (hasRunKey(seasonId)) {
+    error(
+      'battlepass-season-id-run-key',
+      `"${seasonId}" already ends in a run key. Give the base ID, ${baseOf(seasonId)}: the back office adds the run key when the season is booked or published, so a re-run never picks up an old run's progress.`,
     );
   } else if (!SEASON_ID_PATTERN.test(seasonId)) {
     warn(

@@ -49,7 +49,17 @@ import {
   subjectOfEntry,
   windowForEvent,
 } from './liveops.mjs';
-import { REASON_TEXT, featureFor, readPayload } from './liveopsFeatures.mjs';
+import {
+  LIVEOPS_FEATURES,
+  REASON_TEXT,
+  RETIRE_AFTER_DAYS,
+  baseOf,
+  checkPresentation,
+  featureFor,
+  mintRunId,
+  readPayload,
+  runIdFor,
+} from './liveopsFeatures.mjs';
 import { applyPublish, hashValue, toStoredValue } from './publish.mjs';
 
 export const SCHEDULE_PATH = 'schedules/schedules.json';
@@ -201,9 +211,11 @@ function overlaps(a, b) {
  * only two bookings of the *same* offer collide.
  */
 function slotOf(entry) {
-  const base = `${entry.domain} ${entry.environmentId}`;
-  if (!isLiveOpsEntry(entry) || featureFor(entry.domain)?.unit !== 'list') return base;
-  return `${base} ${subjectOfEntry(entry) ?? ''}`;
+  const setting = `${entry.domain} ${entry.environmentId}`;
+  if (!isLiveOpsEntry(entry) || featureFor(entry.domain)?.unit !== 'list') return setting;
+  // By base, not by run: two runs of one offer at once would be two identical
+  // buttons on the menu, which is a clash even though their IDs differ.
+  return `${setting} ${baseOf(subjectOfEntry(entry)) ?? ''}`;
 }
 
 function record(entry, action, ok, message) {
@@ -229,6 +241,69 @@ function alignToWindow(entry) {
   if (aligned === null) return;
   entry.payload = aligned;
   entry.payloadHash = hashValue(toStoredValue(aligned));
+}
+
+/**
+ * Every event ID a new run must not reuse: whatever this feature has booked in
+ * this environment, in any state, and whatever is live. The live read is best
+ * effort - the schedule alone still catches every run booked here.
+ */
+async function takenIds(feature, domain, environmentId, store) {
+  const ids = store.entries
+    .filter((entry) => entry.domain === domain && entry.environmentId === environmentId)
+    .map((entry) => subjectOfEntry(entry))
+    .filter((id) => id !== null);
+  try {
+    const live = await readLive(environmentId, feature.settingKey);
+    ids.push(...feature.eventsIn(live.payload).map((event) => event.subjectId));
+  } catch {
+    // Unreadable is not a reason to refuse a booking.
+  }
+  return ids;
+}
+
+/**
+ * Puts a new booking out under a run ID of its own.
+ *
+ * The sheet names the base; the run key is the day it opens. Written onto the
+ * payload and the booking together, once - after this, moving the booking's
+ * dates never renames it, because that would hand its players a fresh chain
+ * halfway through the run.
+ */
+async function assignRun(entry, store) {
+  const feature = featureFor(entry.domain);
+  const incoming = subjectOfEntry(entry);
+  if (feature === null || incoming === null) return [];
+  const runId = mintRunId(incoming, entry.liveops.opensAt, await takenIds(feature, entry.domain, entry.environmentId, store));
+  if (runId === null) return [`Every run ID for ${baseOf(incoming)} on that day is taken.`];
+  const renamed = feature.withSubjectId(entry.payload, incoming, runId);
+  if (renamed === null) return [`The config does not carry the ${feature.noun} "${incoming}".`];
+  entry.payload = renamed;
+  entry.payloadHash = hashValue(toStoredValue(renamed));
+  entry.liveops = { ...entry.liveops, baseId: baseOf(incoming), subjectId: runId };
+  return [];
+}
+
+/**
+ * Brings a config a sheet built - which names the base - onto the run it is
+ * for. Null when the sheet is a different event altogether.
+ */
+function ontoRun(feature, payload, runId) {
+  const base = baseOf(runId);
+  const from =
+    feature.partOf(payload, base) !== null ? base : feature.partOf(payload, runId) !== null ? runId : null;
+  return from === null ? null : feature.withSubjectId(payload, from, runId);
+}
+
+/** Writes an offer's text and art into a payload, or says why not. */
+function presented(feature, payload, subjectId, presentation) {
+  if (presentation === undefined || typeof feature.withPresentation !== 'function') return { payload, problems: [] };
+  const problems = checkPresentation(presentation);
+  if (problems.length > 0) return { payload, problems };
+  const next = feature.withPresentation(payload, subjectId, presentation);
+  return next === null
+    ? { payload, problems: [`The config does not carry the ${feature.noun} "${subjectId}".`] }
+    : { payload: next, problems: [] };
 }
 
 /* ------------------------------------------------------------ guardrails -- */
@@ -381,12 +456,26 @@ export async function createEntry(input) {
   };
   // Written down on the booking, so every later reader - the heartbeat, the
   // calendar - asks the same question of the same answer.
+  const eventProblems = [];
   if (liveops !== null) {
     entry.liveops = { ...liveops, subjectId: subjectOfEntry(entry) };
+    eventProblems.push(...(await assignRun(entry, store)));
+    const feature = featureFor(entry.domain);
+    if (eventProblems.length === 0 && typeof feature?.presentationOf === 'function') {
+      // Text and art from the form, or else what the config already carries -
+      // held to the same rules either way, since players see it all the same.
+      const presentation =
+        input.presentation ?? feature.presentationOf(entry.payload, entry.liveops.subjectId) ?? undefined;
+      const outcome = presented(feature, entry.payload, entry.liveops.subjectId, presentation);
+      eventProblems.push(...outcome.problems);
+      entry.payload = outcome.payload;
+      entry.payloadHash = hashValue(toStoredValue(outcome.payload));
+    }
     alignToWindow(entry);
   }
 
   const problems = [
+    ...eventProblems,
     ...checkEntry(entry, { entries: store.entries, hasDefault, hasOff, now }),
     ...(liveops === null ? [] : checkEvent(entry.liveops, { startsAt: entry.startsAt, endsAt: entry.endsAt }, entry.domain)),
   ];
@@ -437,10 +526,13 @@ export async function updateEntry(input) {
   }
 
   const started = current.state === 'active';
+  // The run a booking was given is its identity. A sheet reloaded onto it names
+  // the base, and that is not a reason to rename the run.
+  const runId = isLiveOpsEntry(current) ? subjectOfEntry(current) : null;
   const liveops =
     current.liveops === null || current.liveops === undefined
       ? null
-      : { ...current.liveops, ...(input.liveops ?? {}) };
+      : { ...current.liveops, ...(input.liveops ?? {}), ...(runId === null ? {} : { subjectId: runId }) };
 
   const endsAt = input.endsAt === undefined ? current.endsAt : input.endsAt;
   const window =
@@ -448,15 +540,31 @@ export async function updateEntry(input) {
       ? { startsAt: input.startsAt ?? current.startsAt, endsAt }
       : windowForEvent(liveops, endsAt ?? null);
 
-  const payload = input.payload === undefined ? current.payload : input.payload;
-  const payloadChanged = input.payload !== undefined && hashValue(toStoredValue(payload)) !== current.payloadHash;
+  const feature = liveops === null ? null : featureFor(current.domain);
+  let payload = current.payload;
+  if (input.payload !== undefined) {
+    payload = feature === null || runId === null ? input.payload : ontoRun(feature, input.payload, runId);
+    if (payload === null) {
+      return {
+        ok: false,
+        problems: [
+          `That config is not ${baseOf(runId)}, which is what this event runs. Book a new event for a different ${feature.noun}.`,
+        ],
+      };
+    }
+  }
+  if (feature !== null && runId !== null && input.presentation !== undefined) {
+    const outcome = presented(feature, payload, runId, input.presentation);
+    if (outcome.problems.length > 0) return { ok: false, problems: outcome.problems };
+    payload = outcome.payload;
+  }
+  const payloadChanged = hashValue(toStoredValue(payload)) !== current.payloadHash;
 
   if (started && liveops !== null && (payloadChanged || window.endsAt !== current.endsAt || window.startsAt !== current.startsAt)) {
-    const subjectId = subjectOfEntry(current);
     const published = await publishLiveEvent({
       domain: current.domain,
       environmentId: current.environmentId,
-      subjectId,
+      subjectId: runId,
       payload: payloadChanged ? payload : undefined,
       window: { startsAt: liveops.opensAt, endsAt: window.endsAt },
       reason: `Live event "${input.label ?? current.label ?? current.id}" edited from the back office.`,
@@ -704,22 +812,58 @@ export async function endLiveEvent({ domain, environmentId, subjectId, mode = 'e
  * running beside this one are carried through as they are now rather than as
  * they were when the sheet was loaded.
  */
-export async function publishLiveEvent({ domain, environmentId, subjectId, payload, window, expected, reason, details }) {
+export async function publishLiveEvent({
+  domain,
+  environmentId,
+  subjectId: requested,
+  payload: incoming,
+  window,
+  presentation,
+  resolveRun = false,
+  expected,
+  reason,
+  details,
+  now = Date.now(),
+}) {
   const feature = featureFor(domain);
   if (feature === null) return { ok: false, problems: [`"${domain}" is not a live ops feature.`] };
-  if (typeof subjectId !== 'string' || subjectId === '') {
+  if (typeof requested !== 'string' || requested === '') {
     return { ok: false, problems: ['Which event to change is required.'] };
   }
-  if (payload === undefined && window === undefined) {
+  if (incoming === undefined && window === undefined && presentation === undefined) {
     return { ok: false, problems: ['Nothing to change: send a new window, a new config, or both.'] };
   }
 
   const live = await readLive(environmentId, feature.settingKey);
+
+  // A feature's page names the base, and the run is worked out here, against
+  // what is live at this moment: the run in the game if there is one, a new
+  // run if not. The calendar names the exact run it opened.
+  let subjectId = requested;
+  if (resolveRun) {
+    const ownEvent = incoming === undefined ? undefined : feature.eventsIn(incoming).find((event) => baseOf(event.subjectId) === baseOf(requested));
+    const taken = gitAvailable() ? await takenIds(feature, domain, environmentId, (await loadSchedule()).store) : [];
+    const run = runIdFor(feature, {
+      baseId: requested,
+      live: live.payload,
+      opensAt: window?.startsAt ?? ownEvent?.startsAt ?? now,
+      now,
+      taken,
+    });
+    if (run.id === null) return { ok: false, problems: [`Every run ID for ${baseOf(requested)} on that day is taken.`] };
+    subjectId = run.id;
+  }
+
   if (changedSince(feature, live.payload, subjectId, expected)) {
     return {
       ok: false,
       problems: ['That event changed in ConfigCat after you opened it. Refresh and look at it again before changing it.'],
     };
+  }
+
+  const payload = incoming === undefined ? undefined : ontoRun(feature, incoming, subjectId);
+  if (incoming !== undefined && payload === null) {
+    return { ok: false, problems: [`The config does not carry the ${feature.noun} "${baseOf(subjectId)}".`] };
   }
 
   let next = payload === undefined ? live.payload : feature.withPart(live.payload, payload, subjectId);
@@ -728,6 +872,11 @@ export async function publishLiveEvent({ domain, environmentId, subjectId, paylo
   }
   if (payload === undefined && feature.partOf(next, subjectId) === null) {
     return { ok: false, problems: [REASON_TEXT['not-listed']] };
+  }
+  if (presentation !== undefined) {
+    const outcome = presented(feature, next, subjectId, presentation);
+    if (outcome.problems.length > 0) return { ok: false, problems: outcome.problems };
+    next = outcome.payload;
   }
   if (window !== undefined) {
     if (window.endsAt === null && !feature.evergreen) {
@@ -761,7 +910,7 @@ export async function publishLiveEvent({ domain, environmentId, subjectId, paylo
     details,
     message: window === undefined ? 'Config republished by hand.' : `Republished by hand to run until ${window.endsAt ?? 'further notice'}.`,
   });
-  return { ok: true, result, response, entry: updated[0] ?? null };
+  return { ok: true, result, response, subjectId, entry: updated[0] ?? null };
 }
 
 /* ----------------------------------------------------------------- tick -- */
@@ -909,8 +1058,7 @@ async function startWindow(entry, at) {
  * still what this window put there: a human fix published over a scheduled
  * promotion must not be undone by the promotion expiring.
  */
-async function endWindow(entry, store, becauseOf) {
-  const now = Date.now();
+async function endWindow(entry, store, becauseOf, now = Date.now()) {
   const liveOps = isLiveOpsEntry(entry);
   const feature = liveOps ? featureFor(entry.domain) : null;
   const subjectId = liveOps ? subjectOfEntry(entry) : undefined;
@@ -959,6 +1107,26 @@ async function endWindow(entry, store, becauseOf) {
   } else if (successor !== null) {
     fallback = feature.withPart(readPayload(liveText), successor.payload, subjectOfEntry(successor));
     target = `the "${successor.label || successor.id}" event`;
+  } else if (feature !== null && feature.unit === 'list') {
+    // An offer run that ends stays listed with its window closed. It is never
+    // coming back under this ID, but it is kept for a week, so a real-money step
+    // bought in its last minutes can still be granted when the app next opens -
+    // and then retired by the heartbeat's own sweep.
+    const outcome = feature.endedNow(readPayload(liveText), subjectId, { now });
+    if (outcome.payload === null) {
+      const done = outcome.reason === 'already-ended' || outcome.reason === 'not-listed';
+      record(
+        entry,
+        'ended',
+        done,
+        outcome.reason === 'already-ended'
+          ? `Its window closed on its own. It stays listed for ${RETIRE_AFTER_DAYS} days, then is retired.`
+          : REASON_TEXT[outcome.reason] ?? `Nothing was changed (${outcome.reason}).`,
+      );
+      return { reverted: done, reason: outcome.reason };
+    }
+    fallback = outcome.payload;
+    target = `"${subjectId}" with its window closed, retired ${RETIRE_AFTER_DAYS} days after it ended`;
   } else if (feature !== null) {
     const off = feature.unit === 'whole' ? await loadOff(entry.domain) : null;
     const outcome = feature.withoutPart(readPayload(liveText), subjectId, { off });
@@ -1016,7 +1184,62 @@ async function endWindow(entry, store, becauseOf) {
  * from what should be live, so running it twice a minute or once a day are
  * both correct, only differently prompt.
  */
-export async function tick({ now = Date.now() } = {}) {
+/**
+ * Every environment this console publishes to. Mirrors `src/domains/account.ts`;
+ * `CONFIGCAT_ENVIRONMENT_IDS` (comma separated) overrides it.
+ */
+export const ENVIRONMENT_IDS = process.env.CONFIGCAT_ENVIRONMENT_IDS
+  ? process.env.CONFIGCAT_ENVIRONMENT_IDS.split(',').map((id) => id.trim()).filter(Boolean)
+  : ['08ded206-347f-4a76-8b9d-e895d64f72f2', '08ded206-3493-4e4a-8887-4352505a075f'];
+
+/** How often the heartbeat looks for ended runs to retire. Hourly is plenty for a seven-day grace. */
+const RETIRE_SWEEP_MS = 3600 * 1000;
+
+/**
+ * Retires ended runs `RETIRE_AFTER_DAYS` after their window closed.
+ *
+ * Read off what ConfigCat is serving rather than off the schedule, so an offer
+ * published straight from its page is retired the same way a booked one is.
+ * Each environment is its own publish, so one that cannot be written this hour
+ * does not hold the others back; it is tried again on the next sweep.
+ */
+async function retireEndedRuns(store, now, environments) {
+  const actions = [];
+  for (const feature of Object.values(LIVEOPS_FEATURES)) {
+    if (typeof feature.retiredBy !== 'function') continue;
+    const targets = new Set([
+      ...environments,
+      ...store.entries.filter((entry) => entry.domain === feature.domain).map((entry) => entry.environmentId),
+    ]);
+    for (const environmentId of targets) {
+      try {
+        const live = await readLive(environmentId, feature.settingKey);
+        const { payload, retired } = feature.retiredBy(live.payload, { now });
+        if (payload === null || retired.length === 0) continue;
+        const { result } = await publishPayload({
+          environmentId,
+          payload,
+          settingKey: feature.settingKey,
+          gitPath: GIT_PATHS[feature.domain],
+          baselineHash: live.hash,
+          note: `Retired ${retired.join(', ')}: ended more than ${RETIRE_AFTER_DAYS} days ago, and a re-run is a new ID.`,
+        });
+        const ok = result.status === 'written' || result.status === 'unchanged';
+        for (const entry of store.entries) {
+          if (entry.domain === feature.domain && entry.environmentId === environmentId && retired.includes(subjectOfEntry(entry))) {
+            record(entry, 'retired', ok, ok ? `Retired from ${feature.settingKey}.` : result.message ?? 'The retirement did not go through.');
+          }
+        }
+        actions.push({ domain: feature.domain, environmentId, action: 'retire', ok, detail: retired.join(', ') });
+      } catch (error) {
+        actions.push({ domain: feature.domain, environmentId, action: 'retire', ok: false, detail: error?.message ?? String(error) });
+      }
+    }
+  }
+  return actions;
+}
+
+export async function tick({ now = Date.now(), environments = ENVIRONMENT_IDS } = {}) {
   if (!gitAvailable()) {
     return {
       ok: false,
@@ -1049,7 +1272,7 @@ export async function tick({ now = Date.now() } = {}) {
     if (entry.state !== 'active') continue;
     if (entry.endsAt === null || Date.parse(entry.endsAt) > now) continue;
     try {
-      const outcome = await endWindow(entry, store, 'reached its end time');
+      const outcome = await endWindow(entry, store, 'reached its end time', now);
       // A revert that was deliberately skipped - no default, or a human change
       // over the top - is a finished window, not a failed one. Both are
       // recorded in the history and neither is worth retrying.
@@ -1098,6 +1321,15 @@ export async function tick({ now = Date.now() } = {}) {
     const started = await startWindow(winner, new Date(now));
     actions.push({ id: winner.id, domain: winner.domain, action: 'start', ok: started.ok, detail: started.detail });
     changed = true;
+  }
+
+  // Last, so a run ended by this tick is judged on the value it just wrote.
+  const lastSweep = store.lastRetireSweepAt === undefined || store.lastRetireSweepAt === null ? NaN : Date.parse(store.lastRetireSweepAt);
+  if (Number.isNaN(lastSweep) || now - lastSweep >= RETIRE_SWEEP_MS) {
+    const retirements = await retireEndedRuns(store, now, environments);
+    store.lastRetireSweepAt = new Date(now).toISOString();
+    if (retirements.some((action) => action.ok)) changed = true;
+    actions.push(...retirements);
   }
 
   store.lastTickAt = new Date(now).toISOString();
@@ -1216,7 +1448,7 @@ export async function describeSchedule({ now = Date.now() } = {}) {
       history: entry.history ?? [],
       // Present only on windows booked from the live ops calendar. Its absence
       // is what tells every reader this is an ordinary config window.
-      liveops: entry.liveops ? { ...entry.liveops, subjectId: subjectOfEntry(entry) } : null,
+      liveops: entry.liveops ? describeEvent(entry) : null,
       phase: entry.liveops ? phaseOf(entry, now) : null,
       startsInMs: start - now,
       endsInMs: end === null ? null : end - now,
@@ -1240,6 +1472,21 @@ export async function describeSchedule({ now = Date.now() } = {}) {
     branch: branchName(SCHEDULE_TARGET),
     now: new Date(now).toISOString(),
   };
+}
+
+/**
+ * A booking's live ops block as the calendar reads it. The text and art an
+ * offer was booked with ride along, because the list is sent without payloads
+ * and the form has to open a booked offer on what it will publish.
+ */
+function describeEvent(entry) {
+  const subjectId = subjectOfEntry(entry);
+  const feature = featureFor(entry.domain);
+  const presentation =
+    subjectId === null || typeof feature?.presentationOf !== 'function'
+      ? null
+      : feature.presentationOf(entry.payload, subjectId);
+  return { ...entry.liveops, subjectId, baseId: subjectId === null ? null : baseOf(subjectId), presentation };
 }
 
 /** The full payload of one window, for the diff view. */

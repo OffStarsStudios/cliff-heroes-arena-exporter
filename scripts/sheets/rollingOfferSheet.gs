@@ -12,13 +12,19 @@
  * the shape anyone should have to author in. A single sheet holding every offer
  * would mean two people laying out next month's run are editing the same rows.
  * Each offer is written on its own, and the console merges it into the live
- * list by OfferID when it publishes.
+ * list when it publishes.
  *
- * **What is deliberately not here.** An offer's dates are not in the sheet.
- * Whether it is timed, when it opens and how long it runs are the live ops
- * event's to say - they are booked on the calendar, the same way the battle
- * pass season window is - so there is one answer to "when is this live" rather
- * than two that have to be kept agreeing. The sheet is the content.
+ * **A base ID, not the ID.** Players' progress is filed under the published ID,
+ * and republishing an ID picks up where every player left off. So the sheet
+ * names a base - `offer.spacebinge` - and the console publishes each run as the
+ * base plus the day it opens, `offer.spacebinge.r20260917`: a fresh chain for
+ * everybody, even when the same sheet is run again.
+ *
+ * **What is deliberately not here.** An offer's dates, its title, subtitle,
+ * completion line and art are not in the sheet. They are decisions about one
+ * run - set on the event in the back office, where the art is picked from what
+ * the game has - so there is one answer to each rather than two that have to be
+ * kept agreeing. The sheet is the chain and its prize.
  */
 
 /* ----------------------------------------------------------- vocabulary -- */
@@ -99,16 +105,9 @@ var REWARDS = [
 
 /** The offer header, as label / key / hint. */
 var OFFER_FIELDS = [
-  ['Offer ID', 'OfferID', 'offer.<name>. What progress is filed under - changing it starts a fresh chain.'],
-  ['Display Name', 'DisplayName', 'The title across the top of the page.'],
-  ['Subtitle', 'Subtitle', 'The line under it.'],
+  ['Base ID', 'BaseID', 'offer.<name>. Each run is published as this plus the day it opens, so every run starts players fresh.'],
   ['Completion Reward', 'CompletionReward', 'What finishing the whole chain hands over. Leave empty for a chain that finishes on nothing.'],
   ['Completion Amount', 'CompletionAmount', 'How many. Leave empty to pay what the reward is authored to pay.'],
-  ['Completion Text', 'CompletionText', 'The line along the bottom. {0} is replaced by the completion reward’s name.'],
-  ['Background Art', 'BackgroundArt', 'Under OfferImages/, without the prefix. Empty falls back to the schedule default.'],
-  ['Top Bar Art', 'TopBarArt', 'Under OfferImages/. Empty falls back to the schedule default.'],
-  ['Reward Art', 'RewardArt', 'The prize picture. Empty shows the completion reward’s own art.'],
-  ['Button Art', 'ButtonArt', 'The picture on the offer’s button on the main screen.'],
 ];
 
 var STEP_HEADER = [
@@ -205,9 +204,8 @@ function buildRewards_(book) {
 }
 
 /**
- * The offer header, as a key/value tab rather than a wide row: there are ten
- * fields and most are prose, which reads far better down the page than across
- * it, and it leaves room for each one to carry its own hint.
+ * The offer header, as a key/value tab rather than a wide row, which leaves room
+ * for each field to carry its own hint.
  */
 function buildOffer_(book) {
   var sheet = sheetNamed_(book, 'Offer');
@@ -234,6 +232,14 @@ function buildOffer_(book) {
       .setHelpText('A reward from the Rewards tab. Leave empty for a chain that finishes on nothing.')
       .build());
 
+  // A run key typed here would be doubled by the console's own.
+  sheet.getRange(rowOf.BaseID, 2).setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireFormulaSatisfied('=AND(REGEXMATCH(B' + rowOf.BaseID + ', "^offer\\.[a-z0-9]+(\\.[a-z0-9]+)*$"), NOT(REGEXMATCH(B' + rowOf.BaseID + ', "\\.r[0-9]{8}[a-z]?$")))')
+      .setAllowInvalid(false)
+      .setHelpText('offer.<name>, lowercase, with no run key - the console adds .r<date> to each run.')
+      .build());
+
   sheet.getRange(rowOf.CompletionAmount, 2).setDataValidation(
     SpreadsheetApp.newDataValidation()
       .requireNumberGreaterThan(0)
@@ -248,8 +254,8 @@ function buildOffer_(book) {
   sheet.getRange(footer, 1, 1, 3).merge();
   sheet.getRange(footer, 1)
     .setValue(
-      'The dates are not here on purpose. Whether this offer is timed, when it opens and how long it ' +
-      'runs are set when it is booked on the live ops calendar, so there is one answer rather than two.')
+      'The dates, the title, the subtitle, the completion text and the art are not here on purpose. They are ' +
+      'set on the event in the back office, where the art is picked from what the game has.')
     .setFontColor('#b06000').setBackground('#fef7e0').setWrap(true);
   sheet.setRowHeight(footer, 40);
 }

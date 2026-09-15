@@ -39,8 +39,25 @@ export interface LiveOpsFeature {
   ): Record<string, unknown> | null;
   endedNow(value: unknown, subjectId: string, context: { now: number; off?: unknown }): PartResult;
   withoutPart(value: unknown, subjectId: string, context?: { off?: unknown }): PartResult;
+  withSubjectId(value: unknown, fromId: string, toId: string): Record<string, unknown> | null;
   subjectOf(value: unknown): string | null;
+  /** Present on a feature whose events carry text and art set in the back office. */
+  presentationOf?(value: unknown, subjectId: string | null): Presentation | null;
+  withPresentation?(value: unknown, subjectId: string, presentation: Presentation): Record<string, unknown> | null;
+  /** Present on a feature whose ended events stay listed until they are retired. */
+  retiredBy?(value: unknown, context?: { now?: number; afterDays?: number }): { payload: Record<string, unknown> | null; retired: string[] };
 }
+
+export type PresentationField =
+  | 'DisplayName'
+  | 'Subtitle'
+  | 'CompletionText'
+  | 'BackgroundArt'
+  | 'TopBarArt'
+  | 'RewardArt'
+  | 'ButtonArt';
+
+export type Presentation = Record<PresentationField, string>;
 
 export declare const LIVEOPS_FEATURES: Record<LiveOpsDomain, LiveOpsFeature>;
 export declare const LIVEOPS_DOMAINS: LiveOpsDomain[];
@@ -49,6 +66,18 @@ export declare const ENDING_SOON_HOURS: number;
 export declare const REASON_TEXT: Record<string, string>;
 
 export declare const OFFER_KEY_ORDER: string[];
+export declare const RETIRE_AFTER_DAYS: number;
+export declare const PRESENTATION_FIELDS: PresentationField[];
+
+export declare function baseOf(id: string): string;
+export declare function hasRunKey(id: unknown): boolean;
+export declare function mintRunId(baseId: string, opensAt: string | number | null | undefined, taken?: Iterable<string>): string | null;
+export declare function runIdFor(
+  feature: LiveOpsFeature,
+  context: { baseId: string; live: unknown; opensAt?: string | number | null; now?: number; taken?: string[] },
+): { id: string | null; fresh: boolean };
+export declare function emptyPresentation(): Presentation;
+export declare function checkPresentation(presentation: Partial<Presentation> | null | undefined): string[];
 
 export declare function featureFor(domain: string): LiveOpsFeature | null;
 export declare function offerInKeyOrder<T>(offer: T): T;

@@ -109,6 +109,8 @@ export function ChangeReview({
   const [publishError, setPublishError] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [scheduled, setScheduled] = useState(false);
+  /** The run a live ops publish went out as, which the page could not know until the server picked it. */
+  const [publishedAs, setPublishedAs] = useState<string | null>(null);
 
   const settingKey = SETTING_KEYS[domain];
   const targetsLive = isLiveEnvironment(environmentId);
@@ -154,17 +156,21 @@ export function ChangeReview({
     setPublishing(true);
     setPublishError(null);
     try {
-      // One offer among several is merged into the list on the server, from the
-      // value it reads at that moment. The list on this page was read a while
-      // ago, and publishing it whole would retire any offer that went live since.
-      if (isLiveOpsDomain(domain) && LIVEOPS_FEATURES[domain].unit === 'list' && event?.subjectId != null) {
-        const { response: merged } = await republishEvent({
+      // A live ops event goes through the server, for two reasons. The run: the
+      // sheet names a base, and the server picks the run - the one in the game
+      // if a run of it is live, a new one if not - against what is live at that
+      // moment. And for a list, the merge: the list on this page was read a
+      // while ago, and publishing it whole would retire any offer since.
+      if (isLiveOpsDomain(domain) && event?.subjectId != null) {
+        const { response: merged, subjectId } = await republishEvent({
           domain,
           environmentId,
           subjectId: event.subjectId,
           payload,
+          resolveRun: true,
           reason: `Published ${settingKey} from the back office.`,
         });
+        setPublishedAs(subjectId);
         setResponse(merged);
         setConfirmed(false);
         release.reload();
@@ -364,8 +370,8 @@ export function ChangeReview({
               This season starts {new Date(earlySeason.startsAt).toLocaleString()}, but publishing puts it in the game
               now.
             </strong>{' '}
-            The client shows a pass as soon as it has one, and a new Season ID rolls every player&rsquo;s progress on
-            their next launch. Schedule it to go live at its start instead.
+            The client shows a pass as soon as it has one, and a new run rolls every player&rsquo;s progress on their
+            next launch. Schedule it to go live at its start instead.
           </span>
         </p>
       )}
@@ -385,6 +391,11 @@ export function ChangeReview({
         </p>
       )}
 
+      {response !== null && publishedAs !== null && (
+        <p className="field__note">
+          Published as <span className="mono">{publishedAs}</span>.
+        </p>
+      )}
       {response !== null && <Results response={response} />}
 
       <div className="review__actions">

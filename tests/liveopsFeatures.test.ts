@@ -2,8 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   LIVEOPS_DOMAINS,
   LIVEOPS_FEATURES,
+  baseOf,
+  checkPresentation,
+  emptyPresentation,
   fromClientUtc,
+  hasRunKey,
+  mintRunId,
   phaseOfWindow,
+  runIdFor,
   toClientUtc,
 } from '../server/liveopsFeatures.mjs';
 import battlePassJson from '../config/battlePass.json';
@@ -302,5 +308,67 @@ describe('writing an event window into its payload', () => {
     expect(offer).not.toHaveProperty('StartUtc');
     // Only the one offer moves.
     expect(offerOf(evergreen, 'offer.roll.2')).toEqual(rollingOfferJson.Offers[1]);
+  });
+});
+
+/* ----------------------------------------------------------------- runs -- */
+
+describe('run IDs', () => {
+  it('adds the UTC day a run opens to its base, and strips it back off', () => {
+    expect(mintRunId('offer.spacebinge', '2026-09-17T23:30:00.000Z')).toBe('offer.spacebinge.r20260917');
+    expect(baseOf('offer.spacebinge.r20260917')).toBe('offer.spacebinge');
+    expect(baseOf('offer.spacebinge.r20260917b')).toBe('offer.spacebinge');
+    // An ID from before run keys is its own base.
+    expect(baseOf('offer.roll.1')).toBe('offer.roll.1');
+    expect(hasRunKey('offer.roll.1')).toBe(false);
+  });
+
+  it('never mints an ID already used that day', () => {
+    const taken = ['offer.x.r20260917', 'offer.x.r20260917b'];
+    expect(mintRunId('offer.x', '2026-09-17T09:00:00.000Z', taken)).toBe('offer.x.r20260917c');
+    // Minting from a run ID starts from its base, not a run key on a run key.
+    expect(mintRunId('offer.x.r20260101', '2026-09-17T09:00:00.000Z')).toBe('offer.x.r20260917');
+  });
+
+  it('points a page publish at the run in the game, or at a new run when none is running', () => {
+    const now = Date.parse('2026-09-10T00:00:00.000Z');
+    const live = {
+      Offers: [
+        { OfferID: 'offer.x.r20260901', IsTimed: true, StartUtc: '2026-09-01 00:00', DurationHours: 480 },
+        { OfferID: 'offer.y.r20260801', IsTimed: true, StartUtc: '2026-08-01 00:00', DurationHours: 24 },
+      ],
+    };
+    expect(runIdFor(offers, { baseId: 'offer.x', live, now })).toEqual({ id: 'offer.x.r20260901', fresh: false });
+    expect(runIdFor(offers, { baseId: 'offer.y', live, now })).toEqual({ id: 'offer.y.r20260910', fresh: true });
+  });
+
+  it('renames one offer, dropping a stale copy already listed under the new ID', () => {
+    const page = { Offers: [{ OfferID: 'offer.x.r20260901', DisplayName: 'OLD' }, { OfferID: 'offer.x', DisplayName: 'NEW' }] };
+    const renamed = offers.withSubjectId(page, 'offer.x', 'offer.x.r20260901');
+    expect(renamed?.Offers).toEqual([{ OfferID: 'offer.x.r20260901', DisplayName: 'NEW' }]);
+    expect(pass.withSubjectId(battlePassJson, 'pass.season1', 'pass.season1.r20260901')?.SeasonID).toBe('pass.season1.r20260901');
+    expect(offers.withSubjectId(page, 'offer.missing', 'offer.z')).toBeNull();
+  });
+});
+
+describe('an offer\'s text and art', () => {
+  it('reads and writes the seven fields, leaving empty art out', () => {
+    const presentation = { ...emptyPresentation(), DisplayName: 'NEW', BackgroundArt: 'GuySuperSpaceBG' };
+    const written = offers.withPresentation!(liveOffers, 'offer.roll.1', presentation);
+    const offer = offerOf(written, 'offer.roll.1') as Offer & Record<string, unknown>;
+    expect(offer).toMatchObject({ DisplayName: 'NEW', Subtitle: '', BackgroundArt: 'GuySuperSpaceBG' });
+    expect(offer).not.toHaveProperty('ButtonArt');
+    expect(offers.presentationOf!(written, 'offer.roll.1')).toEqual(presentation);
+    // Still in schema order, with the text where the exporter writes it.
+    expect(Object.keys(offer).slice(0, 3)).toEqual(['OfferID', 'DisplayName', 'Subtitle']);
+  });
+
+  it('allows only {0} in the completion text, which is all string.Format survives', () => {
+    const base = { ...emptyPresentation(), DisplayName: 'X' };
+    expect(checkPresentation({ ...base, CompletionText: 'UNLOCK {0}!' })).toEqual([]);
+    expect(checkPresentation({ ...base, CompletionText: 'A {{literal}} brace' })).toEqual([]);
+    expect(checkPresentation({ ...base, CompletionText: 'UNLOCK {1}' })).toHaveLength(1);
+    expect(checkPresentation({ ...base, CompletionText: 'broken {' })).toHaveLength(1);
+    expect(checkPresentation(emptyPresentation())).toHaveLength(1);
   });
 });
