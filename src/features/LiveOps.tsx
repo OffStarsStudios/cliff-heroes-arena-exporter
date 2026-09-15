@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { EventBoard } from '../components/EventBoard';
 import { Icon } from '../components/Icon';
 import { LiveOpsDialog } from '../components/LiveOpsDialog';
@@ -81,6 +81,8 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
   const upcoming = events.filter((event) => event.phase === 'scheduled').length;
 
   const { from, to } = calendarWindow(range, now, page);
+  // Functional, because a thumb wheel can turn two pages before React renders once.
+  const turnPage = useCallback((step: -1 | 1) => setPage((current) => current + step), []);
 
   /** Features that need an off state and have none cannot book an ending event. */
   const notReady = LIVEOPS_DOMAINS.filter(
@@ -139,6 +141,7 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
                 className="btn btn--sm pager__step"
                 onClick={() => setPage(page - 1)}
                 aria-label={`Previous ${RANGE_UNITS[range]}`}
+                title={`Previous ${RANGE_UNITS[range]} - or scroll sideways on the calendar`}
               >
                 <Icon name="chevron" size={14} className="pager__icon pager__icon--back" />
               </button>
@@ -150,6 +153,7 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
                 className="btn btn--sm pager__step"
                 onClick={() => setPage(page + 1)}
                 aria-label={`Next ${RANGE_UNITS[range]}`}
+                title={`Next ${RANGE_UNITS[range]} - or scroll sideways on the calendar`}
               >
                 <Icon name="chevron" size={14} className="pager__icon pager__icon--forward" />
               </button>
@@ -205,7 +209,17 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
         </p>
       ) : mode === 'calendar' ? (
         <>
-          <LiveOpsGantt events={events} from={from} to={to} now={now} selectedKey={selectedKey} onOpen={open} />
+          <LiveOpsGantt
+            events={events}
+            from={from}
+            to={to}
+            now={now}
+            selectedKey={selectedKey}
+            busyKey={board.busyKey}
+            onOpen={open}
+            onAct={(event, action) => void board.act(event, action)}
+            onPage={turnPage}
+          />
           <Legend />
         </>
       ) : (

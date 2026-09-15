@@ -1797,3 +1797,142 @@ select[aria-invalid='true'] {
   max-height: 180px;
   font-size: 11px;
 }
+
+/* ---------- context menu ----------
+   A right-click menu on a calendar card. Sits above every page surface, and
+   below nothing: it is only ever open while no dialog is. */
+
+.ctxmenu {
+  animation: ctxmenuIn var(--dur-1) var(--ease-out) both;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.08);
+  max-width: 280px;
+  min-width: 200px;
+  padding: var(--space-1);
+  position: fixed;
+  transform-origin: top left;
+  z-index: 60;
+}
+
+@keyframes ctxmenuIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ctxmenu__head {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: var(--space-1);
+  padding: 6px 10px 8px;
+}
+
+.ctxmenu__title {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctxmenu__subtitle {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.ctxmenu__rule {
+  background: var(--border);
+  height: 1px;
+  margin: var(--space-1) 0;
+}
+
+.ctxmenu__item {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
+  text-align: left;
+  transition: background var(--dur-1) ease, color var(--dur-1) ease;
+  width: 100%;
+}
+
+@media (pointer: coarse) {
+  .ctxmenu__item {
+    min-height: 44px;
+  }
+}
+
+.ctxmenu:focus {
+  outline: none;
+}
+
+.ctxmenu__item:hover,
+.ctxmenu__item:focus {
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.ctxmenu__item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.ctxmenu__item:active:not(.ctxmenu__item--disabled) {
+  background: var(--border);
+}
+
+.ctxmenu__icon {
+  color: var(--text-faint);
+  flex: none;
+}
+
+.ctxmenu__label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ctxmenu__item--danger {
+  color: var(--danger);
+}
+
+.ctxmenu__item--danger .ctxmenu__icon {
+  color: var(--danger);
+}
+
+.ctxmenu__item--danger:hover,
+.ctxmenu__item--danger:focus {
+  background: var(--danger-soft);
+}
+
+.ctxmenu__item--disabled,
+.ctxmenu__item--disabled .ctxmenu__icon {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.ctxmenu__item--disabled:hover,
+.ctxmenu__item--disabled:focus {
+  background: var(--surface-sunken);
+}
+
+.ctxmenu__reason {
+  font-size: 11px;
+  font-weight: 400;
+}

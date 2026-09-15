@@ -403,6 +403,7 @@ textarea {
   min-height: 34px;
   padding: 7px 10px;
   text-align: left;
+  text-decoration: none;
   transition: background 0.15s ease, color 0.15s ease;
   width: 100%;
 }
