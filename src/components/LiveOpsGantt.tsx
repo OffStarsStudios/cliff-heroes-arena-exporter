@@ -1,26 +1,19 @@
 import { useMemo } from 'react';
-import { DOMAIN_LABELS, type DomainId } from '../domains/types';
-import {
-  CATEGORY_COLOURS,
-  CATEGORY_LABELS,
-  LIVEOPS_DOMAINS,
-  PHASE_LABELS,
-  layOutBars,
-  ticksFor,
-  type LiveOpsEntry,
-} from '../lib/liveops';
+import { eventColour, phaseChip } from './EventBoard';
+import { DOMAIN_LABELS } from '../domains/types';
+import { CATEGORY_LABELS, LIVEOPS_DOMAINS, layOutBars, ticksFor, type BoardEvent } from '../lib/liveops';
 import { localTime } from '../lib/schedule';
 
 interface LiveOpsGanttProps {
-  events: LiveOpsEntry[];
+  events: BoardEvent[];
   /** Start of the visible range, in ms. */
   from: number;
   /** End of the visible range, in ms. */
   to: number;
   now: number;
-  selectedId: string | null;
+  selectedKey: string | null;
   /** A bar is the event: clicking one opens it, the way a board card does. */
-  onOpen: (entry: LiveOpsEntry) => void;
+  onOpen: (event: BoardEvent) => void;
 }
 
 /**
@@ -29,26 +22,23 @@ interface LiveOpsGanttProps {
  * A gantt rather than a month grid because the question being asked is about
  * overlap and gaps - "is anything running that week", "do these two collide" -
  * and a month grid answers that badly the moment an event crosses a Sunday.
- * Lanes are per feature, not per event, because two events on one feature are
- * exactly the thing the scheduler refuses and the eye should catch first.
  *
  * Everything is laid out in fractions by `layOutBars`, so this component only
  * turns numbers into percentages and never does date arithmetic of its own.
  */
-export function LiveOpsGantt({ events, from, to, now, selectedId, onOpen }: LiveOpsGanttProps) {
+export function LiveOpsGantt({ events, from, to, now, selectedKey, onOpen }: LiveOpsGanttProps) {
   const lanes = useMemo(
     () =>
-      (LIVEOPS_DOMAINS as readonly DomainId[]).map((domain) => ({
+      LIVEOPS_DOMAINS.map((domain) => ({
         domain,
         label: DOMAIN_LABELS[domain],
         bars: layOutBars(
           events.filter((event) => event.domain === domain),
           from,
           to,
-          now,
         ),
       })),
-    [events, from, to, now],
+    [events, from, to],
   );
 
   const ticks = useMemo(() => ticksFor(from, to), [from, to]);
@@ -92,21 +82,23 @@ export function LiveOpsGantt({ events, from, to, now, selectedId, onOpen }: Live
                 />
               ))}
 
-              {lane.bars.length === 0 && <span className="gantt__empty">Nothing scheduled in this range</span>}
+              {lane.bars.length === 0 && <span className="gantt__empty">Nothing running or booked in this range</span>}
 
               {lane.bars.map((bar) => {
-                const colour = CATEGORY_COLOURS[bar.entry.liveops.category];
-                const label = bar.entry.label === '' ? DOMAIN_LABELS[bar.entry.domain] : bar.entry.label;
+                const { event } = bar;
+                const chip = phaseChip(event);
                 return (
                   <button
                     type="button"
-                    key={bar.entry.id}
+                    key={event.key}
                     className={[
                       'gantt__bar',
-                      `gantt__bar--${bar.phase}`,
+                      `gantt__bar--${event.phase}`,
+                      event.category === null ? 'gantt__bar--unbooked' : '',
+                      event.missingLive ? 'gantt__bar--missing' : '',
                       bar.clippedStart ? 'gantt__bar--open-start' : '',
                       bar.clippedEnd ? 'gantt__bar--open-end' : '',
-                      bar.entry.id === selectedId ? 'gantt__bar--selected' : '',
+                      event.key === selectedKey ? 'gantt__bar--selected' : '',
                     ]
                       .filter(Boolean)
                       .join(' ')}
@@ -118,15 +110,18 @@ export function LiveOpsGantt({ events, from, to, now, selectedId, onOpen }: Live
                       // the bar: the config is live but the event is not, and
                       // those two facts have to be visible at once.
                       ['--preview' as string]: `${bar.previewFraction * 100}%`,
-                      ['--event-colour' as string]: colour,
+                      ['--event-colour' as string]: eventColour(event),
                     }}
-                    onClick={() => onOpen(bar.entry)}
-                    title={`${label}\n${CATEGORY_LABELS[bar.entry.liveops.category]} - ${PHASE_LABELS[bar.phase]}\nOpens ${localTime(
-                      bar.entry.liveops.opensAt,
-                    )}\nEnds ${localTime(bar.entry.endsAt)}`}
+                    onClick={() => onOpen(event)}
+                    title={[
+                      event.name,
+                      `${event.category === null ? 'Published directly' : CATEGORY_LABELS[event.category]} - ${chip.label}`,
+                      `Opens ${event.startsAt === null ? 'always on' : localTime(event.startsAt)}`,
+                      `Ends ${event.endsAt === null ? 'never' : localTime(event.endsAt)}`,
+                    ].join('\n')}
                   >
-                    <span className="gantt__bar-label">{label}</span>
-                    <span className="gantt__bar-phase">{PHASE_LABELS[bar.phase]}</span>
+                    <span className="gantt__bar-label">{event.name}</span>
+                    <span className="gantt__bar-phase">{chip.label}</span>
                   </button>
                 );
               })}

@@ -112,7 +112,9 @@ Copy the rolling offer template's shape; it is the reference:
 config is booked as an event, its window - when it opens, how long it runs,
 whether it is timed at all - comes from the event through `eventSettings`, so
 there is one answer rather than two that have to be kept agreeing. Put a note on
-the sheet saying so, or its absence reads as an oversight.
+the sheet saying so, or its absence reads as an oversight. A config that is a live
+ops feature also needs its entry in `LIVEOPS_FEATURES`
+(`server/liveopsFeatures.mjs`) - see *Live ops > Adding a feature* in the README.
 
 ### Building it
 

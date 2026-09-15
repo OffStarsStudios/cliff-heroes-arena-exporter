@@ -13,7 +13,6 @@ import { ArenaExporter } from './features/ArenaExporter';
 import { Dashboard } from './features/Dashboard';
 import { LiveConfig } from './features/LiveConfig';
 import { LiveOps } from './features/LiveOps';
-import { Schedule } from './features/Schedule';
 import { ParamReference } from './features/ParamReference';
 import { RewardLibrary } from './features/RewardLibrary';
 import { ROLLING_OFFER_EXPORTER } from './exporters/rollingOffer';
@@ -22,7 +21,6 @@ import { SOURCE_LABELS, useWorkbookSources } from './hooks/useWorkbookSources';
 const VIEWS: View[] = [
   'dashboard',
   'liveops',
-  'schedule',
   'live',
   'arena',
   'heroes',
@@ -52,6 +50,9 @@ const DOMAIN_FOR_VIEW: Partial<Record<View, ExporterDomain>> = {
 
 function viewFromHash(): View {
   const hash = window.location.hash.replace(/^#\/?/, '');
+  // The scheduling page is gone: every event is booked, changed and ended on
+  // the calendar or its feature's page. An old bookmark lands on the calendar.
+  if (hash === 'schedule') return 'liveops';
   // The overview is the front door: the first question is always what the game
   // is serving, not which spreadsheet somebody wants to convert.
   return (VIEWS as string[]).includes(hash) ? (hash as View) : 'dashboard';
@@ -87,7 +88,6 @@ export function App() {
     <AppShell view={view} onNavigate={navigate} source={shellSource}>
       {view === 'dashboard' && <Dashboard onNavigate={navigate} />}
       {view === 'liveops' && <LiveOps onNavigate={navigate} />}
-      {view === 'schedule' && <Schedule onNavigate={navigate} />}
       {view === 'live' && <LiveConfig />}
       {view === 'arena' && (
         <ArenaExporter source={controllerFor('trophyRoad')} onNavigate={navigate} />

@@ -132,7 +132,9 @@ export const BATTLE_PASS_EXPORTER: ExporterDefinition<
     // same span, so the pass takes its start and length from the booking.
     // Whole days is the client's unit, so a window that is not a whole number
     // of them is rounded here and the rounding is shown in the form rather
-    // than discovered later in the payload.
+    // than discovered later in the payload. A season always has both ends, so
+    // a half-set window leaves the header as it was.
+    if (opensAt === null || endsAt === null) return base;
     const days = Math.round((Date.parse(endsAt) - Date.parse(opensAt)) / 86400000);
     return {
       ...base,
@@ -155,6 +157,8 @@ export const BATTLE_PASS_EXPORTER: ExporterDefinition<
       ],
       count: result.stats.tiers,
       registry,
+      // The season is the one event this payload holds, and names itself.
+      subject: result.config.SeasonID === '' ? undefined : result.config.SeasonID,
     };
   },
   validate: validateBattlePassConfig,

@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import type { View } from './AppShell';
 import { ChangeReview } from './ChangeReview';
+import { FeatureEvents } from './FeatureEvents';
 import { Icon } from './Icon';
 import { LiveInGame } from './LiveInGame';
 import { SourcePanel, type SourceController } from './SourcePanel';
@@ -12,6 +13,7 @@ import { runAnalysis } from '../exporters/analysis';
 import type { ExporterDefinition, TabSelection, TabSpec } from '../exporters/types';
 import { useExporterSettings } from '../hooks/useExporterSettings';
 import { useRelease } from '../hooks/useRelease';
+import { isLiveOpsDomain } from '../lib/liveops';
 import { detectDataset, type Dataset } from '../lib/sheetSelect';
 
 interface ExporterPageProps<S extends TabSelection, TConfig, TRow, TSettings> {
@@ -41,15 +43,15 @@ function emptySelection<S extends TabSelection>(tabs: TabSpec<S>[]): S {
 
 /**
  * One config, start to finish: load the sheet, look at what changes, publish
- * or schedule it.
+ * it - or, for a live ops feature, book it as an event.
  *
  * There used to be a third step in the middle called "generate JSON", and it
  * was the console admitting it thought of itself as a file converter. Nobody
  * opening this page wants a file. They want to know what their spreadsheet
  * edit does to the running game, and then to make it happen. So the JSON is
  * produced silently, the diff against the live config computes itself the
- * moment the sheet parses, and the two things left to press are Publish and
- * Schedule.
+ * moment the sheet parses, and what is left to press is Publish - and, for a
+ * live ops feature, Schedule.
  *
  * The tab mapping survives as a fold rather than a step, because it is right
  * automatically almost every time and is only interesting when it is not.
@@ -67,7 +69,10 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
   // Two things a person opens a config page to do: change it, or look at what
   // it currently is. They were the same page before, and the second one was
   // only reachable by loading a sheet you did not want to publish.
-  const [pageTab, setPageTab] = useState<'update' | 'live'>('update');
+  // A live ops feature has a third: its events, booked or running, which are
+  // the same list the calendar shows.
+  const [pageTab, setPageTab] = useState<'update' | 'live' | 'events'>('update');
+  const liveOpsDomain = isLiveOpsDomain(definition.domain) ? definition.domain : null;
   const tabsId = useId();
   const [environmentId, setEnvironmentId] = useState(
     () => liveEnvironment()?.environmentId ?? ENVIRONMENTS[0].environmentId,
@@ -219,6 +224,20 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
           <Icon name="activity" size={14} />
           Live in game
         </button>
+        {liveOpsDomain !== null && (
+          <button
+            type="button"
+            role="tab"
+            id={`${tabsId}-events`}
+            aria-selected={pageTab === 'events'}
+            aria-controls={`${tabsId}-panel`}
+            className={`pagetab${pageTab === 'events' ? ' pagetab--active' : ''}`}
+            onClick={() => setPageTab('events')}
+          >
+            <Icon name="calendar" size={14} />
+            Events
+          </button>
+        )}
       </div>
 
       {/* Keyed so switching tabs replays the panel's entrance. */}
@@ -236,6 +255,15 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
           environmentId={environmentId}
           onEnvironmentChange={setEnvironmentId}
           downloadFilename={definition.downloadFilename}
+        />
+      )}
+
+      {pageTab === 'events' && liveOpsDomain !== null && (
+        <FeatureEvents
+          domain={liveOpsDomain}
+          environmentId={environmentId}
+          onEnvironmentChange={setEnvironmentId}
+          onNavigate={onNavigate}
         />
       )}
 
@@ -422,6 +450,10 @@ export function ExporterPage<S extends TabSelection, TConfig, TRow, TSettings>({
                     environmentId={environmentId}
                     onEnvironmentChange={setEnvironmentId}
                     sheetBlocker={sheetBlocker}
+                    event={
+                      liveOpsDomain === null ? null : { subjectId: result.subject ?? null, sourceUrl: source.lastUrl }
+                    }
+                    onShowEvents={() => setPageTab('events')}
                   />
                 )}
               </div>

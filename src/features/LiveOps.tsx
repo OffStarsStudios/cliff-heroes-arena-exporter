@@ -1,26 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
+import { EventBoard } from '../components/EventBoard';
 import { Icon } from '../components/Icon';
 import { LiveOpsDialog } from '../components/LiveOpsDialog';
 import { LiveOpsGantt } from '../components/LiveOpsGantt';
 import { Segmented } from '../components/Segmented';
 import type { View } from '../components/AppShell';
 import { ENVIRONMENTS, liveEnvironment } from '../domains/account';
-import { DOMAIN_LABELS, type DomainId } from '../domains/types';
+import { DOMAIN_LABELS } from '../domains/types';
+import { useLiveOpsBoard, type LiveOpsBoard } from '../hooks/useLiveOpsBoard';
 import {
   CATEGORY_COLOURS,
   CATEGORY_LABELS,
-  FEATURE_SOURCE,
   LIVEOPS_DOMAINS,
-  PHASE_LABELS,
-  PHASE_TONES,
-  durationLabel,
-  isLiveOpsEntry,
-  phaseOf,
-  previewHoursOf,
-  type EventPhase,
-  type LiveOpsEntry,
+  UNBOOKED_COLOUR,
+  isInGame,
+  type BoardEvent,
 } from '../lib/liveops';
-import { cancelWindow, fetchSchedule, localTime, relativeTime, type ScheduleView } from '../lib/schedule';
+import { relativeTime } from '../lib/schedule';
 
 type Mode = 'table' | 'calendar';
 
@@ -38,99 +34,46 @@ const DAY_MS = 86400000;
 /**
  * The live ops calendar.
  *
- * Two views of one list, because the same events answer two different
- * questions. The table answers "what exactly is this event and is it right" -
- * the configuring view. The calendar answers "what is running when, and does
- * anything collide" - the view you look at before you book something.
+ * Everything that is only sometimes in the game, in one place: every event
+ * ConfigCat is serving right now - booked here, published from its own page,
+ * evergreen, or pasted into the dashboard by hand - and every event booked to
+ * come. Two views of that one list, because the same events answer two
+ * questions: the table is "what exactly is this and is it right", the calendar
+ * is "what runs when, and does anything collide".
  *
- * Both read the scheduler's own entries rather than a second store. An event
- * *is* a scheduling window; it just knows what kind of thing it is, and what
- * should happen to the feature when it is over.
+ * Whatever is running can be taken down from here the moment somebody sees a
+ * problem, without waiting for its end and without opening ConfigCat.
  */
 export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [mode, setMode] = useState<Mode>('calendar');
   const [range, setRange] = useState<RangeKey>('3m');
-  const [view, setView] = useState<ScheduleView | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  // One dialog, two jobs. `composing` books a new event; `editing` holds the
-  // one being changed, which is what a row or a bar opens.
+  const [environmentId, setEnvironmentId] = useState((liveEnvironment() ?? ENVIRONMENTS[0]).environmentId);
+  const board = useLiveOpsBoard(environmentId);
+  const { view, events, now, loading } = board;
+
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // One dialog, two jobs: `composing` books a new event, `editing` holds the
+  // one a row or a bar opened.
   const [composing, setComposing] = useState(false);
-  const [editing, setEditing] = useState<LiveOpsEntry | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<BoardEvent | null>(null);
 
-  const open = useCallback((entry: LiveOpsEntry) => {
-    setSelectedId(entry.id);
-    setEditing(entry);
-  }, []);
+  const open = (event: BoardEvent) => {
+    setSelectedKey(event.key);
+    setEditing(event);
+  };
 
-  const environment = liveEnvironment() ?? ENVIRONMENTS[0];
-  const [environmentId, setEnvironmentId] = useState(environment.environmentId);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setView(await fetchSchedule());
-      setError(null);
-    } catch (reason) {
-      setError((reason as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const now = view === null ? Date.now() : Date.parse(view.now);
-
-  const events = useMemo<LiveOpsEntry[]>(() => {
-    if (view === null) return [];
-    return view.entries
-      .filter(isLiveOpsEntry)
-      .filter((entry) => entry.environmentId === environmentId)
-      .sort((a, b) => Date.parse(a.liveops.opensAt) - Date.parse(b.liveops.opensAt));
-  }, [view, environmentId]);
-
-  const counts = useMemo(() => {
-    let live = 0;
-    let upcoming = 0;
-    for (const entry of events) {
-      const phase = phaseOf(entry, now);
-      if (phase === 'active' || phase === 'ending' || phase === 'preview') live += 1;
-      if (phase === 'scheduled') upcoming += 1;
-    }
-    return { live, upcoming };
-  }, [events, now]);
+  const live = events.filter(isInGame).length;
+  const upcoming = events.filter((event) => event.phase === 'scheduled').length;
 
   const { back, forward } = RANGES[range];
   const from = now - back * DAY_MS;
   const to = now + forward * DAY_MS;
 
-  const cancel = async (entry: LiveOpsEntry) => {
-    const phase = phaseOf(entry, now);
-    const question =
-      phase === 'active' || phase === 'ending' || phase === 'preview'
-        ? `End "${entry.label}" now? ${DOMAIN_LABELS[entry.domain]} is taken out of the game immediately.`
-        : `Cancel "${entry.label}"? It has not started, so nothing is published.`;
-    if (!window.confirm(question)) return;
-    setBusyId(entry.id);
-    try {
-      await cancelWindow(entry.id, 'Cancelled from the live ops calendar.');
-      await load();
-    } catch (reason) {
-      setError((reason as Error).message);
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  /** Features with no off state cannot be scheduled at all, so say it up front. */
-  const notReady = (LIVEOPS_DOMAINS as readonly DomainId[]).filter(
-    (domain) => view !== null && view.off?.[domain]?.present !== true,
+  /** Features that need an off state and have none cannot book an ending event. */
+  const notReady = LIVEOPS_DOMAINS.filter(
+    (domain) => view !== null && view.unavailable === undefined && view.off?.[domain]?.present !== true,
   );
+  const booked = events.some((event) => event.entry !== null && event.phase !== 'ended' && event.phase !== 'off');
 
   return (
     <section className="stack-md">
@@ -143,14 +86,13 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
             </span>
           </h1>
           <p className="page__lead">
-            Features that are not always in the game. An event publishes its config when it opens and removes the
-            feature when it ends - unlike{' '}
-            <button type="button" className="linklike" onClick={() => onNavigate('schedule')}>scheduling</button>, which
-            goes back to a previous version.
+            Every event that is running or booked: battle pass seasons and rolling offers, whether they were booked
+            here, published from their own page, or are evergreen. Book, change or end any of them from here or from the
+            feature&rsquo;s page.
           </p>
         </div>
         <button type="button" className="btn btn--primary" onClick={() => setComposing(true)}>
-          <Icon name="plus" size={14} /> Schedule an event
+          <Icon name="plus" size={14} /> New event
         </button>
       </header>
 
@@ -182,88 +124,137 @@ export function LiveOps({ onNavigate }: { onNavigate: (view: View) => void }) {
             ))}
           </select>
         </label>
+        <button type="button" className="btn btn--sm" onClick={() => void board.reload()} disabled={loading}>
+          {loading ? <span className="spinner" aria-hidden="true" /> : <Icon name="refresh" size={13} />}
+          Refresh
+        </button>
 
         {/* The two numbers a live ops board is opened to check. */}
         <div className="tally" aria-live="polite">
           <span className="tally__item">
             <span className="tally__dot tally__dot--live" aria-hidden="true" />
-            {counts.live} live
+            {live} in game
           </span>
           <span className="tally__item">
             <span className="tally__dot tally__dot--soon" aria-hidden="true" />
-            {counts.upcoming} upcoming
+            {upcoming} upcoming
           </span>
         </div>
       </div>
 
-      {view?.unavailable !== undefined && (
-        <p className="banner banner--warn">
-          <Icon name="alert" size={14} className="banner__icon" />
-          <span>{view.unavailable}</span>
-        </p>
-      )}
+      <BoardBanners board={board} booked={booked} />
 
-      {error !== null && (
-        <p className="banner banner--error">
-          <Icon name="alert" size={14} className="banner__icon" />
-          <span>{error}</span>
-        </p>
-      )}
-
-      {notReady.length > 0 && view?.unavailable === undefined && (
+      {notReady.length > 0 && (
         <p className="banner banner--warn">
           <Icon name="alert" size={14} className="banner__icon" />
           <span>
-            {notReady.map((domain) => DOMAIN_LABELS[domain]).join(', ')} has no off state recorded - an event could go
+            {notReady.map((domain) => DOMAIN_LABELS[domain]).join(', ')} has no off state recorded, so an event could go
             up but never come down. Record it in the booking form.
           </span>
         </p>
       )}
 
-      {loading ? (
+      {loading && view === null ? (
         <p className="field__note">
-          <span className="spinner" aria-hidden="true" /> Reading the calendar...
+          <span className="spinner" aria-hidden="true" /> Reading the calendar and what is live...
         </p>
       ) : mode === 'calendar' ? (
         <>
-          <LiveOpsGantt
-            events={events}
-            from={from}
-            to={to}
-            now={now}
-            selectedId={selectedId}
-            onOpen={open}
-          />
+          <LiveOpsGantt events={events} from={from} to={to} now={now} selectedKey={selectedKey} onOpen={open} />
           <Legend />
         </>
       ) : (
-        <EventTable
+        <EventBoard
           events={events}
           now={now}
-          busyId={busyId}
-          selectedId={selectedId}
+          busyKey={board.busyKey}
+          selectedKey={selectedKey}
           onOpen={open}
-          onCancel={cancel}
+          onAct={(event, action) => void board.act(event, action)}
           onNavigate={onNavigate}
+          empty="Nothing is running or booked. An event is a battle pass season or a rolling offer."
         />
       )}
 
       {(composing || editing !== null) && (
         <LiveOpsDialog
           environmentId={environmentId}
-          entry={editing}
+          event={editing}
           onClose={() => {
             setComposing(false);
             setEditing(null);
           }}
-          onScheduled={() => {
+          onDone={() => {
             setComposing(false);
             setEditing(null);
-            void load();
+            void board.reload();
           }}
         />
       )}
     </section>
+  );
+}
+
+/**
+ * What a board cannot show on its own: why part of it may be missing, what just
+ * happened, and whether the heartbeat that runs bookings is arriving.
+ */
+export function BoardBanners({ board, booked }: { board: LiveOpsBoard; booked: boolean }) {
+  const { view, error, liveError, notice } = board;
+  return (
+    <>
+      {notice !== null && (
+        <p className="banner banner--ok">
+          <Icon name="check" size={14} className="banner__icon" />
+          <span>{notice}</span>
+        </p>
+      )}
+
+      {error !== null && (
+        <p className="banner banner--error" role="alert">
+          <Icon name="alert" size={14} className="banner__icon" />
+          <span>{error}</span>
+        </p>
+      )}
+
+      {liveError !== null && (
+        <p className="banner banner--warn">
+          <Icon name="alert" size={14} className="banner__icon" />
+          <span>
+            ConfigCat could not be read, so only booked events are shown - anything published directly is missing from
+            this view. {liveError}
+          </span>
+        </p>
+      )}
+
+      {view?.unavailable !== undefined && (
+        <p className="banner banner--warn">
+          <Icon name="alert" size={14} className="banner__icon" />
+          <span>
+            Bookings are unavailable: {view.unavailable} What is live is still shown, and can still be ended.
+          </span>
+        </p>
+      )}
+
+      {view !== null && view.unavailable === undefined && view.heartbeatStale && (
+        <div className={booked ? 'banner banner--error' : 'banner banner--warn'} role="alert">
+          <Icon name="alert" size={15} className="banner__icon" />
+          <span>
+            <strong>The heartbeat is not arriving.</strong>{' '}
+            {view.lastTickAt === null
+              ? 'The scheduler has never run.'
+              : `Last beat ${relativeTime(Date.parse(view.lastTickAt) - Date.now())}.`}{' '}
+            {booked
+              ? 'Booked events will not open or close until it does. Publishing now and ending now still work.'
+              : 'Nothing is booked, so nothing is being missed yet.'}{' '}
+            It is an external pinger calling <span className="mono">POST /api/schedule/tick</span> every five minutes
+            with the <span className="mono">CRON_SECRET</span> as a bearer token. Check the job is still{' '}
+            <strong>enabled</strong> - pingers switch a job off after a run of failures - then open the endpoint, which
+            says exactly why a tick was refused.
+          </span>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -277,151 +268,17 @@ function Legend() {
         </li>
       ))}
       <li>
+        <span
+          className="legend__swatch legend__swatch--unbooked"
+          style={{ backgroundColor: UNBOOKED_COLOUR }}
+          aria-hidden="true"
+        />
+        Published directly, not booked
+      </li>
+      <li>
         <span className="legend__swatch legend__swatch--preview" aria-hidden="true" />
         Config live, event not open yet
       </li>
     </ul>
-  );
-}
-
-function EventTable({
-  events,
-  now,
-  busyId,
-  selectedId,
-  onOpen,
-  onCancel,
-  onNavigate,
-}: {
-  events: LiveOpsEntry[];
-  now: number;
-  busyId: string | null;
-  selectedId: string | null;
-  onOpen: (entry: LiveOpsEntry) => void;
-  onCancel: (entry: LiveOpsEntry) => void;
-  onNavigate: (view: View) => void;
-}) {
-  if (events.length === 0) {
-    return (
-      <p className="empty">
-        Nothing is scheduled. An event is a battle pass season, a rolling offer, a limited-time feature.
-      </p>
-    );
-  }
-
-  return (
-    <div className="tablewrap tablewrap--board">
-      <table className="table table--board">
-        <thead>
-          <tr>
-            <th scope="col">Event</th>
-            <th scope="col">Feature</th>
-            <th scope="col">Category</th>
-            <th scope="col">Opens</th>
-            <th scope="col">Ends</th>
-            <th scope="col">Runs for</th>
-            <th scope="col">Phase</th>
-            <th scope="col">Config</th>
-            <th scope="col" />
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((entry) => {
-            const phase: EventPhase = phaseOf(entry, now);
-            const running = phase === 'scheduled' || phase === 'preview' || phase === 'active' || phase === 'ending';
-            const name = entry.label === '' ? DOMAIN_LABELS[entry.domain] : entry.label;
-            return (
-              // The whole row opens the event, the way a board card does. The
-              // name inside it is a real button, so this works from a keyboard
-              // as well as from a pointer.
-              <tr
-                key={entry.id}
-                className={`table__row--open${entry.id === selectedId ? ' table__row--selected' : ''}`}
-                style={{ ['--event-colour' as string]: CATEGORY_COLOURS[entry.liveops.category] }}
-                onClick={() => onOpen(entry)}
-              >
-                <td>
-                  <button type="button" className="table__open" onClick={() => onOpen(entry)}>
-                    {name}
-                  </button>
-                  {entry.note !== null && entry.note !== '' && <span className="table__sub">{entry.note}</span>}
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="linklike"
-                    onClick={(mouse) => {
-                      mouse.stopPropagation();
-                      onNavigate(FEATURE_SOURCE[entry.domain as keyof typeof FEATURE_SOURCE] as View);
-                    }}
-                  >
-                    {DOMAIN_LABELS[entry.domain]}
-                  </button>
-                </td>
-                <td>
-                  <span
-                    className="tag"
-                    style={{ ['--tag-colour' as string]: CATEGORY_COLOURS[entry.liveops.category] }}
-                  >
-                    {CATEGORY_LABELS[entry.liveops.category]}
-                  </span>
-                </td>
-                <td>
-                  {localTime(entry.liveops.opensAt)}
-                  {/* Only events booked while the preview box existed have one. */}
-                  {previewHoursOf(entry.liveops) > 0 && (
-                    <span className="table__sub">config published {previewHoursOf(entry.liveops)}h earlier</span>
-                  )}
-                </td>
-                <td>
-                  {localTime(entry.endsAt)}
-                  {phase === 'active' || phase === 'ending' ? (
-                    <span className="table__sub">
-                      {entry.endsInMs === null ? '' : relativeTime(entry.endsInMs)}
-                    </span>
-                  ) : null}
-                </td>
-                <td>{durationLabel(entry.liveops.opensAt, entry.endsAt)}</td>
-                <td>
-                  <span className={`chip chip--${PHASE_TONES[phase]}`}>{PHASE_LABELS[phase]}</span>
-                </td>
-                <td className="mono">
-                  {(entry.payloadBytes / 1024).toFixed(1)} kB
-                  {/* Provenance, not a live link: the payload was snapshotted
-                      when the event was booked. */}
-                  {typeof entry.liveops.sourceUrl === 'string' && entry.liveops.sourceUrl !== '' && (
-                    <span className="table__sub">
-                      <a
-                        href={entry.liveops.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(mouse) => mouse.stopPropagation()}
-                      >
-                        from the sheet
-                      </a>
-                    </span>
-                  )}
-                </td>
-                <td className="table__actions">
-                  {running && (
-                    <button
-                      type="button"
-                      className="btn btn--sm btn--danger"
-                      onClick={(mouse) => {
-                        mouse.stopPropagation();
-                        onCancel(entry);
-                      }}
-                      disabled={busyId === entry.id}
-                    >
-                      {phase === 'scheduled' ? 'Cancel' : 'End it now'}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
   );
 }

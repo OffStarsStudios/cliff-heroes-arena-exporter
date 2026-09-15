@@ -139,8 +139,10 @@ export interface ExporterDefinition<S extends TabSelection, TConfig, TRow, TSett
    * about - the final reward art, say - are carried over rather than blanked.
    *
    * Absent for a config whose page fields have nothing to do with a window.
+   * A null end is an event that never ends - an evergreen offer - and a null
+   * start one that is open already.
    */
-  eventSettings?(base: TSettings, window: { opensAt: string; endsAt: string }): TSettings;
+  eventSettings?(base: TSettings, window: { opensAt: string | null; endsAt: string | null }): TSettings;
   /** Pure. Only called once every tab is chosen; `sheets` has a RawSheet per tab key. */
   analyze(sheets: Record<keyof S & string, RawSheet>, settings: TSettings): AnalysisResult<TConfig, TRow>;
   /** Independent schema gate, run on "Generate JSON". */

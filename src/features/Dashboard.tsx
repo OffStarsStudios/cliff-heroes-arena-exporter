@@ -217,8 +217,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (view: View) => void }) 
               {needsAttention.length} scheduled window{needsAttention.length === 1 ? '' : 's'} did not
               run as booked.
             </strong>{' '}
-            <button type="button" className="btn btn--sm" onClick={() => onNavigate('schedule')}>
-              Open scheduling
+            <button type="button" className="btn btn--sm" onClick={() => onNavigate('liveops')}>
+              Open the calendar
             </button>
           </span>
         </div>
@@ -230,16 +230,16 @@ export function Dashboard({ onNavigate }: { onNavigate: (view: View) => void }) 
             <Icon name="calendar" size={15} />
             Coming up
           </h2>
-          <button type="button" className="btn btn--sm" onClick={() => onNavigate('schedule')}>
-            All schedules
+          <button type="button" className="btn btn--sm" onClick={() => onNavigate('liveops')}>
+            Live ops calendar
             <Icon name="arrowRight" size={13} />
           </button>
         </div>
 
         {upcoming.length === 0 ? (
           <p className="empty">
-            Nothing is scheduled. Open a config, load its sheet, and press <strong>Schedule it</strong>{' '}
-            instead of Publish to book a window.
+            Nothing is booked. Battle pass seasons and rolling offers are booked on the live ops calendar or
+            on their own page.
           </p>
         ) : (
           <ul className="timeline">
@@ -294,7 +294,6 @@ export function Dashboard({ onNavigate }: { onNavigate: (view: View) => void }) 
             const domainDrift = driftFor(domain);
             const active = activeByDomain.get(domain);
             const next = nextByDomain.get(domain);
-            const hasDefault = schedule?.defaults?.[domain]?.present === true;
 
             return (
               <button
@@ -341,15 +340,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (view: View) => void }) 
                     <span className="configcard__flag configcard__flag--info">
                       <Icon name="clock" size={12} /> next window {relativeTime(next.startsInMs)}
                     </span>
-                  ) : hasDefault ? (
-                    <span className="configcard__flag">
-                      <Icon name="shield" size={12} /> default recorded
-                    </span>
-                  ) : (
-                    <span className="configcard__flag configcard__flag--muted">
-                      <Icon name="shield" size={12} /> no default recorded
-                    </span>
-                  )}
+                  ) : null}
                 </span>
               </button>
             );

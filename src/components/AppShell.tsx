@@ -10,7 +10,6 @@ import type { RawWorkbook } from '../lib/types';
 export type View =
   | 'dashboard'
   | 'liveops'
-  | 'schedule'
   | 'live'
   | 'arena'
   | 'heroes'
@@ -49,7 +48,6 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'dashboard', label: 'Overview', icon: 'grid' },
       { id: 'liveops', label: 'Live ops', icon: 'calendar' },
-      { id: 'schedule', label: 'Scheduling', icon: 'clock' },
       { id: 'live', label: 'Live config', icon: 'link' },
     ],
   },
@@ -70,13 +68,17 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'Monetization',
     items: [
       { id: 'shop', label: 'Shop', icon: 'cart' },
-      { id: 'rollingOffer', label: 'Rolling offers', icon: 'zap' },
     ],
   },
   {
     id: 'liveops',
     title: 'Live ops',
-    items: [{ id: 'battlePass', label: 'Battle pass', icon: 'ticket' }],
+    // Every feature that is only sometimes in the game, managed the same way here
+    // and on the calendar.
+    items: [
+      { id: 'battlePass', label: 'Battle pass', icon: 'ticket' },
+      { id: 'rollingOffer', label: 'Rolling offers', icon: 'zap' },
+    ],
   },
   {
     id: 'reference',
@@ -228,7 +230,7 @@ export interface ShellSource {
  * bottom. It is wrong for a calendar and a table of events, where the width is
  * the information: more weeks on screen, more columns without a scroll.
  */
-const WIDE_VIEWS = new Set<View>(['liveops', 'schedule']);
+const WIDE_VIEWS = new Set<View>(['liveops']);
 
 interface AppShellProps {
   view: View;

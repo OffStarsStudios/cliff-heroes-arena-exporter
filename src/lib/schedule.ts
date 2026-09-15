@@ -63,6 +63,7 @@ export interface ScheduleEntry {
 export interface DefaultStatus {
   present: boolean;
   hash: string | null;
+  needed?: boolean;
   error?: string;
 }
 
@@ -174,10 +175,20 @@ export interface NewWindow {
   startsAt: string;
   endsAt: string | null;
   liveops?: LiveOpsBlock;
+  /**
+   * Books a live ops event and publishes it straight away, instead of waiting
+   * for its start. The event opens at the minute it is booked.
+   */
+  startNow?: boolean;
 }
 
-export function createWindow(input: NewWindow): Promise<{ entry: ScheduleEntry }> {
-  return call<{ entry: ScheduleEntry }>('/api/schedule', {
+export interface StartOutcome {
+  ok: boolean;
+  detail?: string;
+}
+
+export function createWindow(input: NewWindow): Promise<{ entry: ScheduleEntry; started: StartOutcome | null }> {
+  return call<{ entry: ScheduleEntry; started: StartOutcome | null }>('/api/schedule', {
     method: 'POST',
     body: JSON.stringify(input),
   });
@@ -205,6 +216,44 @@ export function updateWindow(input: WindowEdit): Promise<{ entry: ScheduleEntry 
   });
 }
 
+/**
+ * Takes one live ops event out of the game now, booked or not.
+ *
+ * `end` closes it and is always safe; `remove` takes it out of the payload for
+ * good, which retires an offer's progress. `expected` is the event's part of
+ * the payload as the page last showed it, so a change made in the meantime is
+ * refused instead of ended blind.
+ */
+export interface EventEnd {
+  domain: DomainId;
+  environmentId: string;
+  subjectId: string;
+  mode: 'end' | 'remove';
+  expected?: unknown;
+  reason?: string;
+}
+
+export function endEvent(input: EventEnd): Promise<{ result: unknown; cancelled: string[] }> {
+  return call('/api/schedule/event-end', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** Republishes one live event now: a new window, a new config, or both. */
+export interface EventRepublish {
+  domain: DomainId;
+  environmentId: string;
+  subjectId: string;
+  /** A config carrying this event - for a rolling offer, any payload listing it. */
+  payload?: unknown;
+  /** Null dates make an evergreen offer. */
+  window?: { startsAt: string | null; endsAt: string | null };
+  expected?: unknown;
+  reason?: string;
+}
+
+export function republishEvent(input: EventRepublish): Promise<{ result: unknown; entry: ScheduleEntry | null }> {
+  return call('/api/schedule/event-publish', { method: 'POST', body: JSON.stringify(input) });
+}
+
 export function cancelWindow(id: string, reason?: string): Promise<{ entry: ScheduleEntry }> {
   return call<{ entry: ScheduleEntry }>('/api/schedule/cancel', {
     method: 'POST',
@@ -225,6 +274,8 @@ export function saveDefault(domain: DomainId, payload: unknown, note?: string): 
 
 export interface OffState {
   domain: DomainId;
+  /** False for a feature that has no off state because ending closes a window instead. */
+  needed: boolean;
   present: boolean;
   payload: unknown;
   /** True when nothing is recorded yet and `payload` is only a suggestion. */
